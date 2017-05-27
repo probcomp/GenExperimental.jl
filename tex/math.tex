@@ -1,0 +1,382 @@
+\documentclass{article}
+\usepackage[utf8]{inputenc} % allow utf-8 input
+\usepackage[T1]{fontenc}    % use 8-bit T1 fonts
+\usepackage{lmodern}
+\usepackage{hyperref}       % hyperlinks
+\usepackage{url}            % simple URL typesetting
+\usepackage{booktabs}       % professional-quality tables
+\usepackage{amsfonts}       % blackboard math symbols
+\usepackage{nicefrac}       % compact symbols for 1/2, etc.
+\usepackage{microtype}      % microtypography
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{algorithm}
+\usepackage[noend]{algpseudocode}
+\usepackage{mathtools}
+\usepackage{amsthm}
+\usepackage{thmtools}
+\usepackage{thm-restate}
+\usepackage{subcaption}
+\usepackage{enumitem}
+\usepackage{varwidth}
+\usepackage{listings}
+
+\begin{document}
+
+\section{Probabilistic modules}
+A \emph{probabilistic module} is an object $\mathcal{M}$ that exposes an \emph{output} random variable $Z$ and may have \emph{parameters} $\theta$.
+A module $\mathcal{M}$ is a computational representation of a family of distributions $p(z; \theta)$ on values of $Z$, indexed by $\theta$.
+A module does not expose any internal random variables.
+A module $\mathcal{M}$ can respond to two types of queries.
+First a module may be queried given an assignment to $Z$ alongside the parameters $\theta$:
+\begin{equation}
+\mbox{query}(\mathcal{M}, Z=z; \theta) \to w \;\; \mbox{where}\;\; \mathbb{E}_{w|z,\theta}[w] = p(z;\theta) \;\; \mbox{for all} \;\; z, \theta
+\end{equation}
+Second, a module may be queried without an assignment to $Z$, which causes an assignment $z$ to be sampled according to $p(z;\theta)$:
+\begin{equation}
+\mbox{query}(\mathcal{M}; \theta) \to (w, z) \;\; \mbox{where}\;\; \mathbb{E}_{w|z,\theta}[w] = \frac{1}{p(z; \theta)} \;\; \mbox{for all} \;\; z, \theta 
+\end{equation}
+\subsection{Probabilistic modules in Jen}
+In Jen, a probabilistic module is simply a Terra function that accepts arguments $\theta$ and $Z$, where if $Z$ has a non-null value $z$, the function executes the first query form and returns $w$, and if $Z$ is null, then function executes the second form and returns the tuple $(w,z)$.
+Jen provides syntactic sugar for making queries to modules using the $\sim$ syntax:
+\begin{lstlisting}
+start = (0.5, 0.2)
+goal = (0.3, 0.1)
+map = ..
+w1, path1 ~ path-planner(start, goal, map)
+path2 = [(0.5, 0.2), (0.4, 0.15), (0.3, 0.1)]
+w2 ~ path-planner(path2; start, goal, map)
+\end{lstlisting}
+Modules can be used as components of models to achieve encapsulated inference, or as components of inference algorithms, such as proposal distributions for Metropolis-Hastings.
+
+\subsection{Assessable modules}
+Modules that have an exact density (e.g. $w = p(z;\theta)$) are called \emph{assessable}.
+
+\subsection{Constructing modules}
+A module can be defined by manually writing a Terra function that responds to the two types of queries, or by using built-in module compilation routines, discussed below.
+A manually constructed module has the following type signature:
+\begin{lstlisting}
+path-planner = terra(output, args..)
+    ..
+    
+end
+\end{lstlisting}
+
+\section{Probabilistic programs}
+A probabilistic program is an object $\mathcal{P}$ that exposes a set of random variables $X_i$ for $i \in N$ where each $i$ is \emph{name} of the random variable $X_i$.
+Each random variable is the return value of some stochastic procedure call in the program.
+A probabilistic program is constructed in Jen by annotating a Terra function with naming information that gives custom names to subset of the procedure calls:
+\begin{lstlisting}
+agent_model = terra(planner_params)
+    start = (uniform(), uniform())
+    goal = (uniform() #goal_x, uniform() #goal_y)
+    map = sample_map()
+    path = plan_path(start, goal, map, planner_params)
+    locations = add_noise(path) # observed_loc
+end
+\end{lstlisting}
+
+Each named function call must be a call to a module.
+The name is resolved?
+
+The probabilistic program defines an implicit joint distribution $p(X_1,X_2,\ldots)$ over assignments to these random variables.
+A probabilistic program $\mathcal{P}$ can be queried by passing a set of \emph{requested} random variables $R$, and assignments to a set of \emph{constrained} random variables $C$ with assignments $c$:
+\begin{equation}
+    \mbox{query}(\mathcal{P}, R | C = c ; \theta)
+\end{equation}
+The query triggers a modified execution of the program.
+In the modified execution, when a random variable $X_i$ with $i \in R$ is encountered, the assignment $x_i$ is sampled from the stochastic procedure as usual and recorded in a \emph{trace} data structure $\mathcal{T}$, which maps random variable names $i$ to values $x_i$.
+Each modified execution also keeps track of a \emph{weight}, which is initialized to one.
+When a random variable $X_i$ with $i \in C$ is encountered, the value $x_i$ is set from $c$, and a query is made to the module corresponding to the stochastic procedure call, and the weight is multiplied by the returned weight.
+% TODO show the sub-query
+The modified execution returns as output the tuple $(w, \mathcal{T})$.
+The weight returned is:
+\begin{equation}
+w = \prod_{i \in C} w_i
+\end{equation}
+
+The syntax for querying a probabilistic program in Terra is, e.g.:
+\begin{equation}
+    w, (x_i, x_j) \sim \mathcal{P}(i, j | k = x_k, \ell = x_{\ell}; \theta)
+\end{equation}
+where $R = \{i, j\}$ and $C = \{j, \ell\}$ and $c = (x_k, x_{\ell})$.
+The special syntax $\sim$ will cause the Terra function $\mathcal{P}$ to be JIT-compiled into a modified Terra function that performs the modified execution described above.
+Here is a concrete example, where $0.4$ is the arguments of the original Terra function \textproc{agent-model}.
+\begin{lstlisting}
+    w, (goal, map) ~ agent_model(goal, map | obs = [(0.4, 0.2), (0.5, 0.3)]; 0.4)
+\end{lstlisting}
+
+
+note that compound procedures automatically satisfy the module interface.
+this should be possible without special compilation
+but a compound procedure can also be explicitly traced, by adding names inside the program.
+if the return value of a stochastic procedure is named, then the procedure will be treated as a module, and queried using the module interface.
+if the return value is named, then any 'constraint' or intervention values proviude to the qurey of hte probabilstic program will be ignored.
+the requirement is that *either* the return value of the stochastic procedure is named, *or* the body of the stochsatic procedure is named (or not).
+it is illegal to name both the return value of a stochast
+
+
+\clearpage
+
+
+\section{Queries on probabilistic programs}
+
+A query for a probabilistic program $\mathcal{P}$ with parameters $\theta$ takes the following form:
+\begin{equation}
+    \mathcal{P}(W ; X, Y=y| Z=z; \theta)
+\end{equation}
+
+In the special case where $W$ is empty, we have:
+\begin{equation}
+    \mathcal{P}(; X, Y=y| Z=z; \theta)
+\end{equation}
+
+
+% ------- the version without module SIMULATE -------- %
+
+% constraints and interventions as in meta-prob:
+% - constraints contribute to the score
+% - interventions do not
+
+% can do custom inference for requested variables? NO.
+% you can only sample using forward simulation, and weights
+% are always likelihood-weights
+% custom *nested inference* is only for non-exposed random variables.
+% if you want custom inference for exposed random variables, make another
+% program that samples from that custom distribution.
+
+% but the auxiliary (non-exposed) variables can have an arbitrary custom
+% infernece distribution defined on them. 
+
+% we don't automatically put all exposed variables in the trace--
+% the user has to explicitly ask for every exposed random varialbe that they
+% want to be traced.
+
+% query(requested, constraints, interventions)
+% requested NEVER contribute to the weight, since they are
+% always sampled with forward simulation
+% the weight is p(constraints | parents)
+% where parents can include auxiliary variables sampled using forward
+% simulation as well as requested or interventions
+
+% the notation for such a query is:
+% weight, (r1, r2) ~ my-model(R1, R2 | C1=c1, C2=c2 : I1=i1, I2=i2; params)
+
+% as in meta-prob this is an importance sampling estimate of the posterior (and
+% the importance weight for the sample r1,r2)
+
+% (THIS IS COHERENT)
+
+
+% ------- adding module SIMULATE --------- %
+
+% Q: is it as simple as just having a flag that states recursively 
+% whether to include the regeneration weights for things that 
+% are forward-sampled [[ a switch ]]
+
+% for modules, with output Z there are two queries:
+% query(Z; params)
+% - with switch off: just gives weight of 1, because it is an exact sample, there are no constraints
+% - with switch on: gives p(u, z) / q(u; x) for u, z ~ p(u, z), which is the harmonic mean estimate of p(z), the sampling density
+% query(Z=z; params) ==> always gives an importance sampling estimate of the 
+
+% for programs with no constraints downstream of requested, and switch on, weight is a HME estimate of p(r | constraints, interventions)
+% for programs with no constraints downstream of requested and switch off, weight is 1.
+% for programs with constraints, and switch on....
+
+% [[ switch should probably be customizable for each of the requested variables ]] ==>
+% this suggests that there are more categories:
+
+% === original 'meta-prob-style' queries had three parts to the query:
+% weight, (r1, r2) ~ my-model(R1, R2 | C1=c1, C2=c2 : I1=i1, I2=i2; params)
+
+% === new queries have four parts to the query. syntax can define which
+% requested varialbes should be included in score and which should not:
+% by default requested variables are not included in the score.
+% if a requested variable is included in the score, the recursive query to the
+% sub-module will also include +
+% weight, (x1, x3) ~ my-model(X1, +X3 | X2=x2, X4=x4, X5=x5 : I1=i1, I2=i2; params)
+
+% =============================================== %
+
+% what is the formal definition of a module, now that we have this syntax?
+
+% >>> a module generalizes meta-prob in (1) the use of inference for auxiliary varibles, and (2) the optional inclusion of sampled variables in the score.
+
+% given a query of the form (W, +X | Y=y : I=i; params) 
+% there is a notion of a joint distribution p(W, X, Y; I=i, params) 
+% there is a set of auxiliary variables U that can depend on the specific valus of y, i and params
+% there is an extended joint distribution p(U, W, X, Y; I=i, params)
+% there is an auxiliary distribution q(U; W=w, X=x, Y=y; I=i, params)
+
+% the query samples W and X according to W, X ~ p(W, X | parents, I=i, params) ; the constriants Y=y are taken into account in the weight, not in the sample!
+
+% WE DO NOT DO CUSTOM INFERENCE OVER THE variables W, X given the constraints (that happens externally)
+
+% then what is the sampling distribution? if it not the posterior and not 'custom'
+
+% the general form should allow the sampling distribution to be arbitrary, and the weights should be importance weights wrt the posteiror (with arbitrary norm. const)
+
+% W, X, | Y=y ........... p(U, W, X, Y) and q(U; W, X, Y)
+
+% the purpose of auxiliary distribution, when not sampling from it, is to augment the target distribution in the use case.
+
+
+% the returned score is related to
+
+%           p(W, X | C=c; I=i, params)
+
+% the auxiliary variables can be sampled from q(U; ..) or from p(U; ..) depending.....
+
+
+
+% how to handle collapsed procedures? incorporate and unincorporate..
+% sufficient statistics. stateful vs stateless....
+
+
+
+
+
+% =============================================== %
+
+% the + indicates that the variable should be included in the score, otherwise it is not.
+% NOTE: intervention on a varialbe changes the meaning of the model
+
+
+% custom regeneration -- perfectly OK as in meta-prob, until
+% we try to get harmonic mean scores!
+
+
+% there are two modes:
+
+% mode 1: we are trying to estimate the probability of our sample
+% (which is from the 'posterior'). 
+
+% mode 2: we are trying to give an importance weight between the posterior
+% p(R=r | C=c) and what we actually sampled from, which is always 
+% from forward simulation in a probabilistic program.
+
+% in both cases we are providing a form of estimate of a posterior density.
+
+
+
+
+% BASIC REQUIREMENTS:
+
+% simulate a random variable given its parents, and return the density
+% Z => X
+% query(X | Z=z) --- weight: p(X=x|Z=z) and X|Z=z ~ p(X|Z=z)
+% SUGGESTS that weights should be inclued for varialbe son LHS of |
+
+% simulate a random variable and weight by the observation likelihood
+% X => Z
+% query(X | Z=z) --- weight: p(Z=z|X) and X|Z=z ~ p(X)
+% [[ could be broken down into two queries ]]
+% [[ first, get the value X, then evaluate weight p(Z=z|X) ]]
+% query(X | Z=z) then query(X=x|Z=z)
+
+% simultae a random varialbe not given its parents and return the density
+% (harmonic mean module simulate)
+% Z => X
+% query(X) -- weight: p(X=x|Z=z) and X,Z ~ p(X,Z)
+% 
+
+% when do we want to simulate a random variable and not return a density?
+
+% what can we break down into two separate queries?
+% 1. we def. need to be able to get p(X=x|Z=z) for X,Z ~ p(X,Z) in one query
+
+% TODO: use meta-prob idea of interventions and constraints?
+
+% ---------- X=x, Y=y | Z=z ------- %
+
+
+% ---------- X, Y=y | Z=z ----------- %
+
+% case Z => Y => X
+% weight: p(X=x,Y=y|Z=z; theta) and X|Y=y,Z=z ~ p(X|Y=y,Z=z; theta)
+
+% case Z => X => Y
+% weight: p(X=x,Y=y|Z=z; theta) and X|Y=y,Z=z ~ p(X|Z=z; theta)
+
+% --------- X | Z=z ---------------- %
+
+% case Z => Y => X [[ module simulate (auxiliary Y) ]]
+% weight: p(X=x|Y=y,Z=z) and X,Y|Z=z ~ p(X,Y|Z=z; theta)
+
+% case Z => X => Y [[ simulate with density ]]
+% weight: p(X=x|Z=z) and X|Z=z ~ p(X|Z=z; theta)
+
+% case X => Z => Y
+% weight: p(X=x;theta) and X|Z=z ~ p(X; theta)
+
+
+% ---------- X; Y=y | Z=z ----------- %
+
+% case Z => Y => X
+% weight: p(Y=y|Z=z,X=x) and X|Y=y,Z=z ~ p(X|Y=y,Z=z; theta)
+
+% case Z => X => Y [[ likelihood-weighting ]]
+% weight: p(Y=y|Z=z,X=x) and X|Y=y,Z=z ~ p(X|Z=z; theta)
+
+
+% --------- X; | Y=y, Z=z ----------- %
+
+% case Z => Y => X
+% weight: 1 and X|Y=y,Z=z ~ p(X|Y=y,Z=z; theta)
+
+% 
+
+
+% TODO: show that this is a special case..
+
+\section{Queries on general modules}
+
+\noindent A module has a set of exposed random variables $X = (X_1, X_2, \ldots, X_N)$ and a separate set of `parameters'.
+The parameters are always required.
+A module is associated with a joint distribution $p(X; \mbox{parameters})$.\\
+
+\noindent A query is a partition of the random variables into four sets:
+\begin{enumerate}
+    \item Conditioning variables $C$
+    \item Requested query variables $R$
+    \item Given query variables $G$
+    \item Auxiliary variables $U$ % TODO distinguish between unmentioned exposed and non-exposed auxiliary variables?
+\end{enumerate}
+A query has the following general form:
+\begin{equation}
+    \mbox{query}(R, G=g | C=c; \mbox{parameters})
+\end{equation}
+The variables $R$, $G$, and $C$ are determined in the query.
+The auxiliary variables $U$ for a given query are defined as the remaining exposed variables.
+A set of conditioning variables $C$ and a set of query variables $R \cup G$ together constitute a `query schema'.\\
+
+\noindent For every query schema there is no-request query, which is:
+\begin{equation}
+    \mbox{query}(R=r, G=g | C=c; \mbox{parameters})
+\end{equation}
+Associated with every query schema there is also an `auxiliary sampler', which has output density:
+\begin{equation}
+    q(U=u; R=r, G=g, C=c, \mbox{parameters})
+\end{equation}
+Every query schema has a weight function which is defined as:
+\begin{equation}
+    Z(c, \mbox{parameters}) \frac{p(U=u, R=r, G=g| C=c; \mbox{parameters})}{q(U=u; R=r, G=g, C=c; \mbox{parameters})}
+\end{equation}
+where $Z > 0$ is constant with respect to and $r$ and $g$ and $u$ but can vary as a function of $c$ and parameters $\mbox{parameters}$.
+A typical value of $Z$ is $Z = p(C = c; \mbox{parameters})$, in which case the weight function simplifies to:
+\begin{equation}
+    \frac{p(U=u, R=r, G=g, C=c; \mbox{parameters})}{q(U=u; R=r, G=g, C=c; \mbox{parameters})}
+\end{equation}
+If a query has an empty set of requested query variables $R$, then the query involves sampling from the auxiliary sampler and returning the weight.
+If a query has requested query variables, then the query involves sampling 
+
+If a query has a nonempty set of requested query variables 
+
+
+% TODO: mention unexposed auxiliary variables
+% TODO: handle hte case when the number of exposed random variables is infinite
+
+
+
+\end{document}
