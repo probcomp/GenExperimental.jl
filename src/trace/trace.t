@@ -69,7 +69,7 @@ terra get(table : &Trace, name : &int8) : float
 	return result.value
 end
 
-terra doit()
+terra test_trace()
 	var table = new_table()
 	table = add(table, "a", 0.5)
 	table = add(table, "b", 0.3)
@@ -88,4 +88,85 @@ terra doit()
 		stdio.printf("%s %i\n", names[i], has(table, names[i]))
 	end
 end
-doit()
+
+--- Requests is just a HashSet of strings ----
+
+hashset = terralib.includecstring [[
+    #include <string.h>  /* strcpy */
+    #include <stdlib.h>  /* malloc */
+    #include <stdio.h>   /* printf */    
+    #include "uthash.h"
+    typedef struct my_struct {
+        const char *name;          /* key */
+        UT_hash_handle hh;         /* makes this structure hashable */
+    } table_t;
+    
+    table_t* new_hashset() {
+        return NULL;
+    }
+
+    table_t* hashset_add(table_t* table, const char* name) {
+        table_t* s = (table_t*) malloc(sizeof(table_t));
+        s->name = name;
+        HASH_ADD_KEYPTR(hh, table, s->name, strlen(s->name), s);
+		return table;
+    }
+
+	int hashset_has(table_t* table, const char* name) {
+        table_t* s = NULL;
+        HASH_FIND_STR(table, name, s);
+		return s != NULL;
+	}
+
+    void hashset_free(table_t* table) {
+		table_t *s, *tmp = NULL;
+    	/* free the hash table contents */
+    	HASH_ITER(hh, table, s, tmp) {
+      		HASH_DEL(table, s);
+      		free(s);
+    	}
+    }
+
+]]
+
+
+Request = hashset.table_t
+
+terra new_request() : &Request
+	return hashset.new_hashset()
+end
+
+terra add(table : &Request, name : &int8)
+	-- returns the pointer tothe hashtable which might be new if the table
+	-- was empty
+	return hashset.hashset_add(table, name)
+end
+
+terra has(table : &Request, name : &int8)
+	return hashset.hashset_has(table, name)
+end
+
+terra test_request()
+	var request = new_request()
+	request = add(request, "a")
+	request = add(request, "b")
+	request = add(request, "xx")
+	var names : (&int8)[5]
+	names[0] = "a"
+	names[1] = "b"
+	names[2] = "xx"
+	names[3] = "asdf"
+	names[4] = "asdfasfd"
+	for i=0,3 do
+		stdio.printf("%s %i\n", names[i], has(request, names[i]))
+	end
+	for i=3,5 do
+		stdio.printf("%s %i\n", names[i], has(request, names[i]))
+	end
+end
+
+
+-- test them
+
+test_trace()
+test_request()
