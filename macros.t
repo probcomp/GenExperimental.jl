@@ -51,7 +51,7 @@ terra flip_trace(trace : Trace, weight : float) : {float, bool}
     return 0.0, uniform() <= weight
 end
 
-terra flip(weight : float, weight2 : float) : bool
+terra _flip_simulate(weight : float, weight2 : float) : bool
     return uniform() <= weight
 end
 
@@ -82,22 +82,31 @@ local T = symbol(Trace)
 
 -- function application is regular application
 
-local encapsulated = macro(function(name, proc, regenerator, ...)
-    local args = terralib.newlist({...})
-    return quote
-        var val : bool
-        var found = [T]:get(name, &val)
-        if found then
-            [T].log_weight = [T].log_weight + regenerator(val, [args])
-        else
-            val = [proc]([args])
-            [T]:put(name, val)
-        end
-    in
-        val
-    end
-end)
 
+local function makeModule(simulate, regenerate)
+	local Module = terralib.types.newstruct()
+	local RegenArgTypes = regenerate:gettype().parameters
+	local ValType = RegenArgTypes[1]
+	local ParamTypes = terralib.newlist()
+	for i=2,#RegenArgTypes do ParamTypes:insert(RegenArgTypes[i]) end
+	Module.metamethods.__apply = macro(function(self, name, ...)
+		local args = terralib.newlist({...})
+		return quote
+			var val : ValType
+        	var found = [T]:get([name], &val)
+        	if found then
+            	[T].log_weight = [T].log_weight + regenerate(val, [args])
+        	else
+            	val = [simulate]([args])
+            	[T]:put([name], val)
+        	end
+		in val end
+	end)
+	return terralib.new(Module)
+end
+
+-- how to define custom regeneration parameters?
+local flip = makeModule(_flip_simulate, _flip_regen)
 
 -- used to pass the trace and log-weight to a trace subroutine
 local traced = macro(function(proc, ...)
@@ -106,16 +115,17 @@ local traced = macro(function(proc, ...)
 end)
 
 terra model1([T], weight : float, weight2 : float)
-    var coin1 = encapsulated("coin1", flip, _flip_regen, weight, weight2)
-    -- make each primitive apply a macro that takes as input the trace, and use some generic code
-    var coin2 = flip(weight, weight2)
+    var coin1 = flip("coin1", weight, weight2) -- NOTE: regeneration parameters are additional arguments to __apply
+    var coin2 = _flip_simulate(weight, weight2)
     C.printf("coin1: %d, coin2: %d\n", coin1, coin2)
     return coin1, coin2
 end
 
+print(model1:printpretty())
+
 terra model2([T], weight : float, weight2 : float)
-    var coins = traced(model1, weight, weight2)
-    var new_coin = encapsulated("coin1", flip, _flip_regen, weight, weight2)
+    var coins = model1([T], weight, weight2) -- traced subroutine
+    var new_coin = flip("coin2", weight, weight2) -- primitive
     return new_coin
 end
 
