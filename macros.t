@@ -29,6 +29,7 @@ end
 
 local HashMap = function(K, V, hashfn)
     local struct HM {
+        log_weight : float -- todo initialize to zero
     }
     terra HM:get(name : K, val : &bool)
         return true 
@@ -46,8 +47,8 @@ terra uniform() : float
     return ([float](C.rand()) / [float](C.RAND_MAX))
 end
 
-terra flip_traced(trace : Trace, weight : float) : bool
-    return uniform() <= weight
+terra flip_trace(trace : Trace, weight : float) : {float, bool}
+    return 0.0, uniform() <= weight
 end
 
 terra flip(weight : float) : bool
@@ -67,7 +68,7 @@ end
 
 -- testing out macros
 
-local trace = symbol(Trace)
+local T = symbol(Trace)
 local log_weight = symbol(float)
 local log_weight_inc = symbol(float)
 local default_regenerators = {}
@@ -76,12 +77,12 @@ default_regenerators["flip"] = _flip_regen
 local tag = macro(function(name, proc, arg, regenerator)
     return quote
         var val : bool
-        var found = [trace]:get(name, &val)
+        var found = [T]:get(name, &val)
         if found then
             [log_weight] = [log_weight] + regenerator(val, [arg])
         else
             val = [proc]([arg])
-            [trace]:put(name, val)
+            [T]:put(name, val)
         end
     in
         val
@@ -89,7 +90,7 @@ local tag = macro(function(name, proc, arg, regenerator)
 end)
 
 local program = terra(weight : float)
-    var [trace]
+    var [T]
     var [log_weight]
     var coin = tag("coin", flip, weight, _flip_regen)
     return [log_weight]
@@ -97,7 +98,7 @@ end
 
 -- gen = 'probabilistic program'
 local gen = function(body)
-    return terra([trace]) : float
+    return terra([T]) : float
         var [log_weight]
         [body]
         C.printf("log_weight: %f\n", [log_weight])
@@ -119,46 +120,40 @@ end)
 -- print(log_weight)
 
 ----
-local tag2 = macro(function(name, proc, arg, regenerator)
+local sample = macro(function(name, proc, arg, regenerator)
     return quote
         var val : bool
-        var found = [trace]:get(name, &val)
+        var found = [T]:get(name, &val)
         if found then
-            [log_weight] = [log_weight] + regenerator(val, [arg])
+            [T].log_weight = [T].log_weight + regenerator(val, [arg])
         else
             val = [proc]([arg])
-            [trace]:put(name, val)
+            [T]:put(name, val)
         end
     in
         val
     end
 end)
 
-local submodel = macro(function(proc, arg)
-    return quote
-        var [log_weight_inc], result = [proc]([arg], [trace])
-        [log_weight] = [log_weight] + [log_weight_inc]
-    in
-        result
-    end
+
+-- used to pass the trace and log-weight to a trace subroutine
+local trace = macro(function(proc, arg)
+    return `[proc]([T], [arg])
 end)
 
 
 
-terra model1(weight : float, [trace])
-    var [log_weight]
-    var coin1 = tag2("coin1", flip, weight, _flip_regen)
-    var coin2 = flip_traced([trace], weight)
-    var coin3 = flip(weight)
-    C.printf("coin1: %d, coin2: %d, coin3: %d\n", coin1, coin2, coin3)
-    return [log_weight], coin1
+terra model1([T], weight : float)
+    var coin1 = sample("coin1", flip, weight, _flip_regen)
+    var coin2 = flip(weight)
+    C.printf("coin1: %d, coin2: %d\n", coin1, coin2)
+    return coin1, coin2
 end
 
-terra model2(weight : float, [trace])
-    var [log_weight]
-    var coin = submodel(model1, weight)
-    var coin1 = tag2("coin1", flip, weight, _flip_regen)
-    return [log_weight], coin
+terra model2([T], weight : float)
+    var coins = trace(model1, weight)
+    var new_coin = sample("coin1", flip, weight, _flip_regen)
+    return new_coin
 end
 
 print(model2:printpretty())
