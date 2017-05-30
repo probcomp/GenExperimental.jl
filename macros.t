@@ -50,7 +50,7 @@ local HashMap = function(K, V, hashfn)
     local struct HM {
     }
     terra HM:get(name : K, val : &bool)
-        return false
+        return true 
     end
     terra HM:put(name : K, val : bool)
     end
@@ -85,14 +85,12 @@ local program = terra(weight : float)
     return [log_weight]
 end
 
--- print(program:printpretty())
-
 -- gen = 'probabilistic program'
 local gen = function(body)
-    return terra() : float
-        var [trace]
+    return terra([trace]) : float
         var [log_weight]
         [body]
+        C.printf("log_weight: %f\n", [log_weight])
         return [log_weight]
     end
 end
@@ -105,3 +103,7 @@ local program2 = gen(quote
 end)
 
 print(program2:printpretty())
+
+t = HashMap(&int8, bool)
+log_weight = program2(t)
+print(log_weight)
