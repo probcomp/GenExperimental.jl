@@ -87,17 +87,18 @@ local function makeModule(simulate, regenerate)
 	local Module = terralib.types.newstruct()
 	local RegenArgTypes = regenerate:gettype().parameters
 	local ValType = RegenArgTypes[1]
-	local ParamTypes = terralib.newlist()
-	for i=2,#RegenArgTypes do ParamTypes:insert(RegenArgTypes[i]) end
-	Module.metamethods.__apply = macro(function(self, name, ...)
+	Module.metamethods.__apply = macro(function(self, ...)
 		local args = terralib.newlist({...})
+        local name = args[#RegenArgTypes]
+        local actual_args = terralib.newlist()
+        for i=1,(#RegenArgTypes-1) do actual_args:insert(args[i]) end
 		return quote
 			var val : ValType
         	var found = [T]:get([name], &val)
         	if found then
-            	[T].log_weight = [T].log_weight + regenerate(val, [args])
+            	[T].log_weight = [T].log_weight + regenerate(val, [actual_args])
         	else
-            	val = [simulate]([args])
+            	val = [simulate]([actual_args])
             	[T]:put([name], val)
         	end
 		in val end
@@ -115,7 +116,7 @@ local traced = macro(function(proc, ...)
 end)
 
 terra model1([T], weight : float, weight2 : float)
-    var coin1 = flip("coin1", weight, weight2) -- NOTE: regeneration parameters are additional arguments to __apply
+    var coin1 = flip(weight, weight2, "coin1") -- NOTE: regeneration parameters are additional arguments to __apply (the name is always the last parameter)
     var coin2 = _flip_simulate(weight, weight2)
     C.printf("coin1: %d, coin2: %d\n", coin1, coin2)
     return coin1, coin2
@@ -125,7 +126,7 @@ print(model1:printpretty())
 
 terra model2([T], weight : float, weight2 : float)
     var coins = model1([T], weight, weight2) -- traced subroutine
-    var new_coin = flip("coin2", weight, weight2) -- primitive
+    var new_coin = flip(weight, weight2, "coin2") -- primitive
     return new_coin
 end
 
