@@ -51,12 +51,12 @@ terra flip_trace(trace : Trace, weight : float) : {float, bool}
     return 0.0, uniform() <= weight
 end
 
-terra flip(weight : float) : bool
+terra flip(weight : float, weight2 : float) : bool
     return uniform() <= weight
 end
 
 
-terra _flip_regen(val : bool, weight : float) : float
+terra _flip_regen(val : bool, weight : float, weight2 : float) : float
     if val then
         return log(weight)
     else
@@ -69,65 +69,28 @@ end
 -- testing out macros
 
 local T = symbol(Trace)
-local log_weight = symbol(float)
-local log_weight_inc = symbol(float)
-local default_regenerators = {}
-default_regenerators["flip"] = _flip_regen
-
-local tag = macro(function(name, proc, arg, regenerator)
-    return quote
-        var val : bool
-        var found = [T]:get(name, &val)
-        if found then
-            [log_weight] = [log_weight] + regenerator(val, [arg])
-        else
-            val = [proc]([arg])
-            [T]:put(name, val)
-        end
-    in
-        val
-    end
-end)
-
-local program = terra(weight : float)
-    var [T]
-    var [log_weight]
-    var coin = tag("coin", flip, weight, _flip_regen)
-    return [log_weight]
-end
-
--- gen = 'probabilistic program'
-local gen = function(body)
-    return terra([T]) : float
-        var [log_weight]
-        [body]
-        C.printf("log_weight: %f\n", [log_weight])
-        return [log_weight]
-    end
-end
-
-local program2 = gen(quote
-    var weight : float = 0.5
-    var coin1 = tag("coin1", flip, weight, _flip_regen) -- todo: clean up syntax..
-    var coin2 = tag("coin2", flip, weight, _flip_regen)
-    C.printf("coin1: %d, coin2: %d\n", coin1, coin2)
-end)
-
--- print(program2:printpretty())
 
 -- t = HashMap(&int8, bool)
 -- log_weight = program2(t)
 -- print(log_weight)
 
-----
-local sample = macro(function(name, proc, arg, regenerator)
+---
+
+-- register regenerators with function pointers separately?
+-- use exotypes ---- make the procedure an object of type 'module' that 
+-- has compiled with it the ability to perform two functions.
+
+-- function application is regular application
+
+local encapsulated = macro(function(name, proc, regenerator, ...)
+    local args = terralib.newlist({...})
     return quote
         var val : bool
         var found = [T]:get(name, &val)
         if found then
-            [T].log_weight = [T].log_weight + regenerator(val, [arg])
+            [T].log_weight = [T].log_weight + regenerator(val, [args])
         else
-            val = [proc]([arg])
+            val = [proc]([args])
             [T]:put(name, val)
         end
     in
@@ -137,26 +100,56 @@ end)
 
 
 -- used to pass the trace and log-weight to a trace subroutine
-local trace = macro(function(proc, arg)
-    return `[proc]([T], [arg])
+local traced = macro(function(proc, ...)
+    local args = terralib.newlist({...})
+    return `[proc]([T], [args])
 end)
 
-
-
-terra model1([T], weight : float)
-    var coin1 = sample("coin1", flip, weight, _flip_regen)
-    var coin2 = flip(weight)
+terra model1([T], weight : float, weight2 : float)
+    var coin1 = encapsulated("coin1", flip, _flip_regen, weight, weight2)
+    -- make each primitive apply a macro that takes as input the trace, and use some generic code
+    var coin2 = flip(weight, weight2)
     C.printf("coin1: %d, coin2: %d\n", coin1, coin2)
     return coin1, coin2
 end
 
-terra model2([T], weight : float)
-    var coins = trace(model1, weight)
-    var new_coin = sample("coin1", flip, weight, _flip_regen)
+terra model2([T], weight : float, weight2 : float)
+    var coins = traced(model1, weight, weight2)
+    var new_coin = encapsulated("coin1", flip, _flip_regen, weight, weight2)
     return new_coin
 end
 
 print(model2:printpretty())
+
+-------
+
+--gen model2(weight : float)
+    --var coins ~ model1(weight) -- a gen function
+    --var new_coin ~ flip(weight) #coin1 -- a primitive with a regenerator
+    --var other_coin = flip(weight) -- a regular terra function
+    --return new_coin
+--end
+--
+--
+--trace = new Trace()
+--trace.coin1 = false
+--weight = model2(trace)
+
+
+-------------
+
+-- the regeneration policy should be determined at inference time, not inside the
+-- model program. example:
+
+-- fix the regenerators at compile file, but determine the parameters at runtime?
+
+-- trace = new Trace()
+-- trace.obs = 0.123
+-- lw = my_model(trace, regenerators)
+
+
+
+
 
 
 
