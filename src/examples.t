@@ -30,20 +30,26 @@ doit()
 -- print(test_model:printpretty())
 
 -- linear regression
+
 terra linreg([T], x : &double, n: int)
     var slope = normal(0.0, 2.0, "slope")
     var intercept = normal(0.0, 2.0, "intercept")
     var y = [&double](stdlib.malloc(sizeof(double) * n))
     var name : int8[100]
     for i=0,n do
+        var outlier = primitives._flip(0.1)
         var mean = intercept + slope * x[i]
         stdio.snprintf(name, 100, "y_%d", i)
-        y[i] = normal(mean, 0.01, name)
+        if outlier then
+            y[i] = normal(mean, 10.0, name)
+        else 
+            y[i] = normal(mean, 0.1, name)
+        end
     end
     stdlib.free(y)
 end
 
--- print(linreg:printpretty())
+print(linreg:printpretty())
 
 struct LinregResult {
     log_weight : double
@@ -55,12 +61,12 @@ terra linreg_sample(x : &double, y : &double, n : int) : LinregResult
     var trace : Trace
     trace:init()
     var name : int8[100]
-    for i=0,7 do
+    for i=0,10 do
         stdio.snprintf(name, 100, "y_%d", i)
         -- printf("putting %s\n", name)
         trace:put_double(name, y[i])
     end
-    linreg(&trace, x, 7)
+    linreg(&trace, x, 10)
     var result : LinregResult
     trace:get_double("slope", &result.slope)
     trace:get_double("intercept", &result.intercept)
@@ -71,27 +77,14 @@ end
 
 terra run_linreg()
     var x : double[10]
-    x[0] = -3
-    x[1] = -2
-    x[2] = -1
-    x[3] = 0
-    x[4] = 1
-    x[5] = 2
-    x[6] = 3
-    x[7] = 4
-    x[8] = 5
-    x[9] = 6
+    for i=0,10 do
+        x[i] = -3.0 + i
+    end
     var y : double[10]
-    y[0] = 3
-    y[1] = 2
-    y[2] = 1
-    y[3] = 0
-    y[4] = -1
-    y[5] = -2
-    y[6] = -3
-    x[7] = -4
-    x[8] = -5
-    x[9] = -6
+    for i=0,10 do
+        y[i] = 3.0 - i
+    end
+    y[7] = 4 -- comment/uncomment for no outlier / outlier
     var num_samples = 10000
     var results = [&LinregResult](stdlib.malloc(num_samples*sizeof(LinregResult)))
     var log_weights = [&double](stdlib.malloc(num_samples*sizeof(double)))
@@ -112,6 +105,3 @@ end
 for i=1,100 do
     run_linreg()
 end
-
--- linear regression with outliers
-

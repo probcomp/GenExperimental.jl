@@ -3,10 +3,13 @@ tmath = require("tmath")
 trace = require("trace")
 stdio = terralib.includec("stdio.h")
 
-local flip = trace.makeModule(
-    terra(p: double) : bool
+P = {}
+
+P._flip = terra(p: double) : bool
         return rand.uniform() <= p 
-    end,
+    end
+P.flip = trace.makeModule(
+    P._flip,
     terra(val : bool, p: double) : double
         if val then
             return tmath.log(p)
@@ -15,9 +18,7 @@ local flip = trace.makeModule(
         end
     end)
 
-local normal = trace.makeModule(
-        -- from quicksand
-        terra(mu: double, sigma: double) : double
+P._normal = terra(mu: double, sigma: double) : double
             var u:double, v:double, x:double, y:double, q:double
             repeat
                 u = 1.0 - rand.uniform()
@@ -29,16 +30,14 @@ local normal = trace.makeModule(
             var result = mu + sigma*v/u
             -- stdio.printf("normal simulate mu=%0.3f, sigma=%0.3f -> x=%0.3f\n", mu, sigma, result)
             return result
-        end,
+        end
+P.normal = trace.makeModule(
+        P._normal,
+        -- from quicksand
         terra(x: double, mu: double, sigma: double) : double
             -- stdio.printf("normal regenerate, x=%0.3f, mu=%0.3f, sigma=%0.3f\n", x, mu, sigma)
             var xminusmu = x - mu
             return -.5*(1.8378770664093453 + 2*tmath.log(sigma) + xminusmu*xminusmu/(sigma*sigma))
         end)
-
-P = {
-    flip = flip,
-    normal = normal
-}
 
 return P
