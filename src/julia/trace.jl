@@ -60,7 +60,7 @@ function linear_regression(T::Trace, prior_mu::Float64, prior_std::Float64,
     ys = Array{Float64, 1}(length(xs))
     for i=1:length(xs)
         y_mean = intercept + slope * xs[i]
-        noise = flip(prob_outlier) ? inlier_noise : outlier_noise
+        noise = (flip(prob_outlier) ~ "o$i") ? outlier_noise : inlier_noise 
         ys[i] = normal(y_mean, noise) ~ "y$i"
     end
 end
@@ -74,31 +74,33 @@ end
 
 xs = collect(linspace(-3, 3, 7))
 ys = -xs
-# ys[end] = 4 # an outlier 
+ys[end] = 4 # an outlier 
 
 function linreg_infer(num_samples::Int)
     log_weights = Float64[]
     slopes = Float64[]
     intercepts = Float64[]
+    outliers = Array{Bool,1}[]
     for i=1:num_samples
         trace = Trace()
         for (i, y) in enumerate(ys)
             trace.vals["y$i"] = y
         end
-        linear_regression(trace, 0.0, 1.0, xs)
+        linear_regression(trace, 0.0, 2.0, xs)
         push!(log_weights, trace.log_weight)
         push!(slopes, trace.vals["slope"])
         push!(intercepts, trace.vals["intercept"])
+        push!(outliers, map((i) -> trace.vals["o$i"], 1:length(xs)))
     end
     weights = exp(log_weights - logsumexp(log_weights))
     chosen = rand(Categorical(weights))
-    return (slopes[chosen], intercepts[chosen])
+    return (slopes[chosen], intercepts[chosen], outliers[chosen])
 end
 
 for i=1:100
-    (slope, intercept) = linreg_infer(100)
+    (slope, intercept, outliers) = linreg_infer(100)
     println("slope=$slope, intercept=$intercept")
+    for (x, y, o) in zip(xs, ys, outliers)
+        println("($x, $y) $(o? "outlier" : "inlier" )")
+    end
 end
-
-
-
