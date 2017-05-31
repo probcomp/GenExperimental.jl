@@ -4,11 +4,12 @@ stdio = terralib.includec("stdio.h")
 printf = stdio.printf
 
 -- model = terra()
--- var weight = uniform() #bias
+-- var weight ~ uniform() #bias
 -- var coin = flip(weight)
 -- end
 
 terra _model(_constraints : &Trace, _requested : &Request)
+
     var _trace = new_trace()
     var _log_weight : double = 0.0
     
@@ -41,3 +42,25 @@ terra doit()
 end
 
 doit()
+
+-- macros: looks like a terra function call but behaves like escaped call to Lua function.
+
+--local query = marco(
+--log_weight = query(trace, program(args))
+
+log_weight will need to be AD type relative to args..
+
+model = traced(terra(param : double)
+    var weight = uniform() #bias / 2.0
+    var coin = flip(weight) #coin
+end)
+
+local traced = function(fn)
+
+end
+
+
+
+
+
+

@@ -1,6 +1,32 @@
 stdio = terralib.includec("stdio.h")
 stdlib = terralib.includec("stdlib.h")
-uthash = terralib.includec("uthash.h")
+-- uthash = terralib.includec("uthash.h")
+
+-- a trace is a map from random choice addresses (which are currently strings) to
+   values of random choices. The types of random choices should be Terra struct types.
+   the values are not copied (just store pointers, and the type information and use casts?
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 hashtable = terralib.includecstring [[
     #include <string.h>  /* strcpy */
@@ -172,3 +198,5 @@ test_trace()
 test_request()
 
 print("loaded!")
+
+return hashtable
