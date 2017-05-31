@@ -10,22 +10,17 @@ void seedtime()
 }
 ]]
 
-terra seedtime() 
+local terra seedtime() 
     C.seedtime()
 end
 
-terra uniform() : float
+local terra uniform() : float
     return ([float](C.rand()) / [float](C.RAND_MAX))
 end
 
-terra flip(weight : float) : bool
-    return uniform() <= weight
-end
+rand = {
+    seedtime = seedtime,
+    uniform = uniform
+}
 
-
-main = terra()
-    var x = uniform()
-    C.printf("%f\n", x)
-end
-main()
-
+return rand

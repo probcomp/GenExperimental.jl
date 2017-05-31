@@ -79,7 +79,6 @@ HashMap = terralib.memoize(function(K, V, hashfn)
     HM.methods.hash:setinlined(true)
 
     terra HM:get(key: K, outval: &V)
-        C.printf("getting for key %s\n", key)
         var vptr = self:getPointer(key)
         if vptr == nil then
             return false
@@ -128,7 +127,6 @@ HashMap = terralib.memoize(function(K, V, hashfn)
     HM.methods.__checkExpand:setinlined(true)
 
     terra HM:put(key: K, val: V) : {}
-        C.printf("putting for key %s\n", key)
         var index = self:hash(key)
         var cell = self.__cells[index]
         if cell == nil then
@@ -201,64 +199,4 @@ function finalize_types()
 end
 finalize_types()
 
-
-local T = symbol(Trace)
-
-local function makeModule(simulate, regenerate)
-	local Module = terralib.types.newstruct()
-	local RegenArgTypes = regenerate:gettype().parameters
-	local ValType = RegenArgTypes[1]
-	Module.metamethods.__apply = macro(function(self, ...)
-		local args = terralib.newlist({...})
-        local name = args[#RegenArgTypes]
-        local actual_args = terralib.newlist()
-        for i=1,(#RegenArgTypes-1) do actual_args:insert(args[i]) end
-        local lookup_method = Trace.methods[string.format("get_%s", tostring(ValType))]
-        local put_method = Trace.methods[string.format("put_%s", tostring(ValType))]
-		return quote
-			var val : ValType
-        	var found = [lookup_method](&[T], [name], &val)
-        	if found then
-            	[T].log_weight = [T].log_weight + regenerate(val, [actual_args])
-        	else
-            	val = [simulate]([actual_args])
-            	[put_method](&[T], [name], val)
-        	end
-		in val end
-	end)
-	return terralib.new(Module)
-end
-
-terra simulate(a : float) : bool
-    return false
-end
-
-terra regenerate(val : bool, a : float) : float
-    return 0.1
-end
-
-local testModule = makeModule(simulate, regenerate)
-
-terra program([T])
-    var x = testModule(0.5, "x")
-    return x
-end
-
-terra doit()
-    var trace : Trace
-    trace:init()
-    var result = program(trace)
-    C.printf("result=%d\n", result)
-    C.printf("log_weight=%f\n", trace.log_weight)
-end
-
-doit()
-
-
-
-
-
-
-
-
-
+return Trace
