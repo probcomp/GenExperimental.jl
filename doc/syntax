@@ -1,0 +1,120 @@
+# Modules
+
+Consider a stochastic procedure:
+
+output = plan_path(start, goal, map)
+
+plan_path can be associated with a 'module' by defining a pair of procedures:
+
+    log_weight = _regenerate_plan_path(output, start, goal, map)
+    (log_weight, output) = _simulate_plan_path(start, goal, map)
+
+Using these names associate the procedure automatically with this module.
+
+Different modules may be used for a given procedure, and modules may
+accept additional parameters, by writing a custom module annotation in a
+probabilistic program (see below)
+
+For a random choice with a tractable density, regenerate and simulate are
+implemented in terms of logpdf and the sampler
+
+** 
+Modules can also implement a (stochastic estimate of) a gradient of the log
+weight with respect to one or more parameters. (!) TODO ?
+
+
+# Probabilistic programs
+
+A probabilistic program is a procedure with annotations for some random choices.
+
+terra agent_model(planning_params)
+    start = generate_start() #start
+    goal = generate_goal()
+    map = generate_map()
+    path = plan_path(start, goal, map, planning_params)
+    obs = add_noise(path) #obs
+end
+
+this gets transformed into a procedure:
+
+```
+terra _query_agent_model(trace, planning_params)
+    log_weight = 0.0
+    if "start" in trace:
+        start = trace["start"]
+        log_Weight += _generate_start_regenerate(start)
+    else:
+        start = generate_start() 
+        trace["start"] = start
+    goal = generate_goal()
+    map = generate_map()
+    path = plan_path(start, goal, map, planning_params)
+    ..
+    return log_weight
+end
+```
+
+Random choice names are arbitrary Terra expressions that evaluate to strings.
+These expressions can make use of variables in the execution context of the
+probabilistic program
+
+The program is queried using a trace. the program fills in the missing values
+in the trace and accumulates the weight for each
+
+```
+trace = Trace()
+trace['obs'] = 0.1
+log_weight = _query_agent_model(trace, 1000)
+```
+
+There is a syntactic sugar:
+
+```
+log_weight = query(trace, agent_model(1000))
+```
+
+
+# Example: crp_draw
+
+```
+crp = make_crp(alpha) -- deterministic, holds sufficient statistics
+a1 = crp_draw(crp) #a1 -- draw an assignment from the CRP, return the atom
+a2 = crp_draw(crp) #a2
+```
+
+Gen searches for procedures named `_regenerate_crp_draw(value, crp)` and
+`_simulate_crp_draw(crp)`
+
+
+
+
+[[ future: add a separate 'requested' list of random choices, which are to become the output, and which get 'simulate' called on them ]]
+
+the query can also accept arbitrary additional arguments, which can be used
+to customize regeneration. the regeneration policy is defined by arbitrary code.
+
+example: num_steps is an additional argument passed to query
+    the two expressions after the @-symbols are what is evaluated for
+    'regenerate' and 'simulate' respectively
+
+```
+path = plan_path(start, goal, map) #path_$i 
+                                   @plan_path_ais_regenerate(output, start, goal, map, num_steps)
+                                   @plan_path_ais_simulate(start, goal, map, num_steps)
+```
+
+# Dependency tracking
+
+Not implemented. A query to a probabilistic program triggers a full execution of the program
+
+
+# Gradients
+
+it should be possible to take derivatives of a log-weight with respet to parameters, given the trace.
+this is possible because the module also exposes a gradient function...
+
+a program with respect to its parameters, given a trace.
+given a trace, and a program, we should be able to differentiate the output
+
+
+

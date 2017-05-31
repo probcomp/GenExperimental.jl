@@ -94,7 +94,7 @@ local function makeModule(simulate, regenerate)
         for i=1,(#RegenArgTypes-1) do actual_args:insert(args[i]) end
 		return quote
 			var val : ValType
-        	var found = [T]:get([name], &val)
+        	var found = [T]:get([name], &val) -- pass the value to overload the function...
         	if found then
             	[T].log_weight = [T].log_weight + regenerate(val, [actual_args])
         	else
@@ -106,7 +106,7 @@ local function makeModule(simulate, regenerate)
 	return terralib.new(Module)
 end
 
--- how to define custom regeneration parameters?
+-- NOTE: custom regen parameters are just arguments to the function call in the program.
 local flip = makeModule(_flip_simulate, _flip_regen)
 
 -- used to pass the trace and log-weight to a trace subroutine
@@ -133,37 +133,20 @@ end
 print(model2:printpretty())
 
 -------
-
---gen model2(weight : float)
-    --var coins ~ model1(weight) -- a gen function
-    --var new_coin ~ flip(weight) #coin1 -- a primitive with a regenerator
-    --var other_coin = flip(weight) -- a regular terra function
-    --return new_coin
---end
---
---
 --trace = new Trace()
 --trace.coin1 = false
---weight = model2(trace)
+--weight = model2(trace, 0.5, 0.6)
 
 
--------------
+-------
 
--- the regeneration policy should be determined at inference time, not inside the
--- model program. example:
+-- 1) trace data structure -- use a fast hash map, what kind of keys?
 
--- fix the regenerators at compile file, but determine the parameters at runtime?
-
--- trace = new Trace()
--- trace.obs = 0.123
--- lw = my_model(trace, regenerators)
-
-
-
-
-
-
-
-
-
-
+-- 2) AD system: use terra-ad
+   parameters that are passed into the model can be terra-ad number types,
+   the log_weight returned by the traced program execution will then be a
+   terra-ad number type, and we can differentiate the log-weight with respect
+   some or any parameters.
+  
+    with this system, we should be able to implement logistic regression by writing a program that samples the output
+    from a bernoulli, given a specifc 
