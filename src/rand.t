@@ -10,17 +10,30 @@ void seedtime()
 }
 ]]
 
-local terra seedtime() 
+local math = require("tmath")
+
+rand = {}
+
+rand.seedtime = terra() 
     C.seedtime()
 end
 
-local terra uniform() : float
-    return ([float](C.rand()) / [float](C.RAND_MAX))
+rand.uniform = terra() : double
+    return ([double](C.rand()) / [double](C.RAND_MAX))
 end
 
-rand = {
-    seedtime = seedtime,
-    uniform = uniform
-}
+rand.log_categorical = terra(x : &double, n : int) : int
+    var log_denom = math.logsumexp(x, n)
+    var r = rand.uniform()
+    var accum : double = 0.0
+    var i : int
+    for i=0,n do
+        accum = accum + math.exp(x[i] - log_denom)
+        if accum > r then
+            return i
+        end
+    end
+    return n-1
+end
 
 return rand
