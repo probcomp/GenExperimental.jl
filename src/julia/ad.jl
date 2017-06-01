@@ -42,6 +42,10 @@ propagate(op::Input, datum::Float64, adj::Float64) = nothing # no-op
 
 macro generate_ad_binary_operator(op, opType)
     eval(quote
+            immutable $(opType) <: AbstractOperator
+                left::GenNum
+                right::GenNum
+            end
             function ($op)(l::GenNum, r::GenNum)
                 check_tapes(l, r)
                 GenNum(l.datum + r.datum, l.tape, ($opType)(l, r))
@@ -59,6 +63,9 @@ end
 
 macro generate_ad_unary_operator(op, opType)
     eval(quote
+            immutable ($opType) <: AbstractOperator
+                arg::GenNum
+            end
             function ($op)(arg::GenNum)
                 GenNum(arg.datum, arg.tape, ($opType)(arg))
             end
@@ -67,59 +74,41 @@ end
 
 # +
 import Base.+
-immutable Plus <: AbstractOperator
-    left::GenNum
-    right::GenNum
-end
+@generate_ad_binary_operator(+, Plus)
 function propagate(op::Plus, datum::Float64, adj::Float64)
     op.left.adj += adj
     op.right.adj += adj
 end
-@generate_ad_binary_operator(+, Plus)
 
 # *
 import Base.*
-immutable Times <: AbstractOperator
-    left::GenNum
-    right::GenNum
-end
+@generate_ad_binary_operator(*, Times)
 function propagate(op::Times, datum::Float64, adj::Float64)
     op.left.adj += adj * op.right.datum
     op.right.adj += adj * op.left.datum
 end
-@generate_ad_binary_operator(*, Times)
 
 # /
 import Base./
-immutable Divide <: AbstractOperator
-    left::GenNum
-    right::GenNum
-end
+@generate_ad_binary_operator(/, Divide)
 function propagate(op::Divide, datum::Float64, adj::Float64)
     op.left.adj += adj / op.right.datum
     op.right.adj += adj * (-op.left.datum / (op.right.datum * op.right.datum))
 end
-@generate_ad_binary_operator(/, Divide)
 
 # log
 import Base.log
-immutable Log <: AbstractOperator
-    arg::GenNum
-end
+@generate_ad_unary_operator(log, Log)
 function propagate(op::Log, datum::Float64, adj::Float64)
     op.arg.adj += adj / op.arg.datum
 end
-@generate_ad_unary_operator(log, Log)
 
 # exp
 import Base.exp
-immutable Exp <: AbstractOperator
-    arg::GenNum
-end
+@generate_ad_unary_operator(exp, Exp)
 function propagate(op::Exp, datum::Float64, adj::Float64)
     op.arg.adj += adj * datum
 end
-@generate_ad_unary_operator(exp, Exp)
 
 # backward pass
 function grad(a::GenNum)
