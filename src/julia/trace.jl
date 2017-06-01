@@ -5,16 +5,16 @@ modules = Dict()
 macro register_module(name, simulator, regenerator)
     if name.head != :quote error("invalid module name") end
     name = name.args[1]
-    modules[name] = Pair(simulator, regenerator)
-    eval(quote $name = $simulator end)
+    modules[name] = Pair(simulator, regenerator) # simulator returns val and log weight
+    eval(quote $name = (args...) -> ($sampler)(args...)[1] end) # todo do this without killing types
 end
 
-flip_simulate(p::Float64) = rand() < p
 flip_regenerate(x::Bool, p::Float64) = x ? log(p) : log1p(-p)
+flip_simulate(p::Float64) = begin x = rand() < p; x, flip_regenerate(x, p) end
 @register_module(:flip, flip_simulate, flip_regenerate)
 
-normal_simulate(mu::Float64, std::Float64) = rand(Normal(mu, std))
 normal_regenerate(x::Float64, mu::Float64, std::Float64) = logpdf(Normal(mu, std), x)
+normal_simulate(mu::Float64, std::Float64) = begin x = rand(Normal(mu, std)); x, normal_regenerate(x, mu, std) end
 @register_module(:normal, normal_simulate, normal_regenerate)
 
 type Trace
@@ -43,7 +43,7 @@ macro ~(expr, name)
             val = T.vals[name]
             T.log_weight += $(Expr(:call, regenerator, :val, args...))
         else
-            val = $(Expr(:call, simulator, args...))
+            val, _ = $(Expr(:call, simulator, args...)) #NOTE: simulator weight is unused here
             T.vals[name] = val
         end
         val
