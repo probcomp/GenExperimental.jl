@@ -20,7 +20,7 @@ normal_simulate(mu::Float64, std::Float64) = begin x = rand(Normal(mu, std)); x,
 type Trace
     vals::Dict{String,Any}
     outputs::Set{String}
-    log_weight::Float64
+    log_weight::Float64 # becomes type GenNum
     function Trace()
         new(Dict{String,Any}(), Set{String}(), 0.0)
     end
@@ -105,10 +105,13 @@ function linreg_infer(num_samples::Int)
     return (slopes[chosen], intercepts[chosen], outliers[chosen])
 end
 
-for i=1:100
-    (slope, intercept, outliers) = linreg_infer(100)
-    println("slope=$slope, intercept=$intercept")
-    for (x, y, o) in zip(xs, ys, outliers)
-        println("($x, $y) $(o? "outlier" : "inlier" )")
+function linreg_demo()
+    for i=1:100
+        (slope, intercept, outliers) = linreg_infer(100)
+        println("slope=$slope, intercept=$intercept")
+        for (x, y, o) in zip(xs, ys, outliers)
+            println("($x, $y) $(o? "outlier" : "inlier" )")
+        end
     end
 end
+#linreg_demo()
