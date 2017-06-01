@@ -18,11 +18,11 @@ normal_simulate(mu::Float64, std::Float64) = begin x = rand(Normal(mu, std)); x,
 @register_module(:normal, normal_simulate, normal_regenerate)
 
 type Trace
-    vals::Dict
+    vals::Dict{String,Any}
+    outputs::Set{String}
     log_weight::Float64
     function Trace()
-        vals = Dict()
-        new(vals, 0.0)
+        new(Dict{String,Any}(), Set{String}(), 0.0)
     end
 end
 
@@ -40,11 +40,17 @@ macro ~(expr, name)
         local name = $name
         local val
         if haskey(T.vals, name) # T is a reserved symbol for 'trace'
+            if name in T.outputs
+                error("$name in both outputs and vals of trace")
+            end
             val = T.vals[name]
             T.log_weight += $(Expr(:call, regenerator, :val, args...))
         else
-            val, _ = $(Expr(:call, simulator, args...)) #NOTE: simulator weight is unused here
+            val, log_weight = $(Expr(:call, simulator, args...))
             T.vals[name] = val
+            if name in T.outputs
+                T.log_weight -= log_weight
+            end
         end
         val
     end
