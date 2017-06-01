@@ -17,6 +17,11 @@ normal_regenerate(x::Float64, mu::Float64, std::Float64) = logpdf(Normal(mu, std
 normal_simulate(mu::Float64, std::Float64) = begin x = rand(Normal(mu, std)); x, normal_regenerate(x, mu, std) end
 @register_module(:normal, normal_simulate, normal_regenerate)
 
+gamma_regenerate(x::Float64, a::Float64, b::Float64) = logpdf(Gamma(a, b), x)
+gamma_simulate(a::Float64, b::Float64) = begin x = rand(Gamma(a, b)); x, gamma_regenerate(x, a, b) end
+@register_module(:gamma, gamma_simulate, gamma_regenerate)
+
+
 type Trace
     vals::Dict{String,Any}
     outputs::Set{String}
