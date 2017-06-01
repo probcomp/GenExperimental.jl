@@ -6,7 +6,7 @@ macro register_module(name, simulator, regenerator)
     if name.head != :quote error("invalid module name") end
     name = name.args[1]
     modules[name] = Pair(simulator, regenerator) # simulator returns val and log weight
-    eval(quote $name = (args...) -> ($sampler)(args...)[1] end) # todo do this without killing types
+    eval(quote $name = (args...) -> ($simulator)(args...)[1] end) # todo do this without killing types
 end
 
 flip_regenerate(x::Bool, p::Float64) = x ? log(p) : log1p(-p)
@@ -58,9 +58,11 @@ function linear_regression(T::Trace, prior_mu::Float64, prior_std::Float64,
     slope = normal(prior_mu, prior_std) ~ "slope"
     intercept = normal(prior_mu, prior_std) ~ "intercept"
     ys = Array{Float64, 1}(length(xs))
+    any_outliers = flip(0.5) # example of an untraced random choice
     for i=1:length(xs)
         y_mean = intercept + slope * xs[i]
-        noise = (flip(prob_outlier) ~ "o$i") ? outlier_noise : inlier_noise 
+        outlier = flip(prob_outlier) ~ "o$i"
+        noise = any_outliers && outlier ? outlier_noise : inlier_noise 
         ys[i] = normal(y_mean, noise) ~ "y$i"
     end
 end
