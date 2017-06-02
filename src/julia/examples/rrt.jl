@@ -1,4 +1,5 @@
-# generic 
+
+# --- Generic RRT --------------------
 
 immutable RRTNode{C,U}
     conf::C
@@ -7,21 +8,22 @@ immutable RRTNode{C,U}
     # root node
     parent::Nullable{RRTNode{C,U}}
     control::Nullable{U}
-    dt::Float64
+    cost_from_start::Float64 # cost (e.g. distance) of moving from start to us
 end
 
 type RRTTree{C,U}
     nodes::Array{RRTNode{C,U}, 1}
     function RRTTree(root_conf::C)
         nodes = Array{RRTNode{C,U},1}()
-        push!(nodes, RRTNode(root_conf, Nullable{RRTNode{C,U}}(), Nullable{U}(), NaN))
+        push!(nodes, RRTNode(root_conf, Nullable{RRTNode{C,U}}(), Nullable{U}(), 0.0))
         new(nodes)
     end
 end
 
-function add_node!{C,U}(tree::RRTTree{C,U}, parent::RRTNode{C,U}, new_conf::C, control::U, dt::Float64)
-    node = RRTNode(new_conf, Nullable{RRTNode{C,U}}(parent), Nullable{U}(control), dt)
+function add_node!{C,U}(tree::RRTTree{C,U}, parent::RRTNode{C,U}, new_conf::C, control::U, cost_from_start::Float64)
+    node = RRTNode(new_conf, Nullable{RRTNode{C,U}}(parent), Nullable{U}(control), cost_from_start)
     push!(tree.nodes, node)
+    return node
 end
 
 function root{C,U}(tree::RRTTree{C,U})
@@ -46,9 +48,10 @@ end
 
 immutable SelectControlResult{C,U}
     start_conf::C
-    new_conf::C # we will have to test if it is close to the goal or not TODO separate function does this
+    new_conf::C
     control::U
     failed::Bool # new_conf is undefined in this case
+    cost::Float64 # cost of this control action (e.g. distance)
 end
 
 function rrt{C,U}(scheme::RRTScheme{C,U}, init::C, iters::Int, dt::Float64)
@@ -58,15 +61,14 @@ function rrt{C,U}(scheme::RRTScheme{C,U}, init::C, iters::Int, dt::Float64)
         near_node::RRTNode{C,U} = nearest_neighbor(scheme, rand_conf, tree)
         result = select_control(scheme, rand_conf, near_node.conf, dt)
         if !result.failed
-            add_node!(tree, near_node, result.new_conf, result.control, dt)
+            cost_from_start = near_node.cost_from_start + result.cost
+            add_node!(tree, near_node, result.new_conf, result.control, cost_from_start)
         end
     end
     tree
 end
 
-# TODO: do it for a non-holonomic car :) -- three point turns... going in reverse..
-
-# specialized for point-agent in plane
+# --- RRT scheme for Holonomic 2D point --------------------
 
 immutable Point
     x::Float64
@@ -167,15 +169,20 @@ function select_control(scheme::HolonomicPointRRTScheme,
             break
         end
     end
-    SelectControlResult(start_conf, new_conf, control, failed)
+    cost = distance_to_move
+    SelectControlResult(start_conf, new_conf, control, failed, cost)
 end
 
-# example
 using PyPlot
-
-function render(scheme::HolonomicPointRRTScheme, 
-                tree::RRTTree{Point,Point})
-    scene = scheme.scene
+function render(scene::Scene)
+    for obstacle in scene.obstacles
+        render(obstacle)
+    end
+    ax = plt[:gca]()
+    ax[:set_xlim](scene.xmin, scene.xmax)
+    ax[:set_ylim](scene.ymin, scene.ymax)
+end
+function render(tree::RRTTree{Point,Point})
     for node in tree.nodes
         if !isnull(node.parent)
             # it is not the root
@@ -186,30 +193,26 @@ function render(scheme::HolonomicPointRRTScheme,
             plt[:plot]([x1, x2], [y1, y2], color="k")
         end
     end
-    for obstacle in scene.obstacles
-        render(obstacle)
+end
+
+function rrt_demo()
+    # plot them
+    obstacles = [Polygon([Point(30, 30), Point(80, 30), Point(80, 35), Point(30, 35)])] # one tree in the center of hte mpap
+    scene = Scene(0, 100, 0, 100, obstacles)
+    scheme = HolonomicPointRRTScheme(scene)
+    plt[:figure](figsize=(30, 10))
+    for (i, iters) in enumerate([100, 1000, 2000])
+        println("iters: $iters")
+        plt[:subplot](1, 3, i)
+        println("rrt..")
+        @time tree = rrt(scheme, Point(50, 50), iters, 1.)
+        println("rendering..")
+        render(scene)
+        render(tree)
     end
-    ax = plt[:gca]()
-    ax[:set_xlim](scene.xmin, scene.xmax)
-    ax[:set_ylim](scene.ymin, scene.ymax)
+    plt[:savefig]("rrt.png")
 end
-
-# plot them
-obstacles = [Polygon([Point(30, 30), Point(80, 30), Point(80, 35), Point(30, 35)])] # one tree in the center of hte mpap
-scene = Scene(0, 100, 0, 100, obstacles)
-scheme = HolonomicPointRRTScheme(scene)
-plt[:figure](figsize=(30, 10))
-for (i, iters) in enumerate([100, 1000, 2000])
-    println("iters: $iters")
-    plt[:subplot](1, 3, i)
-    println("rrt..")
-    @time tree = rrt(scheme, Point(50, 50), iters, 1.)
-    println("rendering..")
-    render(scheme, tree)
-end
-plt[:savefig]("rrt.png")
-
-
+#rrt_demo()
 
 
 
