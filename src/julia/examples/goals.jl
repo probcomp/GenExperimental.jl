@@ -1,9 +1,11 @@
 include("rrt.jl")
+using Distributions
 
 immutable PlannerParams
     rrt_iters::Int
     rrt_dt::Float64 # the maximum proposal distance
-    # todo: refinement iters
+    refine_iters::Int
+    refine_std::Float64
 end
 
 immutable Path
@@ -23,6 +25,36 @@ function simplify_path(scene::Scene, original::Path)
     @assert line_of_site(scene, new_points[end], original.goal)
     push!(new_points, original.goal)
     Path(original.start, original.goal, new_points)
+end
+
+function refine_path(scene::Scene, original::Path, iters::Int, std::Float64)
+    # do stochastic optimization
+    new_points = deepcopy(original.points)
+    num_interior_points = length(original.points) -2
+    for i=1:iters
+        point_idx = 2 + (i % num_interior_points)
+        @assert point_idx > 1 # not start
+        @assert point_idx < length(original.points) # not goal
+        point = original.points[point_idx]
+        adjusted = Point(point.x + rand() * std, point.y + rand() * std)
+        prev_dist = dist(new_points[point_idx - 1], point) + dist(point, new_points[point_idx + 1])
+        ok_backward = line_of_site(scene, new_points[point_idx - 1], adjusted)
+        ok_forward = line_of_site(scene, adjusted, new_points[point_idx + 1])
+        if ok_backward && ok_forward
+            new_dist = dist(new_points[point_idx - 1], adjusted) + dist(adjusted, new_points[point_idx + 1])
+            if new_dist < prev_dist
+                # accept the change
+                new_points[point_idx] = adjusted
+            end
+        end
+    end
+    Path(original.start, original.goal, new_points)
+end
+
+function optimize_path(scene::Scene, original::Path, refine_iters::Int, refine_std::Float64)
+    simplified = simplify_path(scene, original)
+    refined = refine_path(scene, simplified, refine_iters, refine_std)
+    refined
 end
 
 function plan_path(start::Point, goal::Point, scene::Scene, params::PlannerParams)
@@ -64,13 +96,14 @@ function plan_path(start::Point, goal::Point, scene::Scene, params::PlannerParam
         path = Nullable{Path}()
     end
     
-    local simplified_path::Nullable{Path}
+    local optimized_path::Nullable{Path}
     if path_found
-        simplified_path = Nullable{Path}(simplify_path(scene, get(path)))
+        optimized_path = Nullable{Path}(optimize_path(scene, get(path),
+                                                      params.refine_iters, params.refine_std))
     else
-        simplified_path = Nullable{Path}()
+        optimized_path = Nullable{Path}()
     end
-    tree, path, simplified_path # if path is null, then no path was found
+    tree, path, optimized_path # if path is null, then no path was found
 end
 
 function render(path::Path, line_color, start_color, goal_color)
@@ -85,17 +118,20 @@ end
 
 function planner_demo()
     # plot them
-    obstacles = [Polygon([Point(30, 30), Point(80, 30), Point(80, 35), Point(30, 35)])] # one tree in the center of hte mpap
+    obstacles = []
+    push!(obstacles, Polygon([Point(30, 30), Point(80, 30), Point(80, 35), Point(30, 35)]))
+    push!(obstacles, Polygon([Point(30, 30), Point(30, 80), Point(35, 80), Point(35, 30)]))
+    push!(obstacles, Polygon([Point(60, 30), Point(60, 80), Point(65, 80), Point(65, 30)]))
     scene = Scene(0, 100, 0, 100, obstacles)
     start = Point(50, 50)
     goal = Point(50, 10)
-    @time tree, path, simplified_path = plan_path(start, goal, scene, PlannerParams(1000, 1.0))
+    @time tree, path, optimized_path = plan_path(start, goal, scene, PlannerParams(1000, 5.0, 1000, 1.0))
     plt[:figure](figsize=(10, 10))
     render(scene)
     render(tree)
     if !isnull(path)
         render(get(path), "orange", "blue", "red")
-        render(get(simplified_path), "purple", "blue", "red")
+        render(get(optimized_path), "purple", "blue", "red")
     end
     plt[:savefig]("planner.png")
 end
