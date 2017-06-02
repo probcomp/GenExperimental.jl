@@ -106,6 +106,46 @@ function plan_path(start::Point, goal::Point, scene::Scene, params::PlannerParam
     tree, path, optimized_path # if path is null, then no path was found
 end
 
+function walk_path(path::Path, speed::Float64, times::Array{Float64,1})
+    distances_from_start = Array{Float64,1}(length(path.points))
+    distances_from_start[1] = 0.0
+    for i=2:length(path.points)
+        distances_from_start[i] = distances_from_start[i-1] + dist(path.points[i-1], path.points[i])
+    end
+    locations = Array{Point,1}(length(times))
+    locations[1] = path.points[1]
+    for (time_idx, t) in enumerate(times)
+        if t < 0.0
+            error("times must be positive")
+        end
+        desired_distance = t * speed
+        used_up_time = false
+        # NOTE: can be improved (iterate through path points along with times)
+        for i=2:length(path.points)
+            prev = path.points[i-1]
+            cur = path.points[i]
+            dist_to_prev = dist(prev, cur)
+            if distances_from_start[i] >= desired_distance
+                # we overshot, the location is between i-1 and i
+                overshoot = distances_from_start[i] - desired_distance
+                @assert overshoot <= dist_to_prev
+                past_prev = dist_to_prev - overshoot
+                frac = past_prev / dist_to_prev
+                locations[time_idx] = Point(prev.x * (1. - frac) + cur.x * frac,
+                                     prev.y * (1. - frac) + cur.y * frac)
+                used_up_time = true
+                break
+            end
+        end
+        if !used_up_time
+            # sit at the goal indefinitely
+            locations[time_idx] = path.goal
+        end
+    end
+    println(locations)
+    locations
+end
+
 function render(path::Path, line_color, start_color, goal_color)
     plt[:scatter]([path.start.x], [path.start.y], color=start_color, s=200)
     plt[:scatter]([path.goal.x], [path.goal.y], color=goal_color, s=200)
@@ -126,6 +166,7 @@ function planner_demo()
     start = Point(50, 50)
     goal = Point(50, 10)
     @time tree, path, optimized_path = plan_path(start, goal, scene, PlannerParams(1000, 5.0, 1000, 1.0))
+    locations = walk_path(get(optimized_path), 5.0, collect(linspace(0.0, 40.0, 10)))
     plt[:figure](figsize=(10, 10))
     render(scene)
     render(tree)
@@ -133,6 +174,7 @@ function planner_demo()
         render(get(path), "orange", "blue", "red")
         render(get(optimized_path), "purple", "blue", "red")
     end
+    plt[:scatter](map((p) -> p.x, locations), map((p) -> p.y, locations), s=100)
     plt[:savefig]("planner.png")
 end
 planner_demo()
