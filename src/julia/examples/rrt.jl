@@ -123,6 +123,15 @@ function intersects_path(poly::Polygon, path_start::Point, path_end::Point)
     return false
 end
 
+function line_of_site(scene::Scene, a::Point, b::Point)
+    for obstacle in scene.obstacles
+        if intersects_path(obstacle, a, b)
+            return false
+        end
+    end
+    return true
+end
+
 using PyCall
 @pyimport matplotlib.path as mplPath
 @pyimport matplotlib.patches as patches

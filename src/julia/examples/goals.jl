@@ -12,6 +12,19 @@ immutable Path
     points::Array{Point,1}
 end
 
+function simplify_path(scene::Scene, original::Path)
+    new_points = Array{Point,1}()
+    push!(new_points, original.start)
+    for i=2:length(original.points) - 1
+        if !line_of_site(scene, new_points[end], original.points[i + 1])
+            push!(new_points, original.points[i])
+        end
+    end
+    @assert line_of_site(scene, new_points[end], original.goal)
+    push!(new_points, original.goal)
+    Path(original.start, original.goal, new_points)
+end
+
 function plan_path(start::Point, goal::Point, scene::Scene, params::PlannerParams)
     scheme = HolonomicPointRRTScheme(scene)
     tree = rrt(scheme, start, params.rrt_iters, params.rrt_dt)
@@ -22,14 +35,8 @@ function plan_path(start::Point, goal::Point, scene::Scene, params::PlannerParam
     path_found = false
     for node in tree.nodes
         # check for line-of-site to the goal
-        line_of_site = true
-        for obstacle in scene.obstacles
-            if intersects_path(obstacle, node.conf, goal)
-                line_of_site = false
-                break
-            end
-        end
-        cost = node.cost_from_start + (line_of_site ? dist(node.conf, goal) : Inf)
+        clear_path = line_of_site(scene, node.conf, goal)
+        cost = node.cost_from_start + (clear_path ? dist(node.conf, goal) : Inf)
         if cost < min_cost
             path_found = true
             best_node = node
@@ -56,16 +63,23 @@ function plan_path(start::Point, goal::Point, scene::Scene, params::PlannerParam
     else
         path = Nullable{Path}()
     end
-    tree, path # if path is null, then no path was found
+    
+    local simplified_path::Nullable{Path}
+    if path_found
+        simplified_path = Nullable{Path}(simplify_path(scene, get(path)))
+    else
+        simplified_path = Nullable{Path}()
+    end
+    tree, path, simplified_path # if path is null, then no path was found
 end
 
-function render(path::Path)
-    plt[:scatter]([path.start.x], [path.start.y], color="blue", s=200)
-    plt[:scatter]([path.goal.x], [path.goal.y], color="red", s=200)
+function render(path::Path, line_color, start_color, goal_color)
+    plt[:scatter]([path.start.x], [path.start.y], color=start_color, s=200)
+    plt[:scatter]([path.goal.x], [path.goal.y], color=goal_color, s=200)
     for i=1:length(path.points) - 1
         a = path.points[i]
         b = path.points[i + 1]
-        plt[:plot]([a.x, b.x], [a.y, b.y], color="orange", lw=3, alpha=0.5)
+        plt[:plot]([a.x, b.x], [a.y, b.y], color=line_color, lw=3, alpha=0.5)
     end
 end
 
@@ -75,12 +89,13 @@ function planner_demo()
     scene = Scene(0, 100, 0, 100, obstacles)
     start = Point(50, 50)
     goal = Point(50, 10)
-    @time tree, path = plan_path(start, goal, scene, PlannerParams(1000, 1.0))
+    @time tree, path, simplified_path = plan_path(start, goal, scene, PlannerParams(1000, 1.0))
     plt[:figure](figsize=(10, 10))
     render(scene)
     render(tree)
     if !isnull(path)
-        render(get(path))
+        render(get(path), "orange", "blue", "red")
+        render(get(simplified_path), "purple", "blue", "red")
     end
     plt[:savefig]("planner.png")
 end
