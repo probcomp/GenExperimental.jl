@@ -12,6 +12,9 @@ type GenNum{T <: AbstractOperator}
     op::T# stores parameters to operator, and has derivative method
 end
 
+concrete(x::Float64) = x
+concrete(x::GenNum) = x.datum
+
 function show(num::GenNum)
     println("GenNum(datum=$(num.datum), adj=$(num.adj), idx=$(num.tapeIdx))")
 end
@@ -48,15 +51,15 @@ macro generate_ad_binary_operator(op, opType)
             end
             function ($op)(l::GenNum, r::GenNum)
                 check_tapes(l, r)
-                GenNum(l.datum + r.datum, l.tape, ($opType)(l, r))
+                GenNum($(op)(l.datum, r.datum), l.tape, ($opType)(l, r))
             end
             function ($op)(l::GenNum, r::Float64)
                 rnum = GenNum(r, l.tape, Input())
-                GenNum(l.datum + r, l.tape, ($opType)(l, rnum))
+                GenNum($(op)(l.datum, r, l.tape), ($opType)(l, rnum))
             end
             function ($op)(l::Float64, r::GenNum)
                 lnum = GenNum(l, r.tape, Input())
-                GenNum(l + b.datum, l.tape, ($opType)(lnum, r))
+                GenNum($(op)(l, r.datum), r.tape, ($opType)(lnum, r))
             end
         end)
 end
@@ -67,7 +70,7 @@ macro generate_ad_unary_operator(op, opType)
                 arg::GenNum
             end
             function ($op)(arg::GenNum)
-                GenNum(arg.datum, arg.tape, ($opType)(arg))
+                GenNum($(op)(arg.datum), arg.tape, ($opType)(arg))
             end
         end)
 end
@@ -79,6 +82,29 @@ function propagate(op::Plus, datum::Float64, adj::Float64)
     op.left.adj += adj
     op.right.adj += adj
 end
+
+# +
+import Base.+
+@generate_ad_unary_operator(+, UnaryPlus)
+function propagate(op::UnaryPlus, datum::Float64, adj::Float64)
+    op.arg.adj += adj
+end
+
+# -
+import Base.-
+@generate_ad_binary_operator(-, Minus)
+function propagate(op::Minus, datum::Float64, adj::Float64)
+    op.left.adj += adj
+    op.right.adj -= adj
+end
+
+# +
+import Base.-
+@generate_ad_unary_operator(-, UnaryMinus)
+function propagate(op::UnaryMinus, datum::Float64, adj::Float64)
+    op.arg.adj -= adj
+end
+
 
 # *
 import Base.*
@@ -111,8 +137,7 @@ function propagate(op::Exp, datum::Float64, adj::Float64)
 end
 
 # backward pass
-function grad(a::GenNum)
-    # TODO: do we clear the adjoints? are we re-using the tape?
+function backprop(a::GenNum)
     a.adj = 1.0 # this is the root node
     ns = nums(a.tape)
     for i=a.tapeIdx:-1:1
@@ -120,14 +145,18 @@ function grad(a::GenNum)
     end
 end
 
-tape = Tape()
-a = GenNum(2.5, tape)
-b = GenNum(4.3, tape)
-c = a + b
-d = log(exp(a) + exp(b))
-@assert c.datum ==  2.5 + 4.3
-grad(d)
-println(a.adj)
-println(b.adj)
-println(c.adj)
-println(d.adj)
+adj(a::GenNum) = a.adj
+partial(a::GenNum) = a.adj # partial derivative
+
+
+#tape = Tape()
+#a = GenNum(2.5, tape)
+#b = GenNum(4.3, tape)
+#c = a + b
+#d = log(exp(a) + exp(b))
+#@assert c.datum ==  2.5 + 4.3
+#grad(d)
+#println(a.adj)
+#println(b.adj)
+#println(c.adj)
+#println(d.adj)
