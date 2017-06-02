@@ -78,7 +78,7 @@ function linreg_demo()
     ys = -xs + 1
     println(xs)
     println(ys)
-    # intercept should be mean 0, slope should be mean -1
+    # intercept should be mean 1, slope should be mean -1
     linreg_infer(xs, ys)
 end
 linreg_demo()
