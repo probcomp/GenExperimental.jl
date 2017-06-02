@@ -136,6 +136,14 @@ function propagate(op::Exp, datum::Float64, adj::Float64)
     op.arg.adj += adj * datum
 end
 
+# lgamma 
+import Base.lgamma
+@generate_ad_unary_operator(lgamma, LogGamma)
+function propagate(op::LogGamma, datum::Float64, adj::Float64)
+    op.arg.adj += adj * digamma(op.arg.datum)
+end
+
+
 # backward pass
 function backprop(a::GenNum)
     a.adj = 1.0 # this is the root node

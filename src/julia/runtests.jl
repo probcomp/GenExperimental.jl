@@ -1,10 +1,15 @@
 include("ad.jl")
 include("trace.jl")
+include("primitives.jl")
+using Distributions
 using Base.Test
 
 @testset "automatic differentiation" begin
 
     @testset "basic operations" begin
+
+        # TODO test using finite differences instead of this..
+
         srand(1)
         a_val, b_val = rand(2)
     
@@ -79,6 +84,15 @@ using Base.Test
         backprop(c)
         @test isapprox(partial(a), exp(a_val))
         @test concrete(exp(a)) == exp(concrete(a))
+
+        # exp 
+        tape = Tape()
+        a = GenNum(a_val, tape)
+        c = lgamma(a)
+        backprop(c)
+        @test isapprox(partial(a), digamma(a_val))
+        @test concrete(lgamma(a)) == lgamma(concrete(a))
+
     end
 
     @testset "simple expressions" begin
@@ -106,12 +120,28 @@ using Base.Test
         x = GenNum(rand(), tape)
         y = sig(x)
         backprop(y)
-        println("x: $(concrete(x))")
-        println("y: $(concrete(y))")
-        println("actual: $(partial(x))")
-        println("expected: $(concrete(y * (1.0 - y)))")
         @test isapprox(partial(x), concrete(y * (1.0 - y)))
         
     end
+
+end
+
+@testset "primitives" begin
+
+    # bernoulli
+    p = 0.1
+    @test isapprox(flip_regenerate(true, p), logpdf(Bernoulli(p), true))
+
+    # normal
+    x = 0.1
+    mu = 0.2
+    std = 0.3
+    @test isapprox(normal_regenerate(x, mu, std), logpdf(Normal(mu, std), x))
+
+    # gamma
+    x = 0.1
+    k = 0.2
+    s = 0.3
+    @test isapprox(gamma_regenerate(x, k, s), logpdf(Gamma(k, s), x))
 
 end

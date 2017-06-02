@@ -1,35 +1,24 @@
 using Distributions
 using PyPlot
 
-modules = Dict()
-macro register_module(name, simulator, regenerator)
-    if name.head != :quote error("invalid module name") end
-    name = name.args[1]
-    modules[name] = Pair(simulator, regenerator) # simulator returns val and log weight
-    eval(quote $name = (args...) -> ($simulator)(args...)[1] end) # todo do this without killing types
-end
-
-flip_regenerate(x::Bool, p::Float64) = x ? log(p) : log1p(-p)
-flip_simulate(p::Float64) = begin x = rand() < p; x, flip_regenerate(x, p) end
-@register_module(:flip, flip_simulate, flip_regenerate)
-
-normal_regenerate(x::Float64, mu::Float64, std::Float64) = logpdf(Normal(mu, std), x)
-normal_simulate(mu::Float64, std::Float64) = begin x = rand(Normal(mu, std)); x, normal_regenerate(x, mu, std) end
-@register_module(:normal, normal_simulate, normal_regenerate)
-
-gamma_regenerate(x::Float64, a::Float64, b::Float64) = logpdf(Gamma(a, b), x)
-gamma_simulate(a::Float64, b::Float64) = begin x = rand(Gamma(a, b)); x, gamma_regenerate(x, a, b) end
-@register_module(:gamma, gamma_simulate, gamma_regenerate)
-
-
-type Trace
+type DifferentiableTrace # TODO hack b/c we have separate tapes
     vals::Dict{String,Any}
     outputs::Set{String}
-    log_weight::Float64 # becomes type GenNum (which can be automatically converted from a Float64)
+    log_weight::GenNum # becomes type GenNum (which can be automatically converted from a Float64)
+    function DifferentiableTrace(tape::Tape)
+        new(Dict{String,Any}(), Set{String}(), GenNum(0.0, tape))
+    end
+end
+
+type Trace 
+    vals::Dict{String,Any}
+    outputs::Set{String}
+    log_weight::Float64
     function Trace()
         new(Dict{String,Any}(), Set{String}(), 0.0)
     end
 end
+
 
 macro ~(expr, name)
     if expr.head != :call
@@ -49,7 +38,7 @@ macro ~(expr, name)
                 error("$name in both outputs and vals of trace")
             end
             val = T.vals[name]
-            T.log_weight += $(Expr(:call, regenerator, :val, args...))
+            T.log_weight = T.log_weight + $(Expr(:call, regenerator, :val, args...))
         else
             val, log_weight = $(Expr(:call, simulator, args...))
             T.vals[name] = val
