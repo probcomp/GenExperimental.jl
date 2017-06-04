@@ -5,6 +5,8 @@ macro register_module(name, simulator, regenerator)
     modules[name] = Pair(simulator, regenerator) # simulator returns val and log weight
     eval(quote $name = (args...) -> ($simulator)(args...)[1] end) # todo do this without killing types
     eval(quote export $name end)
+    eval(quote export $simulator end)
+    eval(quote export $regenerator end)
 end
 
 # TODO: ARE WE RETURNING -LOG WEIGHT FOR SIMULATE OR NOT?

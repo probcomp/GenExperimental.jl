@@ -1,6 +1,4 @@
-include("ad.jl")
-include("trace.jl")
-include("primitives.jl")
+using Gen
 using Distributions
 using Base.Test
 
@@ -145,3 +143,5 @@ end
     @test isapprox(gamma_regenerate(x, k, s), logpdf(Gamma(k, s), x))
 
 end
+
+nothing
