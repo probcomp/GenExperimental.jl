@@ -55,7 +55,7 @@ macro generate_ad_binary_operator(op, opType)
             end
             function ($op)(l::GenNum, r::Float64)
                 rnum = GenNum(r, l.tape, Input())
-                GenNum($(op)(l.datum, r, l.tape), ($opType)(l, rnum))
+                GenNum($(op)(l.datum, r), l.tape, ($opType)(l, rnum))
             end
             function ($op)(l::Float64, r::GenNum)
                 lnum = GenNum(l, r.tape, Input())
@@ -156,15 +156,12 @@ end
 adj(a::GenNum) = a.adj
 partial(a::GenNum) = a.adj # partial derivative
 
+# exports
+export Tape
+export show 
+export GenNum
+export concrete
+export backprop
+export adj
+export partial
 
-#tape = Tape()
-#a = GenNum(2.5, tape)
-#b = GenNum(4.3, tape)
-#c = a + b
-#d = log(exp(a) + exp(b))
-#@assert c.datum ==  2.5 + 4.3
-#grad(d)
-#println(a.adj)
-#println(b.adj)
-#println(c.adj)
-#println(d.adj)

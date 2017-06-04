@@ -1,5 +1,6 @@
-include("rrt.jl")
+using Gen
 using Distributions
+include("rrt.jl")
 
 immutable PlannerParams
     rrt_iters::Int
@@ -31,6 +32,9 @@ function refine_path(scene::Scene, original::Path, iters::Int, std::Float64)
     # do stochastic optimization
     new_points = deepcopy(original.points)
     num_interior_points = length(original.points) -2
+    if num_interior_points == 0
+        return original
+    end
     for i=1:iters
         point_idx = 2 + (i % num_interior_points)
         @assert point_idx > 1 # not start
@@ -142,7 +146,6 @@ function walk_path(path::Path, speed::Float64, times::Array{Float64,1})
             locations[time_idx] = path.goal
         end
     end
-    println(locations)
     locations
 end
 
@@ -177,10 +180,48 @@ function planner_demo()
     plt[:scatter](map((p) -> p.x, locations), map((p) -> p.y, locations), s=100)
     plt[:savefig]("planner.png")
 end
-planner_demo()
+#planner_demo()
+
+invalid_location() = Point(-Inf,-Inf)
+
+function agent_model(T::Trace, start::Point, planner_params::PlannerParams, 
+                     speed::Float64, times::Array{Float64,1}, measurement_noise::Float64)
+    obstacles = Array{Obstacle,1}() # no obstacles
+    scene = Scene(0, 1, 0, 1, obstacles)
+    goal = Point(uniform() ~ "goal_x", uniform() ~ "goal_y")
+    tree, path, optimized_path = plan_path(start, goal, scene, planner_params)
+    if isnull(optimized_path) # planning failed, no path found
+        actual_locations = map((i) -> invalid_location(), 1:length(times))
+    else # planning successful
+        actual_locations = walk_path(get(optimized_path), speed, times) # TODO handle null path case
+    end
+    @assert length(actual_locations) == length(times)
+    measured_locations = Array{Point,1}(length(times))
+    for (i, loc) in enumerate(actual_locations)
+        measured_locations[i] = Point(normal(loc.x, measurement_noise) ~ "x$i", 
+                                      normal(loc.y, measurement_noise) ~ "y$i")
+    end
+end
+
+function model_demo()
+    # parameters that are fixed for now
+    speed = 0.1
+    times = Float64[1, 2, 3, 4, 5]
+    measurement_noise = 0.01
+    planner_params = PlannerParams(1000, 5.0, 1000, 1.0)
+
+    # first simulate some data from the model and plot it
+    trace = Trace()
+    start = Point(0.1, 0.1)
+    agent_model(trace, start, planner_params, speed, times, measurement_noise)
+    
+    
+end
+model_demo()
 
 
-
-
-
-
+# TODO it should be possible to extract the value from the trace even if its not random
+# and/or a module. it is just not allowed to be *constrain*ed. it can, however, be named
+# a special subset of random choices that are not constrained, are called 'requested'
+# or 'outputs' and these do have to be modules. still not exactly clear on whether 'outputs' and
+# 'constraints' can coexist in a query

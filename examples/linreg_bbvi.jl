@@ -1,6 +1,4 @@
-include("../ad.jl")
-include("../trace.jl")
-include("../primitives.jl")
+using Gen
 using PyPlot
 
 function linear_regression(T::Trace, prior_mu::Float64, prior_std::Float64, 

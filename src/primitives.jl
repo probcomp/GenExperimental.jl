@@ -4,12 +4,23 @@ macro register_module(name, simulator, regenerator)
     name = name.args[1]
     modules[name] = Pair(simulator, regenerator) # simulator returns val and log weight
     eval(quote $name = (args...) -> ($simulator)(args...)[1] end) # todo do this without killing types
+    eval(quote export $name end)
 end
 
 # TODO: ARE WE RETURNING -LOG WEIGHT FOR SIMULATE OR NOT?
 
 # TODO: should we implement custom auto-diff operators for these density functions?
 # it would give an order of magnitude less AD on tape?
+
+# Uniform
+function uniform_regenerate(x::Float64)
+    x < 0 || x > 1 ? -Inf : 0.0
+end
+function uniform_simulate()
+    rand(), 0.0
+end
+@register_module(:uniform, uniform_simulate, uniform_regenerate)
+
 
 # Bernoulli
 function flip_regenerate{N}(x::Bool, p::N)
@@ -25,7 +36,7 @@ end
 function normal_regenerate{M,N,O}(x::M, mu::N, std::O)
     var = std * std
     diff = x - mu
-    - diff * diff / (2.0 * var) - 0.5 * log(2.0 * pi * var)
+    -(diff * diff)/ (2.0 * var) - 0.5 * log(2.0 * pi * var)
 end
 function normal_simulate{M,N}(mu::M, std::N)
     x = rand(Normal(concrete(mu), concrete(std)))
@@ -38,7 +49,7 @@ function gamma_regenerate{M,N,O}(x::M, k::N, s::O)
     (k - 1.0) * log(x) - (x / s) - k * log(s) - lgamma(k)
 end
 function gamma_simulate{M,N}(k::M, s::N) 
-    rand(Gamma(k, s))
+    x = rand(Gamma(k, s))
     x, gamma_regenerate(x, k, s)
 end
 @register_module(:gamma, gamma_simulate, gamma_regenerate)

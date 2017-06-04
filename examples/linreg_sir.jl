@@ -1,4 +1,5 @@
-include("../trace.jl")
+using Gen
+import Distributions
 using PyPlot
 
 function linear_regression(T::Trace, prior_mu::Float64, prior_std::Float64, 
@@ -34,7 +35,7 @@ function linreg_infer(num_samples::Int, xs::Array{Float64,1}, ys::Array{Float64,
         log_weights[sample] = trace.log_weight
     end
     weights = exp(log_weights - logsumexp(log_weights))
-    chosen = rand(Categorical(weights))
+    chosen = rand(Distributions.Categorical(weights))
     return traces[chosen]
 end
 
