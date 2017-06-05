@@ -28,7 +28,7 @@ function linear_regression_variational_inference(xs::Array{Float64,1},
     step_b = 0.75
 
     # fixed standard deviation for variational family
-    std = 1.0
+    #std = 1.0
 
     # fixed model parameters
     noise_std = 1.0
@@ -37,7 +37,7 @@ function linear_regression_variational_inference(xs::Array{Float64,1},
 
     # initial values for variational parameters
     # (the parameters that are being optimized)
-    slope_mu, intercept_mu = 0.0, 0.0
+    slope_mu, intercept_mu, log_std = 0.0, 0.0, 0.0
 
     # gradient descent to minimize the difference between the approximation and
     # the posterior
@@ -46,7 +46,7 @@ function linear_regression_variational_inference(xs::Array{Float64,1},
         # estimate the objective function (ELBO and its gradient with respect
         # to variational parameters using many runs of the approximation program
         elbo_estimates = Array{Float64,1}(num_samples)
-        gradient_estimates = Array{Float64,2}(num_samples,2)
+        gradient_estimates = Array{Float64,2}(num_samples,3)
 
         for sample=1:num_samples
 
@@ -55,9 +55,10 @@ function linear_regression_variational_inference(xs::Array{Float64,1},
             tape = Tape()
             slope_mu_num = GenNum(slope_mu, tape)
             intercept_mu_num = GenNum(intercept_mu, tape)
+            log_std_num = GenNum(log_std, tape)
             inference_trace = DifferentiableTrace(tape)
             inference_trace.outputs = Set{String}(["slope", "intercept"])
-            variational_approximation(inference_trace, slope_mu_num, intercept_mu_num, std)
+            variational_approximation(inference_trace, slope_mu_num, intercept_mu_num, exp(log_std_num))
 
             # add contraints to model trace
             model_trace = Trace()
@@ -75,7 +76,7 @@ function linear_regression_variational_inference(xs::Array{Float64,1},
             # differentiate the inference score with respect to the variational
             # parameters
             backprop(inference_trace.log_weight)
-            gradient = [partial(slope_mu_num), partial(intercept_mu_num)]
+            gradient = [partial(slope_mu_num), partial(intercept_mu_num), partial(log_std_num)]
 
             # p(z, x) where z is latents and x is ..
             diff = model_trace.log_weight - concrete(inference_trace.log_weight)
@@ -89,12 +90,13 @@ function linear_regression_variational_inference(xs::Array{Float64,1},
         grad_estimate = mean(gradient_estimates, 1)
 
         # print objective function value, and current variational parameters
-        println("iter: $iter, objective: $elbo_estimate, intercept_mu: $intercept_mu, slope_mu: $slope_mu")
+        println("iter: $iter, objective: $elbo_estimate, intercept_mu: $intercept_mu, slope_mu: $slope_mu, std: $(exp(log_std))")
 
         # update variational parameters using a gradient step
         rho = (step_a + iter) ^ (-step_b)
         slope_mu += rho * grad_estimate[1]
         intercept_mu += rho * grad_estimate[2]
+        log_std += rho * grad_estimate[3]
     end
 end
 
