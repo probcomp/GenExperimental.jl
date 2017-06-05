@@ -191,7 +191,7 @@ function render(scene::Scene)
     ax[:set_xlim](scene.xmin, scene.xmax)
     ax[:set_ylim](scene.ymin, scene.ymax)
 end
-function render(tree::RRTTree{Point,Point})
+function render(tree::RRTTree{Point,Point}, alpha)
     for node in tree.nodes
         if !isnull(node.parent)
             # it is not the root
@@ -199,7 +199,7 @@ function render(tree::RRTTree{Point,Point})
             y1 = get(node.parent).conf.y
             x2 = node.conf.x
             y2 = node.conf.y
-            plt[:plot]([x1, x2], [y1, y2], color="k")
+            plt[:plot]([x1, x2], [y1, y2], color="k", alpha=alpha)
         end
     end
 end

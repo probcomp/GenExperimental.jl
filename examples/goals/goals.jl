@@ -1,6 +1,7 @@
 using Gen
 using Distributions
 include("rrt.jl")
+@pyimport matplotlib.patches as patches
 
 immutable PlannerParams
     rrt_iters::Int
@@ -151,9 +152,7 @@ function walk_path(path::Path, speed::Float64, times::Array{Float64,1})
     locations
 end
 
-function render(path::Path, line_color, start_color, goal_color)
-    plt[:scatter]([path.start.x], [path.start.y], color=start_color, s=200)
-    plt[:scatter]([path.goal.x], [path.goal.y], color=goal_color, s=200)
+function render(path::Path, line_color)
     for i=1:length(path.points) - 1
         a = path.points[i]
         b = path.points[i + 1]
@@ -174,12 +173,12 @@ function planner_demo()
     locations = walk_path(get(optimized_path), 5.0, collect(linspace(0.0, 40.0, 10)))
     plt[:figure](figsize=(10, 10))
     render(scene)
-    render(tree)
+    render(tree, 1.0)
     if !isnull(path)
-        render(get(path), "orange", "blue", "red")
-        render(get(optimized_path), "purple", "blue", "red")
+        render(get(path), "orange")
+        render(get(optimized_path), "purple")
     end
-    plt[:scatter](map((p) -> p.x, locations), map((p) -> p.y, locations), s=100)
+    plt[:scatter](map((p) -> p.x, locations), map((p) -> p.y, locations), s=200)
     plt[:savefig]("planner.png")
 end
 #planner_demo()
@@ -199,6 +198,8 @@ function agent_model(T::Trace, start::Point, planner_params::PlannerParams,
     if isnull(optimized_path)
         # no path found
         fail(T)
+        locations = Nullable{Array{Point,1}}() # null
+        measurements = Nullable{Array{Point,1}}() # null
     else
         # walk the path at a constant speed, and record locations at times
         locations = walk_path(get(optimized_path), speed, times)
@@ -215,11 +216,29 @@ function agent_model(T::Trace, start::Point, planner_params::PlannerParams,
     return tree, path, optimized_path, locations, measurements 
 end
 
+function propose(start::Point, planner_params::PlannerParams,
+                 scene::Scene, speed::Float64, times::Array{Float64,1},
+                 measurement_noise::Float64,
+                 measured_xs::Array{Float64,1}, measured_ys::Array{Float64,1})
+
+    trace = Trace()
+    for (i, (xi, yi)) in enumerate(zip(measured_xs, measured_ys))
+        trace.vals["x$i"] = xi
+        trace.vals["y$i"] = yi
+    end
+    tree, path, optimized_path, locations = agent_model(
+        trace, start, planner_params, scene,
+        speed, times, measurement_noise)
+    goal = Point(trace.vals["goal_x"], trace.vals["goal_y"])
+    (trace.log_weight, tree, path, optimized_path, locations, goal)
+end
+
+
 function model_demo()
     # parameters that are fixed for now
     speed = 10.
     times = Float64[1, 2, 3, 4, 5]
-    measurement_noise = 1.
+    measurement_noise = 1.0
     planner_params = PlannerParams(2000, 3.0, 10000, 1.)
     obstacles = []
     push!(obstacles, Wall(Point(20., 40.), 1, 40., 2.))
@@ -234,24 +253,180 @@ function model_demo()
     start = Point(90., 10.)
     @time tree, path, optimized_path, locations = agent_model(trace, start, planner_params, scene,
                                                         speed, times, measurement_noise)
-
     measured_xs = map((i) -> trace.vals["x$i"], 1:length(times))
     measured_ys = map((i) -> trace.vals["y$i"], 1:length(times))
 
     # plot it
     plt[:figure](figsize=(10, 10))
     render(scene)
-    render(tree)
+    plt[:scatter]([start.x], [start.y], color="blue", s=200)
+    render(tree, 1.0)
     if !isnull(path)
-        render(get(path), "orange", "blue", "red")
-        render(get(optimized_path), "purple", "blue", "red")
+        render(get(path), "orange")
+        render(get(optimized_path), "purple")
     end
+    goal = Point(trace.vals["goal_x"], trace.vals["goal_y"])
+    plt[:scatter]([goal.x], [goal.y], color="red", s=200)
     plt[:scatter](map((p) -> p.x, locations), 
-                  map((p) -> p.y, locations), s=100, color="green")
-    plt[:scatter](measured_xs, measured_ys, s=100, color="orange")
-    plt[:savefig]("model.png")
+                  map((p) -> p.y, locations), s=200, color="green")
+    plt[:scatter](measured_xs, measured_ys, s=200, color="orange")
+    plt[:savefig]("simulated_data.png")
+
+    # now, do inference
+    # TODO also do inference over the meauremtn noise
+    # TODO also do random walk over goal
+    measurement_noise = 8.0
+
+    function label(x, y, text)
+        t = plt[:text](x, y-2, text, fontsize=30, horizontalalignment="center", verticalalignment="top", zorder=100)
+        t[:set_bbox](Dict([("facecolor", "white"), ("alpha",0.8), ("edgecolor", "None")]))
+    end
+
+
+    function render_frames(dir::String, iter::Int, scene::Scene,
+                           active_goal::Point, prop_goal::Point,
+                           start::Point,
+                           measured_xs::Array{Float64,1},
+                           measured_ys::Array{Float64,1},
+                           tree, path, optimized_path, locations)
+
+        println("active_goal: $active_goal")
+        println("prop_goal: $prop_goal")
+
+        figsize=(10,10)
     
-    
+        num_frames = 6
+                           
+        # frame 1 : map, start, observations, current goal
+        framenum = (iter -1) * num_frames + 1
+        plt[:figure](figsize=(10,10))
+        render(scene)
+        plt[:scatter]([start.x], [start.y], color="blue", s=200)
+        label(start.x, start.y, "start")
+        plt[:scatter](measured_xs, measured_ys, color="orange", s=200, zorder=1000)
+        plt[:scatter]([active_goal.x], [active_goal.y], color="red", s=200)
+        label(goal.x, goal.y, "goal")
+        fname = @sprintf("%s/frame_%03d.png", dir, framenum)
+        plt[:savefig](fname)
+        plt[:close]()
+
+        # frame 2 : map, start, observations, current goal, proposed goal
+        framenum = (iter -1) * num_frames + 2
+        plt[:figure](figsize=(10,10))
+        render(scene)
+        plt[:scatter]([start.x], [start.y], color="blue", s=200)
+        label(start.x, start.y, "start")
+        plt[:scatter](measured_xs, measured_ys, color="orange", s=200, zorder=1000)
+        plt[:scatter]([active_goal.x], [active_goal.y], color="red", s=200)
+        label(goal.x, goal.y, "goal")
+        plt[:scatter]([prop_goal.x], [prop_goal.y], color="magenta", s=200)
+        label(prop_goal.x, prop_goal.y, "proposed\n goal")
+        fname = @sprintf("%s/frame_%03d.png", dir, framenum)
+        plt[:savefig](fname)
+        plt[:close]()
+
+        # frame 3 : map, start, observations, current_goal, proposed_goal,
+        #           tree
+        framenum = (iter -1) * num_frames + 3
+        plt[:figure](figsize=(10,10))
+        render(scene)
+        plt[:scatter]([start.x], [start.y], color="blue", s=200)
+        label(start.x, start.y, "start")
+        plt[:scatter](measured_xs, measured_ys, color="orange", s=200, zorder=1000)
+        plt[:scatter]([active_goal.x], [active_goal.y], color="red", s=200)
+        label(goal.x, goal.y, "goal")
+        plt[:scatter]([prop_goal.x], [prop_goal.y], color="magenta", s=200)
+        label(prop_goal.x, prop_goal.y, "proposed\n goal")
+        if iter < 2
+            render(tree, 0.5)
+        end
+        fname = @sprintf("%s/frame_%03d.png", dir, framenum)
+        plt[:savefig](fname)
+        plt[:close]()
+
+        # frame 4 : map, start, observations, current_goal, proposed_goal,
+        #           orange path
+        framenum = (iter -1) * num_frames + 4
+        plt[:figure](figsize=(10,10))
+        render(scene)
+        plt[:scatter]([start.x], [start.y], color="blue", s=200)
+        label(start.x, start.y, "start")
+        plt[:scatter](measured_xs, measured_ys, color="orange", s=200, zorder=1000)
+        plt[:scatter]([active_goal.x], [active_goal.y], color="red", s=200)
+        label(goal.x, goal.y, "goal")
+        plt[:scatter]([prop_goal.x], [prop_goal.y], color="magenta", s=200)
+        label(prop_goal.x, prop_goal.y, "proposed\n goal")
+        render(get(path), "orange")
+        fname = @sprintf("%s/frame_%03d.png", dir, framenum)
+        plt[:savefig](fname)
+        plt[:close]()
+
+        # frame 5 : map, start, observations, current_goal, proposed_goal,
+        #           purple path
+        framenum = (iter -1) * num_frames + 5
+        plt[:figure](figsize=(10,10))
+        render(scene)
+        plt[:scatter]([start.x], [start.y], color="blue", s=200)
+        label(start.x, start.y, "start")
+        plt[:scatter](measured_xs, measured_ys, color="orange", s=200)
+        plt[:scatter]([active_goal.x], [active_goal.y], color="red", s=200)
+        label(goal.x, goal.y, "goal")
+        plt[:scatter]([prop_goal.x], [prop_goal.y], color="magenta", s=200)
+        label(prop_goal.x, prop_goal.y, "proposed\n goal")
+        render(get(optimized_path), "purple")
+        fname = @sprintf("%s/frame_%03d.png", dir, framenum)
+        plt[:savefig](fname)
+        plt[:close]()
+
+        # frame 6 : map, start, observations, current_goal, proposed_goal,
+        #           green points
+        framenum = (iter -1) * num_frames + 6
+        plt[:figure](figsize=(10,10))
+        render(scene)
+        plt[:scatter]([start.x], [start.y], color="blue", s=200)
+        label(start.x, start.y, "start")
+        plt[:scatter](measured_xs, measured_ys, color="orange", s=200, zorder=1000)
+        plt[:scatter]([active_goal.x], [active_goal.y], color="red", s=200)
+        label(goal.x, goal.y, "goal")
+        plt[:scatter]([prop_goal.x], [prop_goal.y], color="magenta", s=200)
+        label(prop_goal.x, prop_goal.y, "proposed\n goal")
+        plt[:scatter](map((p) -> p.x, locations), 
+                    map((p) -> p.y, locations), s=200, color="green")
+        ax = plt[:gca]()
+        for loc in locations
+            patch = patches.Circle((loc.x, loc.y), radius=measurement_noise, facecolor="green", edgecolor="green", alpha=0.2, clip_on=true)
+            ax[:add_artist](patch)
+        end
+        fname = @sprintf("%s/frame_%03d.png", dir, framenum)
+        plt[:savefig](fname)
+        plt[:close]()
+
+    end
+   
+    mh_animation_dir = "mh_animation/"
+
+    # initialize
+    score, tree, path, optimized_path, locations, goal = propose(
+        start, planner_params, scene, speed, times, measurement_noise,
+        measured_xs, measured_ys)
+    for iter=1:100
+        prop_score, tree, path, optimized_path, locations, prop_goal = propose(
+            start, planner_params, scene, speed, times, measurement_noise,
+            measured_xs, measured_ys)
+        render_frames(mh_animation_dir, iter, scene,  goal, prop_goal, start,
+                      measured_xs, measured_ys, tree, path, optimized_path,
+                      locations)
+        println("prop_score: $prop_score, score: $score")
+        if log(rand()) < prop_score - score
+            # accept
+            println("accept")
+            score = prop_score
+            goal = prop_goal
+        else
+            println("reject")
+        end
+    end
+
 end
 srand(2)
 model_demo()
