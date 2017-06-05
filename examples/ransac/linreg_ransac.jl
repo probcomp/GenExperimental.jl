@@ -101,16 +101,15 @@ function propose_and_compute_score(xs::Array{Float64,1}, ys::Array{Float64,1},
 
     # set constraints in the model trace
     model_trace = Trace()
-    for (i, y) in enumerate(ys)
-        model_trace.vals["y$i"] = y
+    @in model_trace begin
+        for (i, y) in enumerate(ys)
+            @constrain("y$i", y)
+        end
+        for name in proposed_random_choices
+            @constrain(name, proposal_trace.vals[name])
+        end
     end
    
-    # copy over proposed values to the model trace
-    # these values become constraints
-    for name in proposed_random_choices
-        model_trace.vals[name] = proposal_trace.vals[name]
-    end
-
     # run the model program to compute the model score
     linear_regression(model_trace, xs)
 

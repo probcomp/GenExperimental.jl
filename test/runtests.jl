@@ -144,4 +144,32 @@ end
 
 end
 
+@testset "trace macros" begin
+    
+    # test that @constrain and @unconstrain work with @in
+    trace = Trace()
+    @in trace begin
+        @constrain "a" 1.0
+        @constrain "b" 2.0
+        @unconstrain "a"
+        @constrain "a" 1.5
+    end
+    @test trace.vals == Dict([("a", 1.5), ("b", 2.0)])
+
+    # test that code is evaluated in the right scope
+    trace = Trace()
+    i = 1
+    j = 2
+    v = 2.0
+    w = 3.0
+    @in trace begin
+        j = 3
+        w = 4.0
+        @constrain("$i", v)
+        @constrain("$j", w)
+    end
+    @test trace.vals == Dict([("1", 2.0), ("3", 4.0)])
+    
+end
+
 nothing
