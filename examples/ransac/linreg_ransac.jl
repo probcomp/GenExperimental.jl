@@ -119,7 +119,7 @@ function propose_and_compute_score(xs::Array{Float64,1}, ys::Array{Float64,1},
     (model_trace, score)
 end
 
-function linreg_infer(num_iters::Int, xs::Array{Float64,1}, 
+function linreg_infer_mh(num_iters::Int, xs::Array{Float64,1}, 
                       ys::Array{Float64,1})
     # parameters of proposal
     ransac_params = RansacParams(10, 2, 0.1)
@@ -145,6 +145,24 @@ function linreg_infer(num_iters::Int, xs::Array{Float64,1},
 
     # return the final iterate of the Markov chain
     trace
+end
+
+function linreg_infer_sir(num_samples::Int, xs::Array{Float64,1}, 
+                          ys::Array{Float64,1})
+    # parameters of proposal
+    ransac_params = RansacParams(10, 2, 0.1)
+    proposal_std = 0.2
+
+    log_weights = Array{Float64,1}(num_samples)
+    traces = Array{Trace,1}(num_samples)
+    for sample=1:num_samples
+        trace, score = propose_and_compute_score(xs, ys, ransac_params, proposal_std)
+        traces[sample] = trace
+        log_weights[sample] = score
+    end
+    weights = exp(log_weights - logsumexp(log_weights))
+    chosen = rand(Distributions.Categorical(weights))
+    return traces[chosen]
 end
 
 function render_linreg_trace(trace::Trace, xs::Array{Float64,1})
@@ -178,7 +196,7 @@ function demo()
     num_samples = 25
     for i=1:num_samples
         println(i)
-        trace = linreg_infer(100, xs, ys)
+        trace = linreg_infer_mh(100, xs, ys)
         plt[:subplot](5, 5, i)
         render_linreg_trace(trace, xs)
     end
