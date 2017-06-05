@@ -1,37 +1,38 @@
 using Gen
 using PyPlot
 
+# a generative model for linear regression,
+# written as a Gen probabilistic program
 function linear_regression(T::Trace, xs::Array{Float64,1})
-    noise_std = 1.0
-    prior_std = 1.0
-    prior_mu = 0.0
-    slope = normal(prior_mu, prior_std) ~ "slope"
-    intercept = normal(prior_mu, prior_std) ~ "intercept"
+    slope = normal(0.0, 1.0) ~ "slope"
+    intercept = normal(0.0, 1.0) ~ "intercept"
     ys = Array{Float64, 1}(length(xs))
     for i=1:length(xs)
         y_mean = intercept + slope * xs[i]
-        ys[i] = normal(y_mean, noise_std) ~ "y$i"
+        ys[i] = normal(y_mean, 1.0) ~ "y$i"
     end
 end
 
-function variational_approximation{M,N,O,P}(T::DifferentiableTrace,
-                                            slope_mu::M, intercept_mu::N, 
-                                            slope_std::O, intercept_std::P)
+# a variational approxiation to the posterior,
+# written as a Gen probabilistic program
+function approximation{M,N,O,P}(T::DifferentiableTrace,
+                                slope_mu::M, intercept_mu::N, 
+                                slope_std::O, intercept_std::P)
     slope = normal(slope_mu, slope_std) ~ "slope"
     intercept = normal(intercept_mu, intercept_std) ~ "intercept"
 end
 
+# procedure for optimizing the parameters of the variational approximation to
+# match the posterior
 function linear_regression_variational_inference(xs::Array{Float64,1},
                                                  ys::Array{Float64,1},
                                                  max_iter::Int)
 
     # optimization parameters
     iters = 300
-    num_samples = 1000 # 10000
+    num_samples = 1000
     step_a = 1000.0
     step_b = 0.75
-
-    # fixed model parameters
 
     # initial values for variational parameters
     # (the parameters that are being optimized)
@@ -53,46 +54,54 @@ function linear_regression_variational_inference(xs::Array{Float64,1},
 
         for sample=1:num_samples
 
-            # run the proposal program so that its score can be differentiated
-            # with respect to its inputs (which are the variational parameters)
+            # make the variational parameters GenNums, we can compute
+            # derivatives with respect to them
             tape = Tape()
             slope_mu_num = GenNum(slope_mu, tape)
             intercept_mu_num = GenNum(intercept_mu, tape)
             log_slope_std_num = GenNum(log_slope_std, tape)
             log_intercept_std_num = GenNum(log_intercept_std, tape)
+
+            # run the proposal program, treating 'slope' and 'intercept' as
+            # outputs
             inference_trace = DifferentiableTrace(tape)
-            inference_trace.outputs = Set{String}(["slope", "intercept"]) # TODO explain
-            variational_approximation(inference_trace, 
-                                      slope_mu_num, intercept_mu_num,
-                                      exp(log_slope_std_num), exp(log_intercept_std_num))
+            inference_trace.outputs = Set{String}(["slope", "intercept"])
+            approximation(inference_trace, 
+                          slope_mu_num, intercept_mu_num,
+                          exp(log_slope_std_num), exp(log_intercept_std_num))
 
             # add constraints to model trace so the model score can be computed
             # (using experimental syntactic sugars)
             model_trace = Trace()
             @in model_trace <= inference_trace begin
                 for (i, y) in enumerate(ys)
-                    @constrain("y$i", y)
+                    # model_trace["y$i"] = y
+                    @constrain("y$i", y) 
                 end
-                @constrain("slope" <= "slope")
+                # model_trace["slope"] = inference_trace["slope"]
+                @constrain("slope" <= "slope") 
                 @constrain("intercept" <= "intercept")
             end
-        
-            # run model program
+         
+            # run model program on the constrained trace
             linear_regression(model_trace, xs)
 
             # differentiate the inference score with respect to the variational
             # parameters
             backprop(inference_trace.log_weight)
-            gradient = [partial(slope_mu_num), partial(intercept_mu_num), partial(log_slope_std_num), partial(log_intercept_std_num)]
+            gradient = [partial(slope_mu_num),
+                        partial(intercept_mu_num),
+                        partial(log_slope_std_num),
+                        partial(log_intercept_std_num)]
 
-            # p(z, x) where z is latents and x is ..
+            # estimate ELBO objective function and gradient
             diff = model_trace.log_weight - concrete(inference_trace.log_weight)
             elbo_estimates[sample] = diff
             gradient_estimates[sample,:] = diff * gradient
         end
 
-        # average the estimates of the objective function and the gradient
-        # produced by the samples to obtain reduced-variance estimates of both
+        # average the estimates of the ELBO objective function and the gradient
+        # across many samples to reduce their variance
         elbo_estimate = mean(elbo_estimates)
         elbo_estimates_tracked[iter] = elbo_estimate
         grad_estimate = mean(gradient_estimates, 1)
@@ -100,15 +109,16 @@ function linear_regression_variational_inference(xs::Array{Float64,1},
         # print objective function value, and current variational parameters
         #println("iter: $iter, objective: $elbo_estimate, intercept_mu: $intercept_mu, slope_mu: $slope_mu, slope_std: $(exp(log_slope_std)), intercept_std: $(exp(log_intercept_std))")
 
-        # update variational parameters using a gradient step
-        rho = (step_a + iter) ^ (-step_b)
-        slope_mu += rho * grad_estimate[1]
-        intercept_mu += rho * grad_estimate[2]
-        log_slope_std += rho * grad_estimate[3]
-        log_intercept_std += rho * grad_estimate[4]
+        # update variational parameters using a estimated gradient
+        step_size = (step_a + iter) ^ (-step_b)
+        slope_mu += step_size * grad_estimate[1]
+        intercept_mu += step_size * grad_estimate[2]
+        log_slope_std += step_size * grad_estimate[3]
+        log_intercept_std += step_size * grad_estimate[4]
     end
 
-    return (slope_mu, intercept_mu, log_slope_std, log_intercept_std), elbo_estimates_tracked
+    final_params = (slope_mu, intercept_mu, log_slope_std, log_intercept_std)
+    return (final_params, elbo_estimates_tracked)
 end
 
 function render_trace_line(trace::Any, ax, xlim, ylim) 
@@ -194,7 +204,7 @@ function linreg_demo()
         traces = []
         for i=1:num_samples
             trace = DifferentiableTrace(Tape())
-            variational_approximation(trace, params[1], params[2], exp(params[3]), exp(params[4]))
+            approximation(trace, params[1], params[2], exp(params[3]), exp(params[4]))
             push!(traces, trace)
         end
         plt[:figure](figsize=(9,3))
