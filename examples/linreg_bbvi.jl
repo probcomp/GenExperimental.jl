@@ -18,31 +18,46 @@ function variational_approximation{M,N,O}(T::DifferentiableTrace, slope_mu::M,
     intercept = normal(intercept_mu, std) ~ "intercept"
 end
 
-function linreg_infer(xs::Array{Float64,1}, ys::Array{Float64,1})
+function linear_regression_variational_inference(xs::Array{Float64,1},
+                                                 ys::Array{Float64,1})
+
+    # optimization parameters
     iters = 1000
     num_samples = 1000
     step_a = 100.0
     step_b = 0.75
+
+    # fixed standard deviation for variational family
     std = 1.0
+
+    # fixed model parameters
     noise_std = 1.0
     prior_std = 2.0
     prior_mu = 0.0
+
+    # initial values for variational parameters
+    # (the parameters that are being optimized)
     slope_mu, intercept_mu = 0.0, 0.0
+
+    # gradient descent to minimize the difference between the approximation and
+    # the posterior
     for iter in 1:iters
-        rho = (step_a + iter) ^ (-step_b)
-        elbo_est = 0.0
-        grad_est = zeros(2)
+
+        # estimate the objective function (ELBO and its gradient with respect
+        # to variational parameters using many runs of the approximation program
+        elbo_estimates = Array{Float64,1}(num_samples)
+        gradient_estimates = Array{Float64,2}(num_samples,2)
+
         for sample=1:num_samples
 
-            # run the proposal program
+            # run the proposal program so that its score can be differentiated
+            # with respect to its inputs (which are the variational parameters)
             tape = Tape()
             slope_mu_num = GenNum(slope_mu, tape)
             intercept_mu_num = GenNum(intercept_mu, tape)
             inference_trace = DifferentiableTrace(tape)
             inference_trace.outputs = Set{String}(["slope", "intercept"])
             variational_approximation(inference_trace, slope_mu_num, intercept_mu_num, std)
-            backprop(inference_trace.log_weight)
-            gradient = [adj(slope_mu_num), adj(intercept_mu_num)]
 
             # add contraints to model trace
             model_trace = Trace()
@@ -57,16 +72,29 @@ function linreg_infer(xs::Array{Float64,1}, ys::Array{Float64,1})
             # run model program
             linear_regression(model_trace, prior_mu, prior_std, noise_std, xs)
 
+            # differentiate the inference score with respect to the variational
+            # parameters
+            backprop(inference_trace.log_weight)
+            gradient = [partial(slope_mu_num), partial(intercept_mu_num)]
+
             # p(z, x) where z is latents and x is ..
             diff = model_trace.log_weight - concrete(inference_trace.log_weight)
-            elbo_est += diff
-            grad_est += diff * gradient
+            elbo_estimates[sample] = diff
+            gradient_estimates[sample,:] = diff * gradient
         end
-        elbo_est /= num_samples
-        grad_est /= num_samples
-        println("iter: $iter, obj: $elbo_est, intercept_mu: $intercept_mu, slope_mu: $slope_mu")
-        slope_mu += rho * grad_est[1]
-        intercept_mu += rho * grad_est[2]
+
+        # average the estimates of the objective function and the gradient
+        # produced by the samples to obtain reduced-variance estimates of both
+        elbo_estimate = mean(elbo_estimates)
+        grad_estimate = mean(gradient_estimates, 1)
+
+        # print objective function value, and current variational parameters
+        println("iter: $iter, objective: $elbo_estimate, intercept_mu: $intercept_mu, slope_mu: $slope_mu")
+
+        # update variational parameters using a gradient step
+        rho = (step_a + iter) ^ (-step_b)
+        slope_mu += rho * grad_estimate[1]
+        intercept_mu += rho * grad_estimate[2]
     end
 end
 
@@ -77,6 +105,6 @@ function linreg_demo()
     println(xs)
     println(ys)
     # intercept should be mean 1, slope should be mean -1
-    linreg_infer(xs, ys)
+    linear_regression_variational_inference(xs, ys)
 end
 linreg_demo()
