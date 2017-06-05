@@ -144,6 +144,19 @@ end
 
 end
 
+@testset "trace operator" begin
+
+    # test the getindex operator
+    trace = Trace()
+    trace.vals["a"] = 1.2
+    @test trace["a"] == 1.2
+
+    # test the setindex! operator
+    trace = Trace()
+    trace["a"] = 1.3
+    @test trace["a"] == 1.3
+end
+
 @testset "trace macros" begin
     
     # test that @constrain and @unconstrain work with @in

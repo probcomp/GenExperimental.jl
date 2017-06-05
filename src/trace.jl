@@ -19,6 +19,17 @@ type Trace
     end
 end
 
+function Base.getindex(trace::Trace, name::String) 
+    trace.vals[name]
+end
+
+function Base.setindex!(trace::Trace, val::Any, name::String)
+    trace.vals[name] = val
+end
+
+Base.keys(trace::Trace) = keys(trace.vals)
+
+
 function fail(T::Trace)
     T.log_weight = -Inf
 end
