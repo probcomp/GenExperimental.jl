@@ -27,8 +27,10 @@ function linreg_infer(num_samples::Int, xs::Array{Float64,1}, ys::Array{Float64,
     traces = Array{Trace,1}(num_samples)
     for sample=1:num_samples
         trace = Trace()
-        for (i, y) in enumerate(ys)
-            trace.vals["y$i"] = y
+        @in trace begin
+            for (i, y) in enumerate(ys)
+                @constrain("y$i", y)
+            end
         end
         linear_regression(trace, 0.0, 2.0, xs)
         traces[sample] = trace

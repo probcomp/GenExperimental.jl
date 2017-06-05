@@ -34,27 +34,27 @@ function linreg_infer(xs::Array{Float64,1}, ys::Array{Float64,1})
         grad_est = zeros(2)
         for sample=1:num_samples
 
-            # parameters that we can differentiate wrt
-            tape = Tape() # todo: reuse the tape, this is quite inefficient
+            # run the proposal program
+            tape = Tape()
             slope_mu_num = GenNum(slope_mu, tape)
             intercept_mu_num = GenNum(intercept_mu, tape)
-
-            # sample from variational family
             inference_trace = DifferentiableTrace(tape)
             inference_trace.outputs = Set{String}(["slope", "intercept"])
             variational_approximation(inference_trace, slope_mu_num, intercept_mu_num, std)
-
-            # backpropagate to compute gradient
             backprop(inference_trace.log_weight)
             gradient = [adj(slope_mu_num), adj(intercept_mu_num)]
 
-            # compute joint probability under model
+            # add contraints to model trace
             model_trace = Trace()
-            for (i, y) in enumerate(ys)
-                model_trace.vals["y$i"] = y
+            @in model_trace <= inference_trace begin
+                for (i, y) in enumerate(ys)
+                    @constrain("y$i", y)
+                end
+                @constrain("slope" <= "slope")
+                @constrain("intercept" <= "intercept")
             end
-            model_trace.vals["slope"] = inference_trace.vals["slope"]
-            model_trace.vals["intercept"] = inference_trace.vals["intercept"]
+        
+            # run model program
             linear_regression(model_trace, prior_mu, prior_std, noise_std, xs)
 
             # p(z, x) where z is latents and x is ..

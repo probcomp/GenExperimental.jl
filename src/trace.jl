@@ -19,7 +19,12 @@ type Trace
     end
 end
 
+function fail(T::Trace)
+    T.log_weight = -Inf
+end
+
 macro ~(expr, name)
+    # TODO: how to do this in a more hygenic way?
     if expr.head != :call
         error("invalid use of ~: expr.head != :call")
     end
@@ -37,7 +42,7 @@ macro ~(expr, name)
                 error("$name in both outputs and vals of trace")
             end
             val = $(esc(:T)).vals[name]
-            $(esc(:T)).log_weight = $(esc(:T)).log_weight + $(Expr(:call, regenerator, :val, args...))
+            $(esc(:T)).log_weight += $(Expr(:call, regenerator, :val, args...))
         else
             val, log_weight = $(Expr(:call, simulator, args...))
             $(esc(:T)).vals[name] = val
@@ -54,8 +59,61 @@ macro ~(expr, name)
     end
 end
 
+macro constrain(name, val)
+    # TODO: how to do this in a more hygenic way?
+    return quote
+        local name = $(esc(name))
+        $(esc(:T)).vals[name] = $(esc(val))
+    end
+end
+
+macro unconstrain(name)
+    return quote
+        delete!($(esc(:T)).vals, $name)
+    end
+end
+
+macro in(context, code)
+    if typeof(context) == Expr
+        if length(context.args) != 3
+            error("expected @in <model_trace> <= inference_trace begin ... end")
+        end
+        symb = context.args[1]
+        model_trace = context.args[2]
+        inference_trace = context.args[3]
+        if symb != :<=
+            error("expected @in <model_trace> <= inference_trace begin ... end")
+        end
+        return quote
+            $(esc(:T)) = $(esc(model_trace))
+            $(esc(:__T_SEND)) = $(esc(inference_trace))
+            $(esc(code))
+        end
+    else
+        return quote
+            $(esc(:T)) = $(esc(context))
+            $(esc(code))
+        end
+    end
+end
+
+macro constrain(mapping)
+    if mapping.head != :call || length(mapping.args) != 3 || mapping.args[1] != :<=
+        error("invalid input to @constrain, expected: @constrain(<to_name> <= <from_name>)")
+    end
+    to = mapping.args[2]
+    from = mapping.args[3]
+    return quote
+        $(esc(:T)).vals[$(esc(to))] = $(esc(:__T_SEND)).vals[$(esc(from))]
+    end
+end
+
+
 # exports
 export Trace
 export DifferentiableTrace
 export @~
-
+export fail
+export @in
+export @constrain
+export @unconstrain

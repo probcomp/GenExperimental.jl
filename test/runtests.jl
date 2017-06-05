@@ -169,6 +169,16 @@ end
         @constrain("$j", w)
     end
     @test trace.vals == Dict([("1", 2.0), ("3", 4.0)])
+
+    # test copying from one trace to another
+    to_trace = Trace()
+    from_trace = Trace()
+    from_trace.vals["asdf"] = 1.1
+    @in to_trace <= from_trace begin
+        @constrain("a", 2.2)
+        @constrain("b" <= "asdf")
+    end
+    @test to_trace.vals == Dict([("a", 2.2), ("b", 1.1)])
     
 end
 

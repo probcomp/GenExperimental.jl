@@ -15,13 +15,24 @@ end
 # it would give an order of magnitude less AD on tape?
 
 # Uniform
-function uniform_regenerate(x::Float64)
-    x < 0 || x > 1 ? -Inf : 0.0
+#function uniform_regenerate(x::Float64)
+    #x < 0 || x > 1 ? -Inf : 0.0
+#end
+#function uniform_simulate()
+    #rand(), 0.0
+#end
+#@register_module(:uniform, uniform_simulate, uniform_regenerate)
+
+# Uniform continuous
+function uniform_regenerate(x::Float64, lower::Float64, upper::Float64)
+    x < lower || x > upper ? -Inf : -log(upper - lower)
 end
-function uniform_simulate()
-    rand(), 0.0
+function uniform_simulate(lower::Float64, upper::Float64)
+    x = rand() * (upper - lower) + lower
+    x, uniform_regenerate(x, lower, upper)
 end
 @register_module(:uniform, uniform_simulate, uniform_regenerate)
+
 
 
 # Bernoulli
@@ -55,3 +66,5 @@ function gamma_simulate{M,N}(k::M, s::N)
     x, gamma_regenerate(x, k, s)
 end
 @register_module(:gamma, gamma_simulate, gamma_regenerate)
+
+export @register_module

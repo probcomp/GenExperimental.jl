@@ -86,27 +86,21 @@ end
 function propose_and_compute_score(xs::Array{Float64,1}, ys::Array{Float64,1},
                                    ransac_params::RansacParams, proposal_std::Float64)
 
-    # the names of the proposed random choices
-    proposed_random_choices = Set{String}()
-    push!(proposed_random_choices, "slope")
-    push!(proposed_random_choices, "intercept")
-    for i=1:length(xs)
-        push!(proposed_random_choices, "o$i")
-    end
-
     # run the proposal program
     proposal_trace = Trace()
-    push!(proposal_trace.outputs, proposed_random_choices...)
+    proposal_trace.outputs = Set{String}(
+        vcat(["slope", "intercept"], ["o$i" for i=1:length(xs)])
+    )
     ransac_proposal(proposal_trace, xs, ys, ransac_params, proposal_std)
 
     # set constraints in the model trace
     model_trace = Trace()
-    @in model_trace begin
+    @in model_trace <= proposal_trace begin
         for (i, y) in enumerate(ys)
             @constrain("y$i", y)
         end
-        for name in proposed_random_choices
-            @constrain(name, proposal_trace.vals[name])
+        for name in proposal_trace.outputs
+            @constrain(name <= name)
         end
     end
    
