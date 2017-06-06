@@ -194,6 +194,9 @@ function agent_model(T::Trace, start::Point, planner_params::PlannerParams,
 
     # plan a path from start to goal
     tree, path, optimized_path = plan_path(start, goal, scene, planner_params)
+    tree ~ "tree"
+    path ~ "path"
+    optimized_path ~ "optimized_path"
 
     if isnull(optimized_path)
         # no path found
@@ -208,13 +211,59 @@ function agent_model(T::Trace, start::Point, planner_params::PlannerParams,
         measurements = Array{Point,1}(length(times))
         for (i, loc) in enumerate(locations)
             measurements[i] = Point(normal(loc.x, measurement_noise) ~ "x$i", 
-                                    normal(loc.y, measurement_noise) ~ "y$i")
+                                    normal(loc.y, measurement_noise) ~ "y$i") 
         end
     end
 
     # return values for debugging and visualization
     return tree, path, optimized_path, locations, measurements 
 end
+
+function render_trace(trace::Trace)
+
+    # data that may be useful for the rendering:
+    # 1. parameters of the program
+    # 2. constants defined in the program
+    # 3. random choices in the program that are labelled (OK)
+    # 4. random choics in the program that are not labelled
+    # 5. deterministic choices in the program
+
+    # alternative solution:
+    # make the program build up the visualization inline?
+
+    # what about 'proposed' random variables?
+    # we may want to show the proposed and the true goal on the same map?
+    # for MH, we can show the 'accepted' trace in one pane, and the proposals in another pane? (flash red or green)
+    # for SIR, show a trace in each pane
+
+    # each program execution can build up a visualization itself?
+    # this ties each program to a particular visualization...
+    # we need to support different visualizations for one model program (e.g. grid world vs Unreal engine)
+    
+    # the simplest option seems to be to allow for arbitrary storage in the trace data structure?
+    # the program can record arbitrary things it wants?
+    # but why not just make the trace itself an arbitrary data structure, that may differ from program to 
+    # program..
+    # [ the program records values by setting them in this trace ]
+
+    # automatic accumulation of log-weight?
+
+    # render the scene
+    #   - an example of a constant defined in the program
+    # render the start location
+    #   - an example of a parameter
+    # render the goal location
+    #   - from the trace (if it exists)
+    # render
+    # render the path
+    #   - which is random but is not traced
+    # [ a solution is to reconstruct the path by running that part of the program? ]
+    # [ another solution is to allow us to record arbitrary pieces of state in the program? ]
+    # problem: the tree is not traced.. -- an example of a random
+end
+
+# the purpose of the rendering is to encode the trace for input to the human
+# visual system
 
 function propose_independent_mh(start::Point, planner_params::PlannerParams,
                  scene::Scene, speed::Float64, times::Array{Float64,1},
@@ -280,9 +329,6 @@ function propose_random_walk_mh(start::Point, planner_params::PlannerParams,
     (mh_ratio, tree, path, optimized_path, locations, goal)
 end
 
-
-
-
 function model_demo()
     # parameters that are fixed for now
     speed = 10.
@@ -334,6 +380,20 @@ function model_demo()
     
     function measurements_label()
         label(90, 55, "observations")
+    end
+
+    function render_prefix_frames(dir::String, scene::Scene, start::Point, 
+                                  measured_xs::Array{Float64,1},
+                                  measured_ys::Array{Float64,1}, framenum::Int)
+        plt[:figure](figsize=(10,10))
+        render(scene)
+        plt[:scatter]([start.x], [start.y], color="blue", s=200)
+        label(start.x, start.y, "start")
+        plt[:scatter](measured_xs, measured_ys, color="orange", s=200)
+        #measurements_label()
+        fname = @sprintf("%s/start_%03d.png", dir, framenum)
+        plt[:savefig](fname)
+        plt[:close]()
     end
 
     function render_frames(dir::String, iter::Int, scene::Scene,
@@ -473,6 +533,13 @@ function model_demo()
     end
    
     mh_animation_dir = "mh_animation/"
+
+    # render the prefix frames
+    for i=1:length(measured_xs)+1
+        println(i)
+        render_prefix_frames(mh_animation_dir, scene, start, measured_xs[1:i-1], measured_ys[1:i-1], i)
+    end
+    return Nothing
 
     # initialize
     prev_model_score, tree, path, optimized_path, locations, goal = propose_independent_mh(
