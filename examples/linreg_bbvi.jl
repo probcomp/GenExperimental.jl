@@ -18,6 +18,7 @@ end
 function approximation{M,N,O,P}(T::DifferentiableTrace,
                                 slope_mu::M, intercept_mu::N, 
                                 slope_std::O, intercept_std::P)
+
     slope = normal(slope_mu, slope_std) ~ "slope"
     intercept = normal(intercept_mu, intercept_std) ~ "intercept"
 end
@@ -62,7 +63,7 @@ function linear_regression_variational_inference(xs::Array{Float64,1},
             log_slope_std_num = GenNum(log_slope_std, tape)
             log_intercept_std_num = GenNum(log_intercept_std, tape)
 
-            # run the proposal program, treating 'slope' and 'intercept' as
+            # run the approximate program, treating 'slope' and 'intercept' as
             # outputs
             inference_trace = DifferentiableTrace(tape)
             inference_trace.outputs = Set{String}(["slope", "intercept"])
@@ -119,6 +120,43 @@ function linear_regression_variational_inference(xs::Array{Float64,1},
 
     final_params = (slope_mu, intercept_mu, log_slope_std, log_intercept_std)
     return (final_params, elbo_estimates_tracked)
+end
+
+# sampling from exact partial posterior
+using Distributions
+function linreg_exact_posterior(x::Array{Float64,1}, y::Array{Float64,1}, prior_std::Float64, noise_std::Float64)
+    # intercept comes first, then slope
+    n = length(x)
+    @assert n == length(y)
+    S0 = prior_std * prior_std * eye(2)
+    phi = hcat(ones(n), x)
+    @assert size(phi) == (n, 2)
+    noise_var = noise_std * noise_std
+    noise_precision = 1./noise_var
+    SN = inv(inv(S0) + noise_precision * (phi' * phi))
+    mN = SN * ((inv(S0) * zeros(2)) + noise_precision * (phi' * y))
+    # return the mean vector and covariance matrix
+    (mN, SN)
+end
+
+immutable ExactLinregSampler
+    dist::MvNormal
+    function ExactLinregSampler(prior_std::Float64, noise_std::Float64, x::Array{Float64,1}, y::Array{Float64,1})
+        (mN, SN) = linreg_exact_posterior(x, y, prior_std, noise_std)
+        dist = MvNormal(mN, SN)
+        new(dist)
+    end
+end
+
+function simulate(sampler::ExactLinregSampler)
+    intercept_and_slope = rand(sampler.dist)
+    log_weight = logpdf(sampler.dist, intercept_and_slope)
+    (intercept_and_slope, log_weight)
+end
+
+function regenerate(sampler::ExactLinregSampler, intercept_and_slope::Array{Float64,1})
+    @assert length(intercept_and_slope) == 2
+    logpdf(sampler.dist, intercept_and_slope)
 end
 
 function render_trace_line(trace::Any, ax, xlim, ylim) 
@@ -194,12 +232,14 @@ function linreg_demo()
     plt[:savefig]("$plot_dir/dataset.png")
     
 
+    params_history = Array{Float64,2}(100, 4)
     elbos = []
     # plot samples from black box variational inference
     for max_iter=1:100
         println("max_iter: $max_iter")
         params, elbo_trace = linear_regression_variational_inference(xs, ys, max_iter)
         push!(elbos, elbo_trace[end])
+        params_history[max_iter,:] = [params[1], params[2], params[3], params[4]] 
         println(elbo_trace[end])
         traces = []
         for i=1:num_samples
@@ -207,8 +247,9 @@ function linreg_demo()
             approximation(trace, params[1], params[2], exp(params[3]), exp(params[4]))
             push!(traces, trace)
         end
-        plt[:figure](figsize=(9,3))
-        plt[:subplot](1, 3, 1)
+        plt[:figure](figsize=(12,3))
+
+        plt[:subplot](1, 4, 1)
         ax = plt[:gca]()
         render_dataset(xs, ys, ax, xlim, ylim)
         for trace in traces[1:100]
@@ -216,16 +257,30 @@ function linreg_demo()
         end
         ax[:set_xlim](xlim)
         ax[:set_ylim](xlim)
-        plt[:subplot](1, 3, 2)
+
+        plt[:subplot](1, 4, 2)
         ax = plt[:gca]()
         slopes = map((t) -> t["slope"], traces)
         intercepts = map((t) -> t["intercept"], traces)
         ax[:set_xlim]([-3, 3])
         ax[:set_ylim]([-3, 3])
         plt[:scatter](slopes, intercepts, s=3, alpha=0.5, color="black")
-        ax[:set_xlabel]("slope")
-        ax[:set_ylabel]("intercept")
-        plt[:subplot](1, 3, 3)
+        ax[:set_xlabel]("Slope")
+        ax[:set_ylabel]("Intercept")
+
+        plt[:subplot](1, 4, 3)
+        ax = plt[:gca]()
+        ax[:plot](collect(1:max_iter), params_history[1:max_iter,1], label="slope mean", color="green", linestyle="-")
+        ax[:plot](collect(1:max_iter), params_history[1:max_iter,3], label="slope uncertainty", color="green", linestyle="--")
+        ax[:plot](collect(1:max_iter), params_history[1:max_iter,2], label="intercept mean", color="orange", linestyle="-")
+        ax[:plot](collect(1:max_iter), params_history[1:max_iter,4], label="intercept uncertainty", color="orange", linestyle="--")
+        plt[:legend](loc="upper right")
+        ax[:set_xlim]((0, 100))
+        ax[:set_ylim]((-2, 4))
+        ax[:set_xlabel]("Iterations")
+        ax[:set_ylabel]("Parameters")
+
+        plt[:subplot](1, 4, 4)
         ax = plt[:gca]()
         plt[:plot](collect(1:max_iter), elbos, color="black")
         ax[:set_xlabel]("Iterations")
