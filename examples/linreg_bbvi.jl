@@ -177,11 +177,44 @@ function render_trace_scatter(trace::Any, ax, xlim, ylim)
 end
 
 function render_dataset(xs, ys, ax, xlim, ylim)
-    ax[:scatter](xs, ys, color="red", alpha=0.7, zorder=100)
+    ax[:scatter](xs, ys, color="white", alpha=1.0, zorder=100, edgecolor="blue", lw=2, s=50)
     ax[:set_xlim](xlim)
     ax[:set_ylim](ylim)
 end
 
+function aide(params, exact_sampler)
+    num_samples = 100
+    estimates = Array{Float64,1}(num_samples)
+    for i=1:num_samples
+
+        # sample from the exact posterior
+        (exact_intercept, exact_slope), exact_log_weight = simulate(exact_sampler)
+
+        # regenerate from the variational approxiation (log_density)
+        trace = DifferentiableTrace(Tape())
+        trace["slope"] = exact_slope
+        trace["intercept"] = exact_intercept
+        approximation(trace, params[1], params[2], exp(params[3]), exp(params[4]))
+        variational_log_weight = trace.log_weight
+
+        exact_to_variational_log_weight = exact_log_weight - variational_log_weight
+
+        # sample from the variational approximation
+        trace = DifferentiableTrace(Tape())
+        approximation(trace, params[1], params[2], exp(params[3]), exp(params[4]))
+        (variational_intercept, variational_slope) = (trace["intercept"], trace["slope"])
+        variational_log_weight = trace.log_weight
+        
+        # regenerate from the exact posterior
+        exact_log_weight = regenerate(exact_sampler, [variational_intercept, variational_slope])
+        
+        variational_to_exact_log_weight = variational_log_weight - exact_log_weight
+
+        # unbiased estimate of symmetrized KL divergence
+        estimates[i] = concrete(exact_to_variational_log_weight) + concrete(variational_to_exact_log_weight)
+    end
+    mean(estimates)
+end
 
 function linreg_demo()
 
@@ -211,16 +244,50 @@ function linreg_demo()
     plt[:figure](figsize=(6,3))
     plt[:subplot](1, 2, 1)
     ax = plt[:gca]()
-    for trace in traces
+    for trace in traces[1:100]
         render_trace_line(trace, ax, xlim, ylim)
     end
+    render_dataset(xs, ys, ax, xlim, ylim)
     plt[:subplot](1, 2, 2)
     ax = plt[:gca]()
-    for trace in traces
-        render_trace_scatter(trace, ax, [-3, 3], [-3, 3])
-    end
+    slopes = map((t) -> t["slope"], traces)
+    intercepts = map((t) -> t["intercept"], traces)
+    ax[:set_xlim]([-3, 3])
+    ax[:set_ylim]([-3, 3])
+    plt[:scatter](slopes, intercepts, s=3, alpha=0.5, color="black")
+    ax[:set_xlabel]("Slope")
+    ax[:set_ylabel]("Intercept")
     plt[:tight_layout]()
     plt[:savefig]("$plot_dir/prior_samples.png")
+
+    # plot samples from the posterior
+    exact_sampler = ExactLinregSampler(1.0, 1.0, xs, ys)
+    traces = []
+    for i=1:num_samples
+        trace = Trace()
+        (intercept, slope), _ = simulate(exact_sampler)
+        trace["slope"] = slope
+        trace["intercept"] = intercept
+        push!(traces, trace)
+    end
+    plt[:figure](figsize=(6,3))
+    plt[:subplot](1, 2, 1)
+    ax = plt[:gca]()
+    for trace in traces[1:100]
+        render_trace_line(trace, ax, xlim, ylim)
+    end
+    render_dataset(xs, ys, ax, xlim, ylim)
+    plt[:subplot](1, 2, 2)
+    ax = plt[:gca]()
+    slopes = map((t) -> t["slope"], traces)
+    intercepts = map((t) -> t["intercept"], traces)
+    ax[:set_xlim]([-3, 3])
+    ax[:set_ylim]([-3, 3])
+    plt[:scatter](slopes, intercepts, s=3, alpha=0.5, color="black")
+    ax[:set_xlabel]("Slope")
+    ax[:set_ylabel]("Intercept")
+    plt[:tight_layout]()
+    plt[:savefig]("$plot_dir/posterior_samples.png")
 
     # plot the dataset
     plt[:figure](figsize=(3,3))
@@ -231,15 +298,16 @@ function linreg_demo()
     plt[:tight_layout]()
     plt[:savefig]("$plot_dir/dataset.png")
     
-
     params_history = Array{Float64,2}(100, 4)
     elbos = []
+    aides = []
     # plot samples from black box variational inference
     for max_iter=1:100
         println("max_iter: $max_iter")
         params, elbo_trace = linear_regression_variational_inference(xs, ys, max_iter)
         push!(elbos, elbo_trace[end])
         params_history[max_iter,:] = [params[1], params[2], params[3], params[4]] 
+        push!(aides, aide(params, exact_sampler))
         println(elbo_trace[end])
         traces = []
         for i=1:num_samples
@@ -247,9 +315,9 @@ function linreg_demo()
             approximation(trace, params[1], params[2], exp(params[3]), exp(params[4]))
             push!(traces, trace)
         end
-        plt[:figure](figsize=(12,3))
+        plt[:figure](figsize=(15,3))
 
-        plt[:subplot](1, 4, 1)
+        plt[:subplot](1, 5, 1)
         ax = plt[:gca]()
         render_dataset(xs, ys, ax, xlim, ylim)
         for trace in traces[1:100]
@@ -258,7 +326,7 @@ function linreg_demo()
         ax[:set_xlim](xlim)
         ax[:set_ylim](xlim)
 
-        plt[:subplot](1, 4, 2)
+        plt[:subplot](1, 5, 2)
         ax = plt[:gca]()
         slopes = map((t) -> t["slope"], traces)
         intercepts = map((t) -> t["intercept"], traces)
@@ -268,7 +336,7 @@ function linreg_demo()
         ax[:set_xlabel]("Slope")
         ax[:set_ylabel]("Intercept")
 
-        plt[:subplot](1, 4, 3)
+        plt[:subplot](1, 5, 3)
         ax = plt[:gca]()
         ax[:plot](collect(1:max_iter), params_history[1:max_iter,1], label="slope mean", color="green", linestyle="-")
         ax[:plot](collect(1:max_iter), params_history[1:max_iter,3], label="slope uncertainty", color="green", linestyle="--")
@@ -280,13 +348,22 @@ function linreg_demo()
         ax[:set_xlabel]("Iterations")
         ax[:set_ylabel]("Parameters")
 
-        plt[:subplot](1, 4, 4)
+        plt[:subplot](1, 5, 4)
         ax = plt[:gca]()
         plt[:plot](collect(1:max_iter), elbos, color="black")
         ax[:set_xlabel]("Iterations")
         ax[:set_ylabel]("Objective")
         ax[:set_xlim]((0, 100))
         ax[:set_ylim]((-50, -5))
+
+        plt[:subplot](1, 5, 5)
+        ax = plt[:gca]()
+        plt[:plot](collect(1:max_iter), aides, color="black")
+        ax[:set_xlabel]("Iterations")
+        ax[:set_ylabel]("AIDE estimate")
+        ax[:set_xlim]((0, 100))
+        ax[:set_ylim]((0, 30))
+
         plt[:tight_layout]()
         plt[:savefig]("$plot_dir/variational_$max_iter.png")
     end
