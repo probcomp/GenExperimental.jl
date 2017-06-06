@@ -37,7 +37,7 @@ type Trace <: AbstractTrace
     end
 end
 
-function check_exists(trace::AbstractTrace, name::String)
+function check_not_exists(trace::AbstractTrace, name::String)
     if haskey(trace.constraints, name)
         error("$name is already marked as a constraint")
     end
@@ -53,23 +53,51 @@ function check_exists(trace::AbstractTrace, name::String)
 end
 
 function constrain!(trace::AbstractTrace, name::String, val::Any)
-    check_exists(trace, name)
+    check_not_exists(trace, name)
     trace.constraints[name] = val
 end
 
 #function unconstrain(trace::AbstractTrace, name::String)
-    #check_exists(trace, name)
+    #check_not_exists(trace, name)
     #delete!(trace.constraints, name)
 #end
 
 function intervene!(trace::AbstractTrace, name::String, val::Any)
-    check_exists(trace, name)
+    check_not_exists(trace, name)
     trace.interventions[name] = val
 end
 
 function propose!(trace::AbstractTrace, name::String)
-    check_exists(trace, name)
+    check_not_exists(trace, name)
     push!(trace.proposals, name)
+end
+
+function Base.delete!(trace::AbstractTrace, name::String)
+    if haskey(trace.constraints, name)
+        delete!(trace.constraints, name)
+    end
+    if haskey(trace.interventions, name)
+        delete!(trace.interventions, name)
+    end
+    if name in trace.proposals
+        delete!(trace.proposals, name)
+    end
+    if haskey(trace.recorded, name)
+        delete!(trace.recorded, name)
+    end
+end
+
+function hasvalue(trace::AbstractTrace, name::String)
+    if haskey(trace.constraints, name)
+        return true
+    end
+    if haskey(trace.interventions, name)
+        return true
+    end
+    if haskey(trace.recorded, name)
+        return true
+    end
+    return false
 end
 
 function value(trace::AbstractTrace, name::String)
@@ -130,7 +158,7 @@ function expand_non_module(expr, name)
             error("$name already recorded")
         else
             # evaluate the LHS expression and record it
-            val = $(expr)
+            val = $(esc(expr))
             $(esc(:T)).recorded[name] = val
         end
         val
@@ -140,9 +168,10 @@ end
 macro ~(expr, name)
     # WARNING: T is a reserved symbol for 'trace'. It is an error if T occurs in the program.
     # TODO: how to do this in a hygenic way?
-    is_module_call = (expr.head == :call) && 
-                length(expr.args) >= 1 && 
-                haskey(modules, expr.args[1])
+    is_module_call = (typeof(expr) == Expr) &&
+                     (expr.head == :call) && 
+                     length(expr.args) >= 1 && 
+                     haskey(modules, expr.args[1])
     if is_module_call
         expand_module(expr, name)
     else
@@ -201,6 +230,7 @@ export intervene!
 # export unintervene # TODO?
 export propose!
 # export unpropose # TODO?
+export hasvalue
 export fail
 export value 
 #export @in
