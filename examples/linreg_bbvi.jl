@@ -66,7 +66,8 @@ function linear_regression_variational_inference(xs::Array{Float64,1},
             # run the approximate program, treating 'slope' and 'intercept' as
             # outputs
             inference_trace = DifferentiableTrace(tape)
-            inference_trace.outputs = Set{String}(["slope", "intercept"])
+            propose!(inference_trace, "slope")
+            propose!(inference_trace, "intercept")
             approximation(inference_trace, 
                           slope_mu_num, intercept_mu_num,
                           exp(log_slope_std_num), exp(log_intercept_std_num))
@@ -74,15 +75,11 @@ function linear_regression_variational_inference(xs::Array{Float64,1},
             # add constraints to model trace so the model score can be computed
             # (using experimental syntactic sugars)
             model_trace = Trace()
-            @in model_trace <= inference_trace begin
-                for (i, y) in enumerate(ys)
-                    # model_trace["y$i"] = y
-                    @constrain("y$i", y) 
-                end
-                # model_trace["slope"] = inference_trace["slope"]
-                @constrain("slope" <= "slope") 
-                @constrain("intercept" <= "intercept")
+            for (i, y) in enumerate(ys)
+                constrain!(model_trace, "y$i", y)
             end
+            constrain!(model_trace, "slope", value(inference_trace, "slope"))
+            constrain!(model_trace, "intercept", value(inference_trace, "intercept"))
          
             # run model program on the constrained trace
             linear_regression(model_trace, xs)
@@ -160,7 +157,7 @@ function regenerate(sampler::ExactLinregSampler, intercept_and_slope::Array{Floa
 end
 
 function render_trace_line(trace::Any, ax, xlim, ylim) 
-    line = xlim * trace["slope"] + trace["intercept"]
+    line = xlim * value(trace, "slope") + value(trace,"intercept")
     ax[:plot](xlim, line, color="black", alpha=0.1)
     ax[:set_xlabel]("x")
     ax[:set_ylabel]("y")
@@ -192,8 +189,8 @@ function aide(params, exact_sampler)
 
         # regenerate from the variational approxiation (log_density)
         trace = DifferentiableTrace(Tape())
-        trace["slope"] = exact_slope
-        trace["intercept"] = exact_intercept
+        constrain!(trace, "slope", exact_slope)
+        constrain!(trace, "intercept", exact_intercept)
         approximation(trace, params[1], params[2], exp(params[3]), exp(params[4]))
         variational_log_weight = trace.log_weight
 
@@ -202,7 +199,7 @@ function aide(params, exact_sampler)
         # sample from the variational approximation
         trace = DifferentiableTrace(Tape())
         approximation(trace, params[1], params[2], exp(params[3]), exp(params[4]))
-        (variational_intercept, variational_slope) = (trace["intercept"], trace["slope"])
+        (variational_intercept, variational_slope) = (value(trace,"intercept"), value(trace,"slope"))
         variational_log_weight = trace.log_weight
         
         # regenerate from the exact posterior
@@ -250,8 +247,8 @@ function linreg_demo()
     render_dataset(xs, ys, ax, xlim, ylim)
     plt[:subplot](1, 2, 2)
     ax = plt[:gca]()
-    slopes = map((t) -> t["slope"], traces)
-    intercepts = map((t) -> t["intercept"], traces)
+    slopes = map((t) -> value(t, "slope"), traces)
+    intercepts = map((t) -> value(t, "intercept"), traces)
     ax[:set_xlim]([-3, 3])
     ax[:set_ylim]([-3, 3])
     plt[:scatter](slopes, intercepts, s=3, alpha=0.5, color="black")
@@ -266,8 +263,8 @@ function linreg_demo()
     for i=1:num_samples
         trace = Trace()
         (intercept, slope), _ = simulate(exact_sampler)
-        trace["slope"] = slope
-        trace["intercept"] = intercept
+        constrain!(trace, "slope", slope)
+        constrain!(trace, "intercept", intercept)
         push!(traces, trace)
     end
     plt[:figure](figsize=(6,3))
@@ -279,8 +276,8 @@ function linreg_demo()
     render_dataset(xs, ys, ax, xlim, ylim)
     plt[:subplot](1, 2, 2)
     ax = plt[:gca]()
-    slopes = map((t) -> t["slope"], traces)
-    intercepts = map((t) -> t["intercept"], traces)
+    slopes = map((t) -> value(t, "slope"), traces)
+    intercepts = map((t) -> value(t, "intercept"), traces)
     ax[:set_xlim]([-3, 3])
     ax[:set_ylim]([-3, 3])
     plt[:scatter](slopes, intercepts, s=3, alpha=0.5, color="black")
@@ -328,8 +325,8 @@ function linreg_demo()
 
         plt[:subplot](1, 5, 2)
         ax = plt[:gca]()
-        slopes = map((t) -> t["slope"], traces)
-        intercepts = map((t) -> t["intercept"], traces)
+        slopes = map((t) -> value(t, "slope"), traces)
+        intercepts = map((t) -> value(t, "intercept"), traces)
         ax[:set_xlim]([-3, 3])
         ax[:set_ylim]([-3, 3])
         plt[:scatter](slopes, intercepts, s=3, alpha=0.5, color="black")

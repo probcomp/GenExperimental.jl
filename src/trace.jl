@@ -1,93 +1,112 @@
 using Distributions
 using PyPlot
 
-type DifferentiableTrace # TODO hack b/c we have separate tapes
-    vals::Dict{String,Any}
-    outputs::Set{String}
+abstract AbstractTrace
+
+type DifferentiableTrace <: AbstractTrace
+    # TODO is a separate type really necessary?
+    # the reason we use a separate type is because the initial log weeight is a 0.0 GenNum
+    # which needs to have the right tape associated with it
+    # TODO: should the tape and the trace be more tightly integrated?
+    constraints::Dict{String,Any}
+    interventions::Dict{String,Any}
+    proposals::Set{String}
+    recorded::Dict{String,Any}
     log_weight::GenNum # becomes type GenNum (which can be automatically converted from a Float64)
     function DifferentiableTrace(tape::Tape)
-        new(Dict{String,Any}(), Set{String}(), GenNum(0.0, tape))
+        constraints = Dict{String,Any}()
+        interventions = Dict{String,Any}()
+        proposals = Set{String}()
+        recorded = Dict{String,Any}()
+        new(constraints, interventions, proposals, recorded, GenNum(0.0, tape))
     end
 end
 
-type Trace 
-    vals::Dict{String,Any}
-    outputs::Set{String}
+type Trace <: AbstractTrace
+    constraints::Dict{String,Any}
+    interventions::Dict{String,Any}
+    proposals::Set{String}
+    recorded::Dict{String,Any}
     log_weight::Float64
     function Trace()
-        new(Dict{String,Any}(), Set{String}(), 0.0)
+        constraints = Dict{String,Any}()
+        interventions = Dict{String,Any}()
+        proposals = Set{String}()
+        recorded = Dict{String,Any}()
+        new(constraints, interventions, proposals, recorded, 0.0)
     end
 end
 
-# TODO implement these for DifferentiableTrace as well
-function Base.getindex(trace::Trace, name::String) 
-    trace.vals[name]
-end
-
-function Base.setindex!(trace::Trace, val::Any, name::String)
-    trace.vals[name] = val
-end
-
-Base.keys(trace::Trace) = keys(trace.vals)
-
-function score(trace::Trace)
-    return trace.log_weight
-end
-
-function fail(T::Trace)
-    T.log_weight = -Inf
-end
-
-# TODO duplicated code
-function Base.getindex(trace::DifferentiableTrace, name::String) 
-    trace.vals[name]
-end
-
-function Base.setindex!(trace::DifferentiableTrace, val::Any, name::String)
-    trace.vals[name] = val
-end
-
-Base.keys(trace::DifferentiableTrace) = keys(trace.vals)
-
-function score(trace::DifferentiableTrace)
-    return trace.log_weight
-end
-
-function fail(T::DifferentiableTrace)
-    T.log_weight = -Inf
-end
-
-
-
-macro ~(expr, name)
-    # TODO: how to do this in a more hygenic way?
-    if expr.head != :call
-        error("invalid use of ~: expr.head != :call")
+function check_exists(trace::AbstractTrace, name::String)
+    if haskey(trace.constraints, name)
+        error("$name is already marked as a constraint")
     end
+    if haskey(trace.interventions, name)
+        error("$name is already marked as an intervention")
+    end
+    if name in trace.proposals
+        error("$name is already marked as a proposal")
+    end
+    if haskey(trace.recorded, name)
+        error("$name was already recorded")
+    end
+end
+
+function constrain!(trace::AbstractTrace, name::String, val::Any)
+    check_exists(trace, name)
+    trace.constraints[name] = val
+end
+
+#function unconstrain(trace::AbstractTrace, name::String)
+    #check_exists(trace, name)
+    #delete!(trace.constraints, name)
+#end
+
+function intervene!(trace::AbstractTrace, name::String, val::Any)
+    check_exists(trace, name)
+    trace.interventions[name] = val
+end
+
+function propose!(trace::AbstractTrace, name::String)
+    check_exists(trace, name)
+    push!(trace.proposals, name)
+end
+
+function value(trace::AbstractTrace, name::String)
+    if haskey(trace.constraints, name)
+        return trace.constraints[name]
+    elseif haskey(trace.interventions, name)
+        return trace.interventions[name]
+    elseif haskey(trace.recorded, name)
+        return trace.recorded[name]
+    else
+        error("trace does not contain a value for $name")
+    end
+end
+
+function expand_module(expr, name)
     proc = expr.args[1]
     args = map((a) -> esc(a), expr.args[2:end])
-    if !haskey(modules, proc)
-        error("unknown probabilistic module:", proc)
-    end
+   
+    # the expression is a module call, it can be intervened, constrained,
+    # and proposed, and it will be recorded
+
     simulator, regenerator = modules[proc]
     return quote
         local name = $(esc(name))
         local val
-        if haskey($(esc(:T)).vals, name) # T is a reserved symbol for 'trace'
-            if name in $(esc(:T)).outputs
-                error("$name in both outputs and vals of trace")
-            end
-            val = $(esc(:T)).vals[name]
+        if haskey($(esc(:T)).interventions, name)
+            val = $(esc(:T)).interventions[name]
+        elseif haskey($(esc(:T)).constraints, name)
+            val = $(esc(:T)).constraints[name]
             $(esc(:T)).log_weight += $(Expr(:call, regenerator, :val, args...))
         else
+            if haskey($(esc(:T)).recorded, name)
+                error("$name already recorded")
+            end
             val, log_weight = $(Expr(:call, simulator, args...))
-            $(esc(:T)).vals[name] = val
-            if name in $(esc(:T)).outputs
-                # NOTE: if there are any outputs there should be no constraints
-                # the two may be compatible if we use a minus log weight for outputs
-                # but we are not doing that now. we should check somewhere that
-                # T.vals and T.outputs do not both contains values initially.
-                # TODO check
+            $(esc(:T)).recorded[name] = val
+            if name in $(esc(:T)).proposals
                 $(esc(:T)).log_weight += log_weight 
             end
         end
@@ -95,18 +114,44 @@ macro ~(expr, name)
     end
 end
 
-macro constrain(name, val)
-    # TODO: how to do this in a more hygenic way?
+function expand_non_module(expr, name)
+    # the expression is not a module call
+    # it can only be intervened and recorded, not constrained or proposed
     return quote
         local name = $(esc(name))
-        $(esc(:T)).vals[name] = $(esc(val))
+        local val
+        if haskey($(esc(:T)).interventions, name)
+            val = $(esc(:T)).interventions[name]
+        elseif haskey($(esc(:T)).constraints, name)
+            error("$name cannot be constrained")
+        elseif name in $(esc(:T)).proposals
+            error("$name cannot be proposed")
+        elseif haskey($(esc(:T)).recorded, name)
+            error("$name already recorded")
+        else
+            # evaluate the LHS expression and record it
+            val = $(expr)
+            $(esc(:T)).recorded[name] = val
+        end
+        val
     end
 end
 
-macro unconstrain(name)
-    return quote
-        delete!($(esc(:T)).vals, $name)
+macro ~(expr, name)
+    # WARNING: T is a reserved symbol for 'trace'. It is an error if T occurs in the program.
+    # TODO: how to do this in a hygenic way?
+    is_module_call = (expr.head == :call) && 
+                length(expr.args) >= 1 && 
+                haskey(modules, expr.args[1])
+    if is_module_call
+        expand_module(expr, name)
+    else
+        expand_non_module(expr, name)
     end
+end
+
+function fail(trace::AbstractTrace)
+    trace.log_weight = -Inf
 end
 
 macro in(context, code)
@@ -140,16 +185,24 @@ macro constrain(mapping)
     to = mapping.args[2]
     from = mapping.args[3]
     return quote
-        $(esc(:T)).vals[$(esc(to))] = $(esc(:__T_SEND)).vals[$(esc(from))]
+        local val = get($(esc(:__T_SEND)), $(esc(from)))
+        # TODO check that the name was a 'propose' in the other trace
+        constrain($(esc(:T)), $(esc(to))) = val
     end
 end
-
 
 # exports
 export Trace
 export DifferentiableTrace
 export @~
+export constrain!
+# export unconstrain TODO?
+export intervene!
+# export unintervene # TODO?
+export propose!
+# export unpropose # TODO?
 export fail
-export @in
-export @constrain
-export @unconstrain
+export value 
+#export @in
+#export @constrain
+#export @unconstrain
