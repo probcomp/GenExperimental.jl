@@ -32,7 +32,7 @@ function linear_regression_variational_inference(xs::Array{Float64,1},
     # optimization parameters
     iters = 300
     num_samples = 1000
-    step_a = 1000.0
+    step_a = 2000.0
     step_b = 0.75
 
     # initial values for variational parameters

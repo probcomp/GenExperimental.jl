@@ -19,6 +19,7 @@ type Trace
     end
 end
 
+# TODO implement these for DifferentiableTrace as well
 function Base.getindex(trace::Trace, name::String) 
     trace.vals[name]
 end
@@ -29,10 +30,34 @@ end
 
 Base.keys(trace::Trace) = keys(trace.vals)
 
+function score(trace::Trace)
+    return trace.log_weight
+end
 
 function fail(T::Trace)
     T.log_weight = -Inf
 end
+
+# TODO duplicated code
+function Base.getindex(trace::DifferentiableTrace, name::String) 
+    trace.vals[name]
+end
+
+function Base.setindex!(trace::DifferentiableTrace, val::Any, name::String)
+    trace.vals[name] = val
+end
+
+Base.keys(trace::DifferentiableTrace) = keys(trace.vals)
+
+function score(trace::DifferentiableTrace)
+    return trace.log_weight
+end
+
+function fail(T::DifferentiableTrace)
+    T.log_weight = -Inf
+end
+
+
 
 macro ~(expr, name)
     # TODO: how to do this in a more hygenic way?
