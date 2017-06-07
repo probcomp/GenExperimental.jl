@@ -1,28 +1,68 @@
 using Distributions
 using PyPlot
+using DataStructures
 
-type Trace
+abstract AbstractTrace
+
+type Trace <: AbstractTrace
+    constraints::OrderedDict{String,Any}
+    interventions::OrderedDict{String,Any}
+    proposals::OrderedSet{String}
+    recorded::OrderedDict{String,Any}
+    log_weight::Float64
+    function Trace()
+        constraints = OrderedDict{String,Any}()
+        interventions = OrderedDict{String,Any}()
+        proposals = OrderedSet{String}()
+        recorded = OrderedDict{String,Any}()
+        new(constraints, interventions, proposals, recorded, 0.0)
+    end
+end
+
+type DifferentiableTrace <: AbstractTrace
     # TODO is a separate type really necessary?
     # the reason we use a separate type is because the initial log weeight is a 0.0 GenNum
     # which needs to have the right tape associated with it
     # TODO: should the tape and the trace be more tightly integrated?
-    constraints::Dict{String,Any}
-    interventions::Dict{String,Any}
-    proposals::Set{String}
-    recorded::Dict{String,Any}
+    constraints::OrderedDict{String,Any}
+    interventions::OrderedDict{String,Any}
+    proposals::OrderedSet{String}
+    recorded::OrderedDict{String,Any}
     log_weight::GenNum # becomes type GenNum (which can be automatically converted from a Float64)
     tape::Tape
-    function Trace()
+    function DifferentiableTrace()
         tape = Tape()
-        constraints = Dict{String,Any}()
-        interventions = Dict{String,Any}()
-        proposals = Set{String}()
-        recorded = Dict{String,Any}()
+        constraints = OrderedDict{String,Any}()
+        interventions = OrderedDict{String,Any}()
+        proposals = OrderedSet{String}()
+        recorded = OrderedDict{String,Any}()
         new(constraints, interventions, proposals, recorded, GenNum(0.0, tape), tape)
     end
 end
 
-function check_not_exists(trace::Trace, name::String)
+function Base.print(trace::AbstractTrace)
+    println("-- Constraints --")
+    for k in keys(trace.constraints)
+        v = trace.constraints[k]
+        println("$k => $v")
+    end
+    println("-- Interventions --")
+    for k in keys(trace.interventions)
+        v = trace.interventions[k]
+        println("$k => $v")
+    end
+    println("-- Proposals --")
+    for k in trace.proposals
+        println("$k")
+    end
+    println("-- Recorded --")
+    for k in keys(trace.recorded)
+        v = trace.recorded[k]
+        println("$k => $v")
+    end
+end
+
+function check_not_exists(trace::AbstractTrace, name::String)
     if haskey(trace.constraints, name)
         error("$name is already marked as a constraint")
     end
@@ -37,37 +77,54 @@ function check_not_exists(trace::Trace, name::String)
     end
 end
 
-function constrain!(trace::Trace, name::String, val::Any)
+function constrain!(trace::AbstractTrace, name::String, val::Any)
     check_not_exists(trace, name)
     trace.constraints[name] = val
 end
 
-#function unconstrain(trace::Trace, name::String)
+#function unconstrain(trace::AbstractTrace, name::String)
     #check_not_exists(trace, name)
     #delete!(trace.constraints, name)
 #end
 
-function intervene!(trace::Trace, name::String, val::Any)
+function intervene!(trace::AbstractTrace, name::String, val::Any)
     check_not_exists(trace, name)
     trace.interventions[name] = val
 end
 
-function parametrize!(trace::Trace, name::String, val::Float64)
+function parametrize!(trace::DifferentiableTrace, name::String, val::Float64)
     # just an intervene! that converts it to a GenNum first (with the right tape)
     check_not_exists(trace, name)
     trace.interventions[name] = GenNum(val, trace.tape)
 end
 
-function derivative(trace::Trace, name::String)
+function backprop(trace::DifferentiableTrace)
+    backprop(trace.log_weight)
+end
+
+function score(trace::AbstractTrace)
+    concrete(trace.log_weight)
+end
+
+function reset_score(trace::Trace)
+    trace.log_weight = 0.0
+end
+
+function reset_score(trace::DifferentiableTrace)
+    trace.tape = Tape()
+    trace.log_weight= GenNum(0.0, tape)
+end
+
+function d(trace::DifferentiableTrace, name::String)
     partial(value(trace, name))
 end
 
-function propose!(trace::Trace, name::String)
+function propose!(trace::AbstractTrace, name::String)
     check_not_exists(trace, name)
     push!(trace.proposals, name)
 end
 
-function Base.delete!(trace::Trace, name::String)
+function Base.delete!(trace::AbstractTrace, name::String)
     if haskey(trace.constraints, name)
         delete!(trace.constraints, name)
     end
@@ -82,7 +139,7 @@ function Base.delete!(trace::Trace, name::String)
     end
 end
 
-function hasvalue(trace::Trace, name::String)
+function hasvalue(trace::AbstractTrace, name::String)
     if haskey(trace.constraints, name)
         return true
     end
@@ -95,7 +152,7 @@ function hasvalue(trace::Trace, name::String)
     return false
 end
 
-function value(trace::Trace, name::String)
+function value(trace::AbstractTrace, name::String)
     if haskey(trace.constraints, name)
         return trace.constraints[name]
     elseif haskey(trace.interventions, name)
@@ -122,12 +179,10 @@ function expand_module(expr, name)
             val = $(esc(:T)).interventions[name]
         elseif haskey($(esc(:T)).constraints, name)
             val = $(esc(:T)).constraints[name]
-            $(esc(:T)).log_weight += $(Expr(:call, regenerator, :val, args...))
+            $(esc(:T)).log_weight += $(Expr(:call, esc(regenerator), :val, args...))
         else
-            if haskey($(esc(:T)).recorded, name)
-                error("$name already recorded")
-            end
-            val, log_weight = $(Expr(:call, simulator, args...))
+            val, log_weight = $(Expr(:call, esc(simulator), args...))
+            # NOTE: will overwrite the previous value if it was already recorded
             $(esc(:T)).recorded[name] = val
             if name in $(esc(:T)).proposals
                 $(esc(:T)).log_weight += log_weight 
@@ -149,8 +204,6 @@ function expand_non_module(expr, name)
             error("$name cannot be constrained")
         elseif name in $(esc(:T)).proposals
             error("$name cannot be proposed")
-        elseif haskey($(esc(:T)).recorded, name)
-            error("$name already recorded")
         else
             # evaluate the LHS expression and record it
             val = $(esc(expr))
@@ -180,7 +233,7 @@ end
     #end
 #end
 
-function fail(trace::Trace)
+function fail(trace::AbstractTrace)
     trace.log_weight = -Inf
 end
 
@@ -223,13 +276,14 @@ end
 
 # exports
 export Trace
+export DifferentiableTrace
 export @~
 #export @d
 export constrain!
 # export unconstrain TODO?
 export intervene!
 export parametrize!
-export derivative
+export d
 # export unintervene # TODO?
 export propose!
 # export unpropose # TODO?
@@ -239,3 +293,7 @@ export value
 #export @in
 #export @constrain
 #export @unconstrain
+
+export backprop
+export score
+export reset_score
