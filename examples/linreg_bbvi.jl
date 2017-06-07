@@ -15,12 +15,13 @@ end
 
 # a variational approxiation to the posterior,
 # written as a Gen probabilistic program
-function approximation{M,N,O,P}(T::DifferentiableTrace,
-                                slope_mu::M, intercept_mu::N, 
-                                slope_std::O, intercept_std::P)
-
-    slope = normal(slope_mu, slope_std) ~ "slope"
-    intercept = normal(intercept_mu, intercept_std) ~ "intercept"
+function approximation(T::Trace)
+    slope_mu = 0.0  ~ "slope_mu"
+    log_slope_std = 0.0 ~ "log_slope_std"
+    intercept_mu = 0.0 ~ "intercept_mu"
+    log_intercept_std = 0.0 ~ "log_intercept_std"
+    slope = normal(slope_mu, exp(log_slope_std)) ~ "slope"
+    intercept = normal(intercept_mu, exp(log_intercept_std)) ~ "intercept"
 end
 
 # procedure for optimizing the parameters of the variational approximation to
@@ -55,22 +56,16 @@ function linear_regression_variational_inference(xs::Array{Float64,1},
 
         for sample=1:num_samples
 
-            # make the variational parameters GenNums, we can compute
-            # derivatives with respect to them
-            tape = Tape()
-            slope_mu_num = GenNum(slope_mu, tape)
-            intercept_mu_num = GenNum(intercept_mu, tape)
-            log_slope_std_num = GenNum(log_slope_std, tape)
-            log_intercept_std_num = GenNum(log_intercept_std, tape)
-
             # run the approximate program, treating 'slope' and 'intercept' as
             # outputs
-            inference_trace = DifferentiableTrace(tape)
+            inference_trace = Trace()
+            parametrize!(inference_trace, "slope_mu", slope_mu)
+            parametrize!(inference_trace, "intercept_mu", intercept_mu)
+            parametrize!(inference_trace, "log_slope_std", log_slope_std)
+            parametrize!(inference_trace, "log_intercept_std", log_intercept_std)
             propose!(inference_trace, "slope")
             propose!(inference_trace, "intercept")
-            approximation(inference_trace, 
-                          slope_mu_num, intercept_mu_num,
-                          exp(log_slope_std_num), exp(log_intercept_std_num))
+            approximation(inference_trace)
 
             # add constraints to model trace so the model score can be computed
             # (using experimental syntactic sugars)
@@ -87,13 +82,13 @@ function linear_regression_variational_inference(xs::Array{Float64,1},
             # differentiate the inference score with respect to the variational
             # parameters
             backprop(inference_trace.log_weight)
-            gradient = [partial(slope_mu_num),
-                        partial(intercept_mu_num),
-                        partial(log_slope_std_num),
-                        partial(log_intercept_std_num)]
+            gradient = [derivative(inference_trace, "slope_mu"),
+                        derivative(inference_trace, "intercept_mu"),
+                        derivative(inference_trace, "log_slope_std"),
+                        derivative(inference_trace, "log_intercept_std")]
 
             # estimate ELBO objective function and gradient
-            diff = model_trace.log_weight - concrete(inference_trace.log_weight)
+            diff = concrete(model_trace.log_weight) - concrete(inference_trace.log_weight)
             elbo_estimates[sample] = diff
             gradient_estimates[sample,:] = diff * gradient
         end
@@ -188,17 +183,25 @@ function aide(params, exact_sampler)
         (exact_intercept, exact_slope), exact_log_weight = simulate(exact_sampler)
 
         # regenerate from the variational approxiation (log_density)
-        trace = DifferentiableTrace(Tape())
+        trace = Trace()
+        intervene!(trace, "slope_mu", params[1])
+        intervene!(trace, "intercept_mu", params[2])
+        intervene!(trace, "log_slope_std", params[3])
+        intervene!(trace, "log_intercept_std", params[4])
         constrain!(trace, "slope", exact_slope)
         constrain!(trace, "intercept", exact_intercept)
-        approximation(trace, params[1], params[2], exp(params[3]), exp(params[4]))
+        approximation(trace)
         variational_log_weight = trace.log_weight
 
         exact_to_variational_log_weight = exact_log_weight - variational_log_weight
 
         # sample from the variational approximation
-        trace = DifferentiableTrace(Tape())
-        approximation(trace, params[1], params[2], exp(params[3]), exp(params[4]))
+        trace = Trace()
+        intervene!(trace, "slope_mu", params[1])
+        intervene!(trace, "intercept_mu", params[2])
+        intervene!(trace, "log_slope_std", params[3])
+        intervene!(trace, "log_intercept_std", params[4])
+        approximation(trace)
         (variational_intercept, variational_slope) = (value(trace,"intercept"), value(trace,"slope"))
         variational_log_weight = trace.log_weight
         
@@ -308,8 +311,12 @@ function linreg_demo()
         println(elbo_trace[end])
         traces = []
         for i=1:num_samples
-            trace = DifferentiableTrace(Tape())
-            approximation(trace, params[1], params[2], exp(params[3]), exp(params[4]))
+            trace = Trace()
+            intervene!(trace, "slope_mu", GenNum(params[1], trace.tape))
+            intervene!(trace, "intercept_mu", GenNum(params[2], trace.tape))
+            intervene!(trace, "log_slope_std", GenNum(params[3], trace.tape))
+            intervene!(trace, "log_intercept_std", GenNum(params[4], trace.tape))
+            approximation(trace)
             push!(traces, trace)
         end
         plt[:figure](figsize=(15,3))

@@ -1,9 +1,7 @@
 using Distributions
 using PyPlot
 
-abstract AbstractTrace
-
-type DifferentiableTrace <: AbstractTrace
+type Trace
     # TODO is a separate type really necessary?
     # the reason we use a separate type is because the initial log weeight is a 0.0 GenNum
     # which needs to have the right tape associated with it
@@ -13,31 +11,18 @@ type DifferentiableTrace <: AbstractTrace
     proposals::Set{String}
     recorded::Dict{String,Any}
     log_weight::GenNum # becomes type GenNum (which can be automatically converted from a Float64)
-    function DifferentiableTrace(tape::Tape)
-        constraints = Dict{String,Any}()
-        interventions = Dict{String,Any}()
-        proposals = Set{String}()
-        recorded = Dict{String,Any}()
-        new(constraints, interventions, proposals, recorded, GenNum(0.0, tape))
-    end
-end
-
-type Trace <: AbstractTrace
-    constraints::Dict{String,Any}
-    interventions::Dict{String,Any}
-    proposals::Set{String}
-    recorded::Dict{String,Any}
-    log_weight::Float64
+    tape::Tape
     function Trace()
+        tape = Tape()
         constraints = Dict{String,Any}()
         interventions = Dict{String,Any}()
         proposals = Set{String}()
         recorded = Dict{String,Any}()
-        new(constraints, interventions, proposals, recorded, 0.0)
+        new(constraints, interventions, proposals, recorded, GenNum(0.0, tape), tape)
     end
 end
 
-function check_not_exists(trace::AbstractTrace, name::String)
+function check_not_exists(trace::Trace, name::String)
     if haskey(trace.constraints, name)
         error("$name is already marked as a constraint")
     end
@@ -52,27 +37,37 @@ function check_not_exists(trace::AbstractTrace, name::String)
     end
 end
 
-function constrain!(trace::AbstractTrace, name::String, val::Any)
+function constrain!(trace::Trace, name::String, val::Any)
     check_not_exists(trace, name)
     trace.constraints[name] = val
 end
 
-#function unconstrain(trace::AbstractTrace, name::String)
+#function unconstrain(trace::Trace, name::String)
     #check_not_exists(trace, name)
     #delete!(trace.constraints, name)
 #end
 
-function intervene!(trace::AbstractTrace, name::String, val::Any)
+function intervene!(trace::Trace, name::String, val::Any)
     check_not_exists(trace, name)
     trace.interventions[name] = val
 end
 
-function propose!(trace::AbstractTrace, name::String)
+function parametrize!(trace::Trace, name::String, val::Float64)
+    # just an intervene! that converts it to a GenNum first (with the right tape)
+    check_not_exists(trace, name)
+    trace.interventions[name] = GenNum(val, trace.tape)
+end
+
+function derivative(trace::Trace, name::String)
+    partial(value(trace, name))
+end
+
+function propose!(trace::Trace, name::String)
     check_not_exists(trace, name)
     push!(trace.proposals, name)
 end
 
-function Base.delete!(trace::AbstractTrace, name::String)
+function Base.delete!(trace::Trace, name::String)
     if haskey(trace.constraints, name)
         delete!(trace.constraints, name)
     end
@@ -87,7 +82,7 @@ function Base.delete!(trace::AbstractTrace, name::String)
     end
 end
 
-function hasvalue(trace::AbstractTrace, name::String)
+function hasvalue(trace::Trace, name::String)
     if haskey(trace.constraints, name)
         return true
     end
@@ -100,7 +95,7 @@ function hasvalue(trace::AbstractTrace, name::String)
     return false
 end
 
-function value(trace::AbstractTrace, name::String)
+function value(trace::Trace, name::String)
     if haskey(trace.constraints, name)
         return trace.constraints[name]
     elseif haskey(trace.interventions, name)
@@ -179,7 +174,13 @@ macro ~(expr, name)
     end
 end
 
-function fail(trace::AbstractTrace)
+#macro d(expr)
+    #return quote
+        #GenNum($(expr), $(esc(:T)).tape)
+    #end
+#end
+
+function fail(trace::Trace)
     trace.log_weight = -Inf
 end
 
@@ -222,11 +223,13 @@ end
 
 # exports
 export Trace
-export DifferentiableTrace
 export @~
+#export @d
 export constrain!
 # export unconstrain TODO?
 export intervene!
+export parametrize!
+export derivative
 # export unintervene # TODO?
 export propose!
 # export unpropose # TODO?
