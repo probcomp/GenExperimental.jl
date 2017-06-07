@@ -5,16 +5,56 @@ using PyCall
 
 include("path_planner.jl")
 
-function agent_model(T::Trace, start::Point, planner_params::PlannerParams, 
-                     scene::Scene, speed::Float64, times::Array{Float64,1}, 
-                     measurement_noise::Float64)
-    
-    # sample goal uniformly from scene area
-    goal = Point(uniform(scene.xmin, scene.xmax) ~ "goal_x", 
-                 uniform(scene.xmin, scene.xmax) ~ "goal_y")
+function uniform_2d_simulate(xmin::Real, xmax::Real, ymin::Real, ymax::Real)
+    x, log_weight_x = uniform_simulate(xmin, xmax)
+    y, log_weight_y = uniform_simulate(ymin, ymax)
+    Point(x, y), log_weight_x + log_weight_y
+end
+function uniform_2d_regenerate(point::Point, xmin::Real, xmax::Real, ymin::Real, ymax::Real)
+    log_weight_x = uniform_regenerate(point.x, xmin, xmax)
+    log_weight_y = uniform_regenerate(point.y, ymin, ymax)
+    log_weight_x + log_weight_y
+end
+@register_module(:uniform_2d, uniform_2d_simulate, uniform_2d_regenerate)
 
-    # plan a path from start to goal
-    tree, path, optimized_path = plan_path(start, goal, scene, planner_params)
+function agent_model(T::Trace)
+
+    xmin = 0
+    xmax = 100
+    ymin = 0
+    ymax = 100
+    scene = Scene(xmin, xmax, ymin, ymax) ~ "scene"
+
+    # add trees
+    for i=1:(10 ~ "num_trees")
+        location = uniform_2d(xmin, xmax, ymin, ymax) ~ "tree-$i-location"
+        size = gamma(1.0, 1.0) ~ "tree-$i-size"
+        add!(scene, Tree(location, size))
+    end
+
+    # add walls
+    add!(scene, Wall(Point(20., 40.), 1, 40., 2.))
+    add!(scene, Wall(Point(60., 40.), 2, 40., 2.))
+    add!(scene, Wall(Point(60.-15., 80.), 1, 15. + 2., 2.))
+    add!(scene, Wall(Point(20., 80.), 1, 15., 2.))
+    # TODO: add if (door locked for the bottom wall)
+    add!(scene, Wall(Point(20., 40.), 2, 40., 2.))
+
+    # starting location of the drone
+    start = uniform_2d(xmin, xmax, ymin, ymax) ~ "start"
+
+    # destinatoin of the drone
+    destination = uniform_2d(xmin, xmax, ymin, ymax) ~ "destination"
+
+    speed = 10. ~ "speed"
+    times = collect(linspace(0.0, 10.0, 30)) ~ "times"
+
+    # plan a path from starting location to destination
+    planner_params = PlannerParams(2000, 3.0, 10000, 1.)
+    tree, path, optimized_path = plan_path(start, destination, scene,
+                                           planner_params)
+
+    measurement_noise = 8.0 ~ "measurement_noise"
 
     if isnull(optimized_path)
         # no path found
@@ -27,17 +67,11 @@ function agent_model(T::Trace, start::Point, planner_params::PlannerParams,
         measurements = Array{Point,1}(length(times))
         for (i, loc) in enumerate(locations)
             measurements[i] = Point(normal(loc.x, measurement_noise) ~ "x$i", 
-                                    normal(loc.y, measurement_noise) ~ "y$i") 
+                                    normal(loc.y, measurement_noise) ~ "y$i")
         end
     end
 
     # record for visualization purposes
-    start ~ "start"
-    scene ~ "scene"
-    speed ~ "speed"
-    times ~ "times"
-    measurement_noise ~ "measurement_noise"
-
     tree ~ "tree"
     path ~ "path"
     optimized_path ~ "optimized_path"
@@ -45,237 +79,76 @@ function agent_model(T::Trace, start::Point, planner_params::PlannerParams,
     return nothing
 end
 
-# TODO write a better trace rendering
-function render_trace(trace::Trace)
-    ax = plt[:gca]()
-
-    scene = value(trace, "scene")
-    render(scene)
-
-    start = value(trace, "start")
-    ax[:scatter]([start.x], [start.y], color="blue", s=200)
-
-    if hasvalue(trace, "goal_x") && hasvalue(trace, "goal_y")
-        goal = Point(value(trace, "goal_x"), value(trace, "goal_y"))
-        ax[:scatter]([goal.x], [goal.y], color="red", s=200)
-    end
-
-    if hasvalue(trace, "tree")
-        tree = value(trace, "tree")
-        render(tree, 1.0)
-    end
-
-    if hasvalue(trace, "path")
-        path = value(trace, "path")
-        optimized_path = value(trace, "optimized_path")
-        if !isnull(path)
-            render(get(path), "orange")
-            render(get(optimized_path), "purple")
-            locations = value(trace, "locations")
-            measurement_noise = value(trace, "measurement_noise")
-            for loc in locations
-                patch = patches.Circle((loc.x, loc.y),
-                                    radius=measurement_noise, facecolor="green",
-                                    edgecolor="green", alpha=0.2, clip_on=true, zorder=-1)
-                ax[:add_artist](patch)
-            end
-        end
-    end
-
-    times = value(trace, "times")
-    measured_xs = []
-    measured_ys = []
-    for i=1:length(times)
-        if hasvalue(trace, "x$i") && hasvalue(trace, "y$i")
-            push!(measured_xs, value(trace, "x$i"))
-            push!(measured_ys, value(trace, "y$i"))
-        end
-    end
-    plt[:scatter](measured_xs, measured_ys, color="orange", s=200)
+function add_scene_elements!(trace::Trace)
+    intervene!(trace, "num_trees", 3)
+    constrain!(trace, "tree-1-location", Point(30, 20))
+    constrain!(trace, "tree-2-location", Point(83, 80))
+    constrain!(trace, "tree-3-location", Point(80, 40))
+    constrain!(trace, "tree-1-size", 10.)
+    constrain!(trace, "tree-2-size", 10.)
+    constrain!(trace, "tree-3-size", 10.)
+    constrain!(trace, "start", Point(90., 10.))
 end
 
-function propose_independent_mh(start::Point, planner_params::PlannerParams,
-                 scene::Scene, speed::Float64, times::Array{Float64,1},
-                 measurement_noise::Float64,
-                 measured_xs::Array{Float64,1}, measured_ys::Array{Float64,1})
-    trace = Trace()
-    for (i, (xi, yi)) in enumerate(zip(measured_xs, measured_ys))
-        constrain!(trace, "x$i", xi)
-        constrain!(trace, "y$i", yi)
+function add_observations!(trace::Trace, measured_xs::Array{Float64,1}, measured_ys::Array{Float64,1}, tmax::Int)
+    for s=1:tmax
+        constrain!(trace, "x$s", measured_xs[s])
+        constrain!(trace, "y$s", measured_ys[s])
     end
-    agent_model(trace, start, planner_params, scene,
-                speed, times, measurement_noise)
-    return trace
 end
 
-function random_walk_proposal(T::Trace, goal::Point)
-    # TODO
-    goal_x = normal(goal.x, 5.0) ~ "goal_x"
-    goal_y = normal(goal.y, 5.0) ~ "goal_y"
-end
-
-function propose_random_walk_mh(start::Point, planner_params::PlannerParams,
-                 scene::Scene, speed::Float64, times::Array{Float64,1},
-                 measurement_noise::Float64,
-                 measured_xs::Array{Float64,1}, measured_ys::Array{Float64,1},
-                 goal::Point)
-
-    # evaluate the previous model score
-    model_trace = Trace()
-    for (i, (xi, yi)) in enumerate(zip(measured_xs, measured_ys))
-        constrain!(model_trace, "x$i", xi)
-        constrain!(model_trace, "y$i", yi)
-    end
-    constrain!(model_trace, "goal_x", goal.x)
-    constrain!(model_trace, "goal_y", goal.y)
-    tree, path, optimized_path, locations = agent_model(
-        model_trace, start, planner_params, scene,
-        speed, times, measurement_noise)
-    prev_model_score = model_trace.log_weight
-
-    # propose 
-    proposal_trace = Trace()
-    propose!(proposal_trace, "goal_x")
-    propose!(proposal_trace, "goal_y")
-    random_walk_proposal(proposal_trace, goal) # symmetric proposal
-
-    # evaluate the model score for the proposed goal
-    model_trace = Trace()
-    for (i, (xi, yi)) in enumerate(zip(measured_xs, measured_ys))
-        constrain!(model_trace,"x$i", xi)
-        constrain!(model_trace,"y$i", yi)
-    end
-    constrain!(model_trace, "goal_x", value(proposal_trace, "goal_x"))
-    constrain!(model_trace, "goal_y", value(proposal_trace, "goal_y"))
-    tree, path, optimized_path, locations = agent_model(
-        model_trace, start, planner_params, scene,
-        speed, times, measurement_noise)
-    goal = Point(value(model_trace, "goal_x"), value(model_trace, "goal_y"))
-    new_model_score = model_trace.log_weight
-
-    mh_ratio = new_model_score - prev_model_score
-    (mh_ratio, tree, path, optimized_path, locations, goal)
-end
-
-function model_demo()
-    # parameters that are fixed for now
-    speed = 10.
-    times = Float64[1, 2, 3, 4, 5]
-    measurement_noise = 1.0
-    planner_params = PlannerParams(2000, 3.0, 10000, 1.)
-    obstacles = []
-    push!(obstacles, Wall(Point(20., 40.), 1, 40., 2.))
-    push!(obstacles, Wall(Point(60., 40.), 2, 40., 2.))
-    push!(obstacles, Wall(Point(60.-15., 80.), 1, 15. + 2., 2.))
-    push!(obstacles, Wall(Point(20., 80.), 1, 15., 2.))
-    push!(obstacles, Wall(Point(20., 40.), 2, 40., 2.))
-    scene = Scene(0, 100, 0, 100, obstacles)
+function particle_cloud_demo(num_particles::Int, num_iter::Int)
 
     # first simulate some data from the model
-    trace = Trace()
-    start = Point(90., 10.)
-    agent_model(trace, start, planner_params, scene, speed, times, measurement_noise)
-    measured_xs = map((i) -> value(trace, "x$i"), 1:length(times))
-    measured_ys = map((i) -> value(trace, "y$i"), 1:length(times))
+    simulation_trace = Trace()
+    add_scene_elements!(simulation_trace)
+    intervene!(simulation_trace, "measurement_noise", 1.0)
+    agent_model(simulation_trace)
+    times = value(simulation_trace, "times")
+    measured_xs = map((i) -> value(simulation_trace, "x$i"), 1:length(times))
+    measured_ys = map((i) -> value(simulation_trace, "y$i"), 1:length(times))
 
-    # plot it
-    plt[:figure](figsize=(10, 10))
-    render_trace(trace)
-    plt[:tight_layout]()
-    plt[:savefig]("simulated_data.png")
+    include("matplotlib_rendering.jl")
+    rendering = PlotRendering()
 
-    # now, do inference
-    # TODO also do inference over the meauremtn noise
-    # TODO also do random walk over goal
-    measurement_noise = 8.0
+    # generate the particle clouds (use higher noise in algorithm)
+    for t=length(measured_xs):length(measured_xs)
+        println("time: $t")
+        particles = Trace[]
+        for i=1:num_particles
+            println("i = $i")
 
-    function label(x, y, text)
-        t = plt[:text](x, y-2, text, fontsize=30, horizontalalignment="center", verticalalignment="top", zorder=100)
-        t[:set_bbox](Dict([("facecolor", "white"), ("alpha",0.8), ("edgecolor", "None")]))
-    end
-    
-    function measurements_label()
-        label(90, 55, "observations")
-    end
+            # initialize
+            trace = Trace()
+            add_scene_elements!(trace)
+            add_observations!(trace, measured_xs, measured_ys, t)
+            intervene!(trace, "measurement_noise", 8.0)
+            agent_model(trace)
 
-    mh_animation_dir = "mh_animation/"
+            for iter=0:num_iter
+        
+                # propose
+                proposal_trace = Trace()
+                add_scene_elements!(proposal_trace)
+                add_observations!(proposal_trace, measured_xs, measured_ys, t)
+                intervene!(proposal_trace, "measurement_noise", 8.0)
+                agent_model(proposal_trace)
 
-    # render the prefix frames
-    trace = Trace()
-    for j=1:length(measured_xs)
-        constrain!(trace, "x$j", measured_xs[j])
-        constrain!(trace, "y$j", measured_ys[j])
-    end
-    agent_model(trace, start, planner_params, scene, speed, times, measurement_noise)
-
-    for i=0:length(measured_xs)
-        vis_trace = deepcopy(trace)
-        println("rendering start frame $i")
-        delete!(vis_trace, "goal_x")
-        delete!(vis_trace, "goal_y")
-        delete!(vis_trace, "tree")
-        delete!(vis_trace, "path")
-        delete!(vis_trace, "optimized_path")
-        for j=i+1:length(measured_xs)
-            delete!(vis_trace, "x$j")
-            delete!(vis_trace, "y$j")
+                if log(rand()) < score(proposal_trace) - score(trace)
+                    trace = proposal_trace
+                end
+            end
+            push!(particles, trace)
         end
-        fname = @sprintf("start_%03d.png", i)
+
+        # don't render the path, tree, or optimized path
         plt[:figure](figsize=(10, 10))
-        render_trace(vis_trace)
+        render_samples(rendering, particles)
         plt[:tight_layout]()
-        plt[:savefig](fname)
+        plt[:savefig]("mh_$(num_iter)_$t.png")
     end
-
-    # initialize
-    trace = propose_independent_mh(
-        start, planner_params, scene, speed, times, measurement_noise,
-        measured_xs, measured_ys)
-    for iter=0:100
-		println("MH iter: $iter")
-
-        proposed_trace = propose_independent_mh(
-            start, planner_params, scene, speed, times, measurement_noise,
-            measured_xs, measured_ys)
-
-		# render the original and proposed trace
-        plt[:figure](figsize=(20, 10))
-        plt[:subplot](1, 2, 1)
-        render_trace(trace)
-        plt[:subplot](1, 2, 2)
-        render_trace(proposed_trace)
-        plt[:tight_layout]()
-        fname = @sprintf("%s/frame_%03d.png", mh_animation_dir, iter * 2)
-        plt[:savefig](fname)
-
-		# MH accept / reject
-        if log(rand()) < proposed_trace.log_weight - trace.log_weight 
-            # accept
-            accepted = true
-			trace = proposed_trace
-        else
-            accepted = false
-        end
-
-		# add the accept / reject shading
-        shade_color = accepted ? "green" : "red"
-        plt[:subplot](1, 2, 2)
-		ax = plt[:gca]()
-		rect = plt[:Rectangle]((0.0, 0.0), 1.0, 1.0, fill=true, alpha=0.3, facecolor=shade_color)
-		rect[:set_transform](ax[:transAxes])
-		ax[:add_patch](rect)
-        fname = @sprintf("%s/frame_%03d.png", mh_animation_dir, iter * 2 + 1)
-        plt[:savefig](fname)
-
-    end
-
 end
-srand(2)
-model_demo()
 
+srand(1)
+particle_cloud_demo(20, 100)
 
-# TODO it should be possible to extract the value from the trace even if its not random
-# and/or a module. it is just not allowed to be *constrain*ed. it can, however, be named
-# a special subset of random choices that are not constrained, are called 'requested'
-# or 'outputs' and these do have to be modules. still not exactly clear on whether 'outputs' and
-# 'constraints' can coexist in a query
