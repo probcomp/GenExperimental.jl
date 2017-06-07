@@ -20,6 +20,10 @@ type RRTTree{C,U}
     end
 end
 
+function Base.show{C,U}(io::IO, tree::RRTTree{C,U})
+    write(io, "RRTTree with $(length(tree.nodes)) nodes")
+end
+
 function add_node!{C,U}(tree::RRTTree{C,U}, parent::RRTNode{C,U}, new_conf::C, control::U, cost_from_start::Float64)
     node = RRTNode(new_conf, Nullable{RRTNode{C,U}}(parent), Nullable{U}(control), cost_from_start)
     push!(tree.nodes, node)
@@ -83,12 +87,19 @@ end
 
 abstract Obstacle
 
-immutable Scene
+type Scene
     xmin::Float64
     xmax::Float64
     ymin::Float64
     ymax::Float64
     obstacles::Array{Obstacle,1}
+    function Scene(xmin::Real, xmax::Real, ymin::Real, ymax::Real)
+        new(xmin, xmax, ymin, ymax, [])
+    end
+end
+
+function add!(scene::Scene, object::Obstacle)
+    push!(scene.obstacles, object)
 end
 
 immutable Polygon <: Obstacle
@@ -223,8 +234,6 @@ function rrt_demo()
 end
 #rrt_demo()
 
-
-
 # other obstacle types
 immutable Wall <: Obstacle
     start::Point
@@ -254,7 +263,38 @@ function intersects_path(wall::Wall, path_start::Point, path_end::Point)
 end
 
 function render(wall::Wall)
+    # TODO should get defined by the renderer, not here
     render(wall.poly)
 end
+
+immutable Tree <: Obstacle
+    center::Point
+    size::Float64
+    poly::Polygon
+    function Tree(center::Point, size::Float64)
+        vertices = Array{Point,1}(4)
+        vertices[1] = Point(center.x - size/2, center.y - size/2)
+        vertices[2] = Point(center.x + size/2, center.y - size/2)
+        vertices[3] = Point(center.x + size/2, center.y + size/2)
+        vertices[4] = Point(center.x - size/2, center.y + size/2)
+        poly = Polygon(vertices)
+        new(center, size, poly)
+    end
+end
+
+function intersects_path(tree::Tree, path_start::Point, path_end::Point)
+    intersects_path(tree.poly, path_start, path_end)
+end
+
+function render(tree::Tree)
+    # TODO should get defined by the renderer, not here
+    render(tree.poly)
+end
+
+
+
+
+
+
 
 
