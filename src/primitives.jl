@@ -24,10 +24,10 @@ end
 #@register_module(:uniform, uniform_simulate, uniform_regenerate)
 
 # Uniform continuous
-function uniform_regenerate(x::Float64, lower::Float64, upper::Float64)
+function uniform_regenerate(x::Float64, lower::Real, upper::Real)
     x < lower || x > upper ? -Inf : -log(upper - lower)
 end
-function uniform_simulate(lower::Float64, upper::Float64)
+function uniform_simulate(lower::Real, upper::Real)
     x = rand() * (upper - lower) + lower
     x, uniform_regenerate(x, lower, upper)
 end
