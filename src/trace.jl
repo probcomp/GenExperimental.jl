@@ -73,7 +73,8 @@ function check_not_exists(trace::AbstractTrace, name::String)
         error("$name is already marked as a proposal")
     end
     if haskey(trace.recorded, name)
-        error("$name was already recorded")
+        # delete from the recording if we are doing something special with it
+        delete!(trace.recorded, name)
     end
 end
 
@@ -81,11 +82,6 @@ function constrain!(trace::AbstractTrace, name::String, val::Any)
     check_not_exists(trace, name)
     trace.constraints[name] = val
 end
-
-#function unconstrain(trace::AbstractTrace, name::String)
-    #check_not_exists(trace, name)
-    #delete!(trace.constraints, name)
-#end
 
 function intervene!(trace::AbstractTrace, name::String, val::Any)
     check_not_exists(trace, name)
@@ -97,6 +93,13 @@ function parametrize!(trace::DifferentiableTrace, name::String, val::Float64)
     check_not_exists(trace, name)
     trace.interventions[name] = GenNum(val, trace.tape)
 end
+
+function propose!(trace::AbstractTrace, name::String)
+    check_not_exists(trace, name)
+    push!(trace.proposals, name)
+end
+
+
 
 function backprop(trace::DifferentiableTrace)
     backprop(trace.log_weight)
@@ -117,11 +120,6 @@ end
 
 function d(trace::DifferentiableTrace, name::String)
     partial(value(trace, name))
-end
-
-function propose!(trace::AbstractTrace, name::String)
-    check_not_exists(trace, name)
-    push!(trace.proposals, name)
 end
 
 function Base.delete!(trace::AbstractTrace, name::String)
@@ -150,6 +148,10 @@ function hasvalue(trace::AbstractTrace, name::String)
         return true
     end
     return false
+end
+
+function hasconstraint(trace::AbstractTrace, name::String)
+    haskey(trace.constraints, name)
 end
 
 function value(trace::AbstractTrace, name::String)
@@ -297,3 +299,4 @@ export value
 export backprop
 export score
 export reset_score
+export hasconstraint
