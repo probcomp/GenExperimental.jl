@@ -15,7 +15,7 @@ end
 
 # a variational approxiation to the posterior,
 # written as a Gen probabilistic program
-function approximation(T::Trace)
+function approximation(T::AbstractTrace)
     slope_mu = 0.0  ~ "slope_mu"
     log_slope_std = 0.0 ~ "log_slope_std"
     intercept_mu = 0.0 ~ "intercept_mu"
@@ -58,7 +58,7 @@ function linear_regression_variational_inference(xs::Array{Float64,1},
 
             # run the approximate program, treating 'slope' and 'intercept' as
             # outputs
-            inference_trace = Trace()
+            inference_trace = DifferentiableTrace()
             parametrize!(inference_trace, "slope_mu", slope_mu)
             parametrize!(inference_trace, "intercept_mu", intercept_mu)
             parametrize!(inference_trace, "log_slope_std", log_slope_std)
@@ -81,14 +81,14 @@ function linear_regression_variational_inference(xs::Array{Float64,1},
 
             # differentiate the inference score with respect to the variational
             # parameters
-            backprop(inference_trace.log_weight)
+            backprop(inference_trace)
             gradient = [derivative(inference_trace, "slope_mu"),
                         derivative(inference_trace, "intercept_mu"),
                         derivative(inference_trace, "log_slope_std"),
                         derivative(inference_trace, "log_intercept_std")]
 
             # estimate ELBO objective function and gradient
-            diff = concrete(model_trace.log_weight) - concrete(inference_trace.log_weight)
+            diff = score(model_trace) - score(inference_trace)
             elbo_estimates[sample] = diff
             gradient_estimates[sample,:] = diff * gradient
         end
@@ -211,7 +211,7 @@ function aide(params, exact_sampler)
         variational_to_exact_log_weight = variational_log_weight - exact_log_weight
 
         # unbiased estimate of symmetrized KL divergence
-        estimates[i] = concrete(exact_to_variational_log_weight) + concrete(variational_to_exact_log_weight)
+        estimates[i] = exact_to_variational_log_weight + variational_to_exact_log_weight
     end
     mean(estimates)
 end
@@ -312,10 +312,10 @@ function linreg_demo()
         traces = []
         for i=1:num_samples
             trace = Trace()
-            intervene!(trace, "slope_mu", GenNum(params[1], trace.tape))
-            intervene!(trace, "intercept_mu", GenNum(params[2], trace.tape))
-            intervene!(trace, "log_slope_std", GenNum(params[3], trace.tape))
-            intervene!(trace, "log_intercept_std", GenNum(params[4], trace.tape))
+            intervene!(trace, "slope_mu", params[1])
+            intervene!(trace, "intercept_mu", params[2])
+            intervene!(trace, "log_slope_std", params[3])
+            intervene!(trace, "log_intercept_std", params[4])
             approximation(trace)
             push!(traces, trace)
         end
