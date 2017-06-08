@@ -13,17 +13,17 @@ using Base.Test
     
         # binary plus
         tape = Tape()
-        a = GenNum(a_val, tape)
-        b = GenNum(b_val, tape)
+        a = GenFloat(a_val, tape)
+        b = GenFloat(b_val, tape)
         c = a + b
         backprop(c)
         @test isapprox(partial(a), 1.0)
         @test isapprox(partial(b), 1.0)
         @test concrete(a) + concrete(b) == concrete(a + b)
-    
+
         # unary plus
         tape = Tape()
-        a = GenNum(a_val, tape)
+        a = GenFloat(a_val, tape)
         c = +a
         backprop(c)
         @test isapprox(partial(a), 1.0)
@@ -31,8 +31,8 @@ using Base.Test
     
         # binary minus
         tape = Tape()
-        a = GenNum(a_val, tape)
-        b = GenNum(b_val, tape)
+        a = GenFloat(a_val, tape)
+        b = GenFloat(b_val, tape)
         c = a - b
         backprop(c)
         @test isapprox(partial(a), 1.0)
@@ -41,7 +41,7 @@ using Base.Test
     
         # unary minus
         tape = Tape()
-        a = GenNum(a_val, tape)
+        a = GenFloat(a_val, tape)
         c = -a
         backprop(c)
         @test isapprox(partial(a), -1.0)
@@ -49,8 +49,8 @@ using Base.Test
 
         # times
         tape = Tape()
-        a = GenNum(a_val, tape)
-        b = GenNum(b_val, tape)
+        a = GenFloat(a_val, tape)
+        b = GenFloat(b_val, tape)
         c = a * b
         backprop(c)
         @test isapprox(partial(a), b_val)
@@ -59,8 +59,8 @@ using Base.Test
     
         # divide
         tape = Tape()
-        a = GenNum(a_val, tape)
-        b = GenNum(b_val, tape)
+        a = GenFloat(a_val, tape)
+        b = GenFloat(b_val, tape)
         c = a / b
         backprop(c)
         @test isapprox(partial(a), 1.0 / b_val)
@@ -69,7 +69,7 @@ using Base.Test
     
         # log 
         tape = Tape()
-        a = GenNum(a_val, tape)
+        a = GenFloat(a_val, tape)
         c = log(a)
         backprop(c)
         @test isapprox(partial(a), 1.0 / a_val)
@@ -77,7 +77,7 @@ using Base.Test
     
         # exp 
         tape = Tape()
-        a = GenNum(a_val, tape)
+        a = GenFloat(a_val, tape)
         c = exp(a)
         backprop(c)
         @test isapprox(partial(a), exp(a_val))
@@ -85,7 +85,7 @@ using Base.Test
 
         # exp 
         tape = Tape()
-        a = GenNum(a_val, tape)
+        a = GenFloat(a_val, tape)
         c = lgamma(a)
         backprop(c)
         @test isapprox(partial(a), digamma(a_val))
@@ -100,9 +100,9 @@ using Base.Test
 
         # w = x + y + z
         tape = Tape()
-        x = GenNum(x_val, tape)
-        y = GenNum(y_val, tape)
-        z = GenNum(z_val, tape)
+        x = GenFloat(x_val, tape)
+        y = GenFloat(y_val, tape)
+        z = GenFloat(z_val, tape)
         w = x + y - z
         backprop(w)
         @test isapprox(partial(x), 1.0)
@@ -115,11 +115,63 @@ using Base.Test
         srand(1)
         sig = (x) -> Float64(1.0) / (Float64(1.0) + exp(-x))
         tape = Tape()
-        x = GenNum(rand(), tape)
+        x = GenFloat(rand(), tape)
         y = sig(x)
         backprop(y)
         @test isapprox(partial(x), concrete(y * (1.0 - y)))
         
+    end
+
+    @testset "operations involving matrices" begin
+
+        # getindex
+        tape = Tape()
+        a_val = rand(2, 3)
+        a = GenMatrix(a_val, tape)
+        b = a[1, 2]
+        backprop(b)
+        @test isapprox(partial(a), [0. 1. 0.; 0. 0. 0.])
+
+        # multiply and sum
+        tape = Tape()
+        a_val = rand(2, 3)
+        b_val = rand(3, 2)
+        a = GenMatrix(a_val, tape)
+        b = GenMatrix(b_val, tape)
+        c = sum(a * b)
+        backprop(c)
+        # a * b
+        # (a * b)[1,1] = a[1,1]*b[1,1] + a[1,2]*b[2,1] + a[1,3]*b[3,1]
+        # (a * b)[1,2] = a[1,1]*b[1,2] + a[1,2]*b[2,2] + a[1,3]*b[3,2]
+        # (a * b)[2,1] = a[2,1]*b[1,1] + a[2,2]*b[2,1] + a[2,3]*b[3,1]
+        # (a * b)[2,2] = a[2,1]*b[1,2] + a[2,2]*b[2,2] + a[2,3]*b[3,2]
+
+        # deriv a[1,1] = b[1,1] + b[1,2]
+        # deriv a[1,2] = b[2,1] + b[2,2]
+        # deriv a[1,3] = b[3,1] + b[3,2]
+        # deriv a[2,1] = b[1,1] + b[1,2]
+        # deriv a[2,2] = b[2,1] + b[2,2]
+        # deriv a[2,3] = b[3,1] + b[3,2]
+        row = sum(b_val, 2)'
+        @test isapprox(partial(a), vcat(row, row))
+        
+        # deriv b[1,1] = a[1,1] + a[2,1]
+        # deriv b[1,2] = a[1,1] + a[2,1]
+        # deriv b[2,1] = a[1,2] + a[2,2]
+        # deriv b[2,2] = a[1,2] + a[2,2]
+        # deriv b[3,1] = a[1,3] + a[2,3]
+        # deriv b[3,2] = a[1,3] + a[2,3]
+        col = sum(a_val, 1)'
+        @test isapprox(partial(b), hcat(col, col))
+
+        # elementwise op
+        tape = Tape()
+        a_val = rand(2, 3)
+        a = GenMatrix(a_val, tape)
+        b = exp(a)
+        backprop(sum(b))
+        @test isapprox(partial(a), exp(a_val))
+    
     end
 
 end
@@ -142,57 +194,6 @@ end
     s = 0.3
     @test isapprox(gamma_regenerate(x, k, s), logpdf(Gamma(k, s), x))
 
-end
-
-@testset "trace operator" begin
-
-    # test the getindex operator
-    trace = Trace()
-    trace.vals["a"] = 1.2
-    @test trace["a"] == 1.2
-
-    # test the setindex! operator
-    trace = Trace()
-    trace["a"] = 1.3
-    @test trace["a"] == 1.3
-end
-
-@testset "trace macros" begin
-    
-    # test that @constrain and @unconstrain work with @in
-    trace = Trace()
-    @in trace begin
-        @constrain "a" 1.0
-        @constrain "b" 2.0
-        @unconstrain "a"
-        @constrain "a" 1.5
-    end
-    @test trace.vals == Dict([("a", 1.5), ("b", 2.0)])
-
-    # test that code is evaluated in the right scope
-    trace = Trace()
-    i = 1
-    j = 2
-    v = 2.0
-    w = 3.0
-    @in trace begin
-        j = 3
-        w = 4.0
-        @constrain("$i", v)
-        @constrain("$j", w)
-    end
-    @test trace.vals == Dict([("1", 2.0), ("3", 4.0)])
-
-    # test copying from one trace to another
-    to_trace = Trace()
-    from_trace = Trace()
-    from_trace.vals["asdf"] = 1.1
-    @in to_trace <= from_trace begin
-        @constrain("a", 2.2)
-        @constrain("b" <= "asdf")
-    end
-    @test to_trace.vals == Dict([("a", 2.2), ("b", 1.1)])
-    
 end
 
 nothing

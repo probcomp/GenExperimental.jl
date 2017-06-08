@@ -20,15 +20,11 @@ type Trace <: AbstractTrace
 end
 
 type DifferentiableTrace <: AbstractTrace
-    # TODO is a separate type really necessary?
-    # the reason we use a separate type is because the initial log weeight is a 0.0 GenNum
-    # which needs to have the right tape associated with it
-    # TODO: should the tape and the trace be more tightly integrated?
     constraints::OrderedDict{String,Any}
     interventions::OrderedDict{String,Any}
     proposals::OrderedSet{String}
     recorded::OrderedDict{String,Any}
-    log_weight::GenNum # becomes type GenNum (which can be automatically converted from a Float64)
+    log_weight::GenFloat # becomes type GenFloat (which can be automatically converted from a Float64)
     tape::Tape
     function DifferentiableTrace()
         tape = Tape()
@@ -36,7 +32,7 @@ type DifferentiableTrace <: AbstractTrace
         interventions = OrderedDict{String,Any}()
         proposals = OrderedSet{String}()
         recorded = OrderedDict{String,Any}()
-        new(constraints, interventions, proposals, recorded, GenNum(0.0, tape), tape)
+        new(constraints, interventions, proposals, recorded, GenFloat(0.0, tape), tape)
     end
 end
 
@@ -89,17 +85,15 @@ function intervene!(trace::AbstractTrace, name::String, val::Any)
 end
 
 function parametrize!(trace::DifferentiableTrace, name::String, val::Float64)
-    # just an intervene! that converts it to a GenNum first (with the right tape)
+    # just an intervene! that converts it to a GenFloat first (with the right tape)
     check_not_exists(trace, name)
-    trace.interventions[name] = GenNum(val, trace.tape)
+    trace.interventions[name] = GenFloat(val, trace.tape)
 end
 
 function propose!(trace::AbstractTrace, name::String)
     check_not_exists(trace, name)
     push!(trace.proposals, name)
 end
-
-
 
 function backprop(trace::DifferentiableTrace)
     backprop(trace.log_weight)
@@ -115,10 +109,10 @@ end
 
 function reset_score(trace::DifferentiableTrace)
     trace.tape = Tape()
-    trace.log_weight= GenNum(0.0, tape)
+    trace.log_weight= GenFloat(0.0, tape)
 end
 
-function d(trace::DifferentiableTrace, name::String)
+function derivative(trace::DifferentiableTrace, name::String)
     partial(value(trace, name))
 end
 
@@ -229,12 +223,6 @@ macro ~(expr, name)
     end
 end
 
-#macro d(expr)
-    #return quote
-        #GenNum($(expr), $(esc(:T)).tape)
-    #end
-#end
-
 function fail(trace::AbstractTrace)
     trace.log_weight = -Inf
 end
@@ -279,23 +267,16 @@ end
 # exports
 export Trace
 export DifferentiableTrace
+export AbstractTrace
 export @~
-#export @d
 export constrain!
-# export unconstrain TODO?
 export intervene!
 export parametrize!
-export d
-# export unintervene # TODO?
+export derivative
 export propose!
-# export unpropose # TODO?
 export hasvalue
 export fail
 export value 
-#export @in
-#export @constrain
-#export @unconstrain
-
 export backprop
 export score
 export reset_score
