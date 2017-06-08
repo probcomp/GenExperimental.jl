@@ -1,6 +1,47 @@
 using PyPlot
+using PyCall
+@pyimport matplotlib.path as mplPath
+@pyimport matplotlib.patches as patches
 
 immutable PlotRendering
+end
+
+function render(rendering::PlotRendering, poly::Polygon)
+    points = map((p) -> Float64[p.x, p.y], poly.vertices)
+    path = mplPath.Path(points)
+    ax = plt[:gca]()
+    patch = patches.PathPatch(path, facecolor="black")
+    ax[:add_patch](patch)
+end
+
+function render(rendering::PlotRendering, scene::Scene)
+    for obstacle in scene.obstacles
+        render(rendering, obstacle)
+    end
+    ax = plt[:gca]()
+    ax[:set_xlim](scene.xmin, scene.xmax)
+    ax[:set_ylim](scene.ymin, scene.ymax)
+end
+
+function render(rendering::PlotRendering, tree::RRTTree{Point,Point}, alpha)
+    for node in tree.nodes
+        if !isnull(node.parent)
+            # it is not the root
+            x1 = get(node.parent).conf.x
+            y1 = get(node.parent).conf.y
+            x2 = node.conf.x
+            y2 = node.conf.y
+            plt[:plot]([x1, x2], [y1, y2], color="k", alpha=alpha)
+        end
+    end
+end
+
+function render(rendering::PlotRendering, wall::Wall)
+    render(rendering, wall.poly)
+end
+
+function render(rendering::PlotRendering, tree::Tree)
+    render(rendering, tree.poly)
 end
 
 function render(rendering::PlotRendering, trace::Trace)
@@ -9,7 +50,7 @@ function render(rendering::PlotRendering, trace::Trace)
 
     if hasvalue(trace, "scene")
         scene = value(trace, "scene")
-        render(scene)
+        render(rendering, scene)
     end
 
     if hasvalue(trace, "start")
@@ -24,20 +65,20 @@ function render(rendering::PlotRendering, trace::Trace)
 
     if hasvalue(trace, "tree")
         tree = value(trace, "tree")
-        render(tree, 1.0)
+        render(rendering, tree, 1.0)
     end
 
     if hasvalue(trace, "optimized_path")
         optimized_path = value(trace, "optimized_path")
         if !isnull(optimized_path)
-            render(get(optimized_path), "purple")
+            render(rendering, get(optimized_path), "purple")
         end
     end
 
     if hasvalue(trace, "path")
         path = value(trace, "path")
         if !isnull(path)
-            render(get(path), "orange")
+            render(rendering, get(path), "orange")
         end
     end
 

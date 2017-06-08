@@ -79,6 +79,8 @@ immutable Point
     y::Float64
 end
 
+array(point::Point) = [point.x, point.y]
+
 function dist(a::Point, b::Point)
     dx = a.x - b.x
     dy = a.y - b.y
@@ -143,17 +145,6 @@ function line_of_site(scene::Scene, a::Point, b::Point)
     return true
 end
 
-using PyCall
-@pyimport matplotlib.path as mplPath
-@pyimport matplotlib.patches as patches
-function render(poly::Polygon)
-    points = map((p) -> Float64[p.x, p.y], poly.vertices)
-    path = mplPath.Path(points)
-    ax = plt[:gca]()
-    patch = patches.PathPatch(path, facecolor="black")
-    ax[:add_patch](patch)
-end
-
 immutable HolonomicPointRRTScheme <: RRTScheme{Point,Point}
     scene::Scene
 end
@@ -193,42 +184,21 @@ function select_control(scheme::HolonomicPointRRTScheme,
     SelectControlResult(start_conf, new_conf, control, failed, cost)
 end
 
-using PyPlot
-function render(scene::Scene)
-    for obstacle in scene.obstacles
-        render(obstacle)
-    end
-    ax = plt[:gca]()
-    ax[:set_xlim](scene.xmin, scene.xmax)
-    ax[:set_ylim](scene.ymin, scene.ymax)
-end
-function render(tree::RRTTree{Point,Point}, alpha)
-    for node in tree.nodes
-        if !isnull(node.parent)
-            # it is not the root
-            x1 = get(node.parent).conf.x
-            y1 = get(node.parent).conf.y
-            x2 = node.conf.x
-            y2 = node.conf.y
-            plt[:plot]([x1, x2], [y1, y2], color="k", alpha=alpha)
-        end
-    end
-end
-
 function rrt_demo()
     # plot them
     obstacles = [Polygon([Point(30, 30), Point(80, 30), Point(80, 35), Point(30, 35)])] # one tree in the center of hte mpap
     scene = Scene(0, 100, 0, 100, obstacles)
     scheme = HolonomicPointRRTScheme(scene)
     plt[:figure](figsize=(30, 10))
+    rendering = PlotRendering()
     for (i, iters) in enumerate([100, 1000, 2000])
         println("iters: $iters")
         plt[:subplot](1, 3, i)
         println("rrt..")
         @time tree = rrt(scheme, Point(50, 50), iters, 1.)
         println("rendering..")
-        render(scene)
-        render(tree)
+        render(rendering, scene)
+        render(rendering, tree)
     end
     plt[:savefig]("rrt.png")
 end
@@ -240,9 +210,10 @@ immutable Wall <: Obstacle
     orientation::Int # x is 1, y is 2
     length::Float64
     thickness::Float64
+    height::Float64
     poly::Polygon
     function Wall(start::Point, orientation::Int, length::Float64,
-                  thickness::Float64)
+                  thickness::Float64, height::Float64)
         if orientation != 1 && orientation != 2
             error("orientation must be either 1 (x) or 2 (y)")
         end
@@ -254,7 +225,7 @@ immutable Wall <: Obstacle
         vertices[3] = Point(start.x + dx, start.y + dy)
         vertices[4] = Point(start.x, start.y + dy)
         poly = Polygon(vertices)
-        new(start, orientation, length, thickness, poly)
+        new(start, orientation, length, thickness, height, poly)
     end
 end
 
@@ -262,10 +233,6 @@ function intersects_path(wall::Wall, path_start::Point, path_end::Point)
     intersects_path(wall.poly, path_start, path_end)
 end
 
-function render(wall::Wall)
-    # TODO should get defined by the renderer, not here
-    render(wall.poly)
-end
 
 immutable Tree <: Obstacle
     center::Point
@@ -285,16 +252,3 @@ end
 function intersects_path(tree::Tree, path_start::Point, path_end::Point)
     intersects_path(tree.poly, path_start, path_end)
 end
-
-function render(tree::Tree)
-    # TODO should get defined by the renderer, not here
-    render(tree.poly)
-end
-
-
-
-
-
-
-
-

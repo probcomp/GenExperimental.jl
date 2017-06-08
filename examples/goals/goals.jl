@@ -28,17 +28,18 @@ function agent_model(T::Trace)
     # add trees
     for i=1:(10 ~ "num_trees")
         location = uniform_2d(xmin, xmax, ymin, ymax) ~ "tree-$i-location"
-        size = gamma(1.0, 1.0) ~ "tree-$i-size"
+        size = 10.
         add!(scene, Tree(location, size))
     end
 
     # add walls
-    add!(scene, Wall(Point(20., 40.), 1, 40., 2.))
-    add!(scene, Wall(Point(60., 40.), 2, 40., 2.))
-    add!(scene, Wall(Point(60.-15., 80.), 1, 15. + 2., 2.))
-    add!(scene, Wall(Point(20., 80.), 1, 15., 2.))
+    wall_height = 10.
+    add!(scene, Wall(Point(20., 40.), 1, 40., 2., wall_height))
+    add!(scene, Wall(Point(60., 40.), 2, 40., 2., wall_height))
+    add!(scene, Wall(Point(60.-15., 80.), 1, 15. + 2., 2., wall_height))
+    add!(scene, Wall(Point(20., 80.), 1, 15., 2., wall_height))
     # TODO: add if (door locked for the bottom wall)
-    add!(scene, Wall(Point(20., 40.), 2, 40., 2.))
+    add!(scene, Wall(Point(20., 40.), 2, 40., 2., wall_height))
 
     # starting location of the drone
     start = uniform_2d(xmin, xmax, ymin, ymax) ~ "start"
@@ -108,11 +109,8 @@ function particle_cloud_demo(num_particles::Int, num_iter::Int)
     measured_xs = map((i) -> value(simulation_trace, "x$i"), 1:length(times))
     measured_ys = map((i) -> value(simulation_trace, "y$i"), 1:length(times))
 
-    include("matplotlib_rendering.jl")
-    rendering = PlotRendering()
-
     # generate the particle clouds (use higher noise in algorithm)
-    for t=length(measured_xs):length(measured_xs)
+    for t=1:length(measured_xs)
         println("time: $t")
         particles = Trace[]
         for i=1:num_particles
@@ -122,7 +120,6 @@ function particle_cloud_demo(num_particles::Int, num_iter::Int)
             trace = Trace()
             add_scene_elements!(trace)
             add_observations!(trace, measured_xs, measured_ys, t)
-            intervene!(trace, "measurement_noise", 8.0)
             agent_model(trace)
 
             for iter=0:num_iter
@@ -131,7 +128,6 @@ function particle_cloud_demo(num_particles::Int, num_iter::Int)
                 proposal_trace = Trace()
                 add_scene_elements!(proposal_trace)
                 add_observations!(proposal_trace, measured_xs, measured_ys, t)
-                intervene!(proposal_trace, "measurement_noise", 8.0)
                 agent_model(proposal_trace)
 
                 if log(rand()) < score(proposal_trace) - score(trace)
@@ -141,14 +137,17 @@ function particle_cloud_demo(num_particles::Int, num_iter::Int)
             push!(particles, trace)
         end
 
-        # don't render the path, tree, or optimized path
-        plt[:figure](figsize=(10, 10))
+        # typically, we open a rendering object, and then render (parts of) many
+        # traces over it before finalizing the rendering to the image (compositing)
+        #include("matplotlib_rendering.jl")
+        #rendering = PlotRendering()
+        include("povray_rendering.jl")
+        rendering = PovrayRendering([50., 50., 150.], [50., 50., 0.], [50., 50., 150.])
+        rendering.quality = 10
         render_samples(rendering, particles)
-        plt[:tight_layout]()
-        plt[:savefig]("mh_$(num_iter)_$t.png")
+        finish(rendering, "particle_cloud/mh_$(num_iter)_$t.png")
     end
 end
 
 srand(1)
-particle_cloud_demo(20, 100)
-
+particle_cloud_demo(10, 10)
