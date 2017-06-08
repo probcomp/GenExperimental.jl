@@ -3,7 +3,7 @@ using PyPlot
 
 srand(1)
 
-function logistic_regression(T::Trace, features::Array{Float64,1})
+function logistic_regression(T::AbstractTrace, features::Array{Float64,1})
     score = (0.0 ~ "bias")
     for i=1:length(features)
         score += features[i] * (0.0 ~ "w$i")
@@ -42,7 +42,7 @@ function render_logistic_regression(features, outputs, bias, weights, fname)
     plt[:savefig](fname)
 end
 
-function mlp(T::Trace, features::Array{Float64,1}, num_hidden::Int)
+function mlp(T::AbstractTrace, features::Array{Float64,1}, num_hidden::Int)
     score = (0.0 ~ "bias")
     for hidden=1:num_hidden
         loading = (0.0 ~ "bias-$hidden")
@@ -52,6 +52,18 @@ function mlp(T::Trace, features::Array{Float64,1}, num_hidden::Int)
         activation = 1.0 / (1.0 + exp(-loading))
         score += activation * (0.0 ~ "weight-$hidden")
     end
+    output = flip(1.0 / (1.0 + exp(-score))) ~ "output"
+end
+
+function neural_network(T::AbstractTrace, features::Array{Float64,1}, num_hidden::Int)
+    hidden_b = zeros(num_hidden) ~ "hidden-biases"
+    hidden_W = zeros(num_hidden, length(features)) ~ "hidden-weights"
+    output_b = 0.0 ~ "output-bias"
+    output_W = zeros(num_hidden) ~ "output-weights"
+    X = reshape(features, length(features), 1)
+    loadings = hidden_b + hidden_W * X
+    activations = 1.0 ./ (1.0 + exp(-loadings))
+    score = sum(output_b + output_W' * activations)
     output = flip(1.0 / (1.0 + exp(-score))) ~ "output"
 end
 
@@ -136,7 +148,7 @@ for iter=1:1
     grad_bias = 0.0
     grad_weights = zeros(num_features)
     for i=1:num_train
-        trace = Trace()
+        trace = DifferentiableTrace()
         parametrize!(trace, "bias", bias)
         for j=1:num_features
             parametrize!(trace, "w$j", weights[j])
@@ -145,53 +157,50 @@ for iter=1:1
         logistic_regression(trace, features[i])
         backprop(trace)
         log_probability += score(trace)
-        grad_bias += d(trace, "bias")
-        grad_weights += map((j) -> d(trace, "w$j"), 1:num_features)
+        grad_bias += derivative(trace, "bias")
+        grad_weights += map((j) -> derivative(trace, "w$j"), 1:num_features)
     end
     
     println("objective: $log_probability")
     bias += step_size * grad_bias
     weights += step_size * grad_weights
 
-    println(bias)
-    println(weights)
     render_logistic_regression(features, outputs, bias, weights, "logreg_$iter.png")
 end
 
 # training multi-layer perceptron
 num_hidden = 10
+
 hidden_biases = randn(num_hidden)
 hidden_weights = randn(num_hidden, num_features)
 output_bias = randn()
 output_weights = randn(num_hidden)
+
 step_size = 0.01
-for iter=1:1000
+max_iter = 10000
+for iter=1:max_iter
     log_probability = 0.0
+
     grad_hidden_biases = zeros(num_hidden)
     grad_hidden_weights = zeros(num_hidden, num_features)
     grad_output_bias = 0.0
     grad_output_weights = zeros(num_hidden)
+
     for i=1:num_train
-        trace = Trace()
-        parametrize!(trace, "bias", output_bias)
-        for hidden=1:num_hidden
-            parametrize!(trace, "weight-$hidden", output_weights[hidden])
-            parametrize!(trace, "bias-$hidden", hidden_biases[hidden])
-            for input=1:num_features
-                parametrize!(trace, "weight-$hidden-$input", hidden_weights[hidden, input])
-            end
-        end
+        trace = DifferentiableTrace()
+        parametrize!(trace, "output-bias", output_bias)
+        parametrize!(trace, "output-weights", output_weights)
+        parametrize!(trace, "hidden-biases", hidden_biases)
+        parametrize!(trace, "hidden-weights", hidden_weights)
         constrain!(trace, "output", outputs[i])
-        mlp(trace, features[i], num_hidden)
+        neural_network(trace, features[i], num_hidden)
         backprop(trace)
         log_probability += score(trace)
 
-        grad_hidden_biases += map((hidden) -> d(trace, "bias-$hidden"), 1:num_hidden)
-        for hidden=1:num_hidden
-            grad_hidden_weights[hidden,:] += map((input) -> d(trace, "weight-$hidden-$input"), 1:num_features)
-        end
-        grad_output_bias += d(trace, "bias")
-        grad_output_weights += map((hidden) -> d(trace, "weight-$hidden"), 1:num_hidden)
+        grad_hidden_biases += derivative(trace, "hidden-biases")
+        grad_hidden_weights += derivative(trace, "hidden-weights")
+        grad_output_bias += derivative(trace, "output-bias")
+        grad_output_weights += derivative(trace, "output-weights")
     end
     
     println("objective: $log_probability")
@@ -200,10 +209,12 @@ for iter=1:1000
     output_bias += step_size * grad_output_bias
     output_weights += step_size * grad_output_weights
 
-    render_mlp(features, outputs,
-               output_bias, output_weights, 
-               hidden_biases, hidden_weights, "mlp_$iter.png")
 end
+
+render_mlp(features, outputs,
+    output_bias, output_weights, 
+    hidden_biases, hidden_weights, "mlp_$(max_iter).png")
+
 
 
 

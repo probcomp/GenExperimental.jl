@@ -57,16 +57,6 @@ function check_tapes(a::Dual, b::Dual)
     end
 end
 
-# --------------------- shared ------------------- #
-
-
-# ----------------- matrix operators ------------- #
-
-
-
-# (and where each of these can be a Dual or concrete value)
-
-# input
 function GenFloat(datum::Float64, tape::Tape)
     GenFloat(datum, tape, Input())
 end
@@ -104,7 +94,7 @@ macro generate_ad_binary_operator(op, opType)
             end
 
             function ($op)(l::GenMatrix, r::Matrix{Float64})
-                rnum = GenMarix64(r, l.tape, Input())
+                rnum = GenMatrix(r, l.tape, Input())
                 GenMatrix($(op)(l.datum, r), l.tape, ($opType)(l, rnum))
             end
             function ($op)(l::Matrix{Float64}, r::GenMatrix)
@@ -160,6 +150,19 @@ function propagate(op::GetIndex, datum::Float64, adj::Float64)
     op.arg.adj[op.i1, op.i2] += adj
 end
 
+# transpose
+import Base.transpose
+immutable TransposeOp <: AbstractOperator
+    arg::GenMatrix
+end
+function transpose(arg::GenMatrix)
+    GenMatrix(arg.datum', arg.tape, TransposeOp(arg))
+end
+function propagate(op::TransposeOp, datum::Matrix{Float64}, adj::Matrix{Float64})
+    op.arg.adj += adj'
+end
+
+
 # sum
 import Base.sum
 immutable Sum <: AbstractOperator
@@ -187,6 +190,11 @@ function propagate{T<:GenFloat,U<:GenMatrix}(op::Plus{T,U}, datum::Matrix{Float6
     op.left.adj += sum(adj)
     op.right.adj += adj
 end
+function propagate{T<:GenMatrix,U<:GenMatrix}(op::Plus{T,U}, datum::Matrix{Float64}, adj::Matrix{Float64})
+    op.left.adj += adj
+    op.right.adj += adj
+end
+
 
 # +
 import Base.+
@@ -237,23 +245,8 @@ function propagate{T<:GenMatrix,U<:GenFloat}(op::Times{T,U}, datum::Matrix{Float
     op.right.adj += sum(adj .* op.left.datum)
 end
 function propagate{T<:GenMatrix,U<:GenMatrix}(op::Times{T,U}, datum::Matrix{Float64}, adj::Matrix{Float64})
-    # matrix * matrix 
-    # C = A * B
-    # (M x N) = (M x K) * (K x N)
-
-    # C[i, j] = A[i, 1] * B[1, j] + A[i, 2] * B[2, j] + ... + A[i, K] * B[K, j]
-    
-    # A[i, k] has children C[i, j] for all j
-    # adjA[i, k] = sum_j adj C[i, j] * B[k, j] = sum_j adjC[i, j] * B'[j, k]
-    # i.e. adjA = adjC * B'
-    # (M x K) = (M x N) * (N x K)
+    # matrix * matrix
     op.left.adj += adj * op.right.datum'
-
-    # B[k, j]  -- has as children C[i, j] for all i
-    # adj B[k, j] = sum_i adj C[i, j] * A[i, k] = sum_i AdjC[i, j] * A[i, k] = sum_i AdjC'[j, i] * A[i, k]
-    # = sum_i A'[k, i] * AdjC[i, j]
-    # i.e. adjB = A' * adjC
-    # (K x N) = (K x M) * (M x N)
     op.right.adj += op.left.datum' * adj
 end
 
@@ -268,6 +261,23 @@ function propagate{T<:GenMatrix,U<:GenFloat}(op::Divide{T,U}, datum::Matrix{Floa
     op.left.adj += adj / op.right.datum
     op.right.adj += sum(adj .* (-op.left.datum / (op.right.datum * op.right.datum)))
 end
+
+# ./
+import Base.(./)
+@generate_ad_binary_operator(./, ElementwiseDivide)
+function propagate{T<:GenFloat,U<:GenFloat}(op::ElementwiseDivide{T,U}, datum::Float64, adj::Float64)
+    op.left.adj += adj / op.right.datum
+    op.right.adj += adj * (-op.left.datum / (op.right.datum * op.right.datum))
+end
+function propagate{T<:GenFloat,U<:GenMatrix}(op::ElementwiseDivide{T,U}, datum::Matrix{Float64}, adj::Matrix{Float64})
+    op.left.adj += sum(adj ./ op.right.datum)
+    op.right.adj += adj .* (-op.left.datum ./ (op.right.datum .* op.right.datum))
+end
+function propagate{T<:GenMatrix,U<:GenMatrix}(op::ElementwiseDivide{T,U}, datum::Matrix{Float64}, adj::Matrix{Float64})
+    op.left.adj += adj ./ op.right.datum
+    op.right.adj += adj .* (-op.left.datum ./ (op.right.datum .* op.right.datum))
+end
+
 
 
 # log
@@ -311,4 +321,3 @@ export concrete
 export backprop
 export adj
 export partial
-
