@@ -27,14 +27,12 @@ function linreg_infer(num_samples::Int, xs::Array{Float64,1}, ys::Array{Float64,
     traces = Array{Trace,1}(num_samples)
     for sample=1:num_samples
         trace = Trace()
-        @in trace begin
-            for (i, y) in enumerate(ys)
-                @constrain("y$i", y)
-            end
+        for (i, y) in enumerate(ys)
+            constrain!(trace, "y$i", y)
         end
         linear_regression(trace, 0.0, 2.0, xs)
         traces[sample] = trace
-        log_weights[sample] = trace.log_weight
+        log_weights[sample] = score(trace)
     end
     weights = exp(log_weights - logsumexp(log_weights))
     chosen = rand(Distributions.Categorical(weights))
@@ -44,11 +42,11 @@ end
 function render_linreg_trace(trace::Trace, xs::Array{Float64,1})
     ax = plt[:gca]()
     n = length(xs)
-    ys = map((i) -> trace.vals["y$i"], 1:n)
-    outlier_statuses = map((i) -> trace.vals["o$i"], 1:n)
-    slope = trace.vals["slope"]
-    intercept = trace.vals["intercept"]
-    inlier_noise = trace.vals["inlier_noise"]
+    ys = map((i) -> value(trace,"y$i"), 1:n)
+    outlier_statuses = map((i) -> value(trace,"o$i"), 1:n)
+    slope = value(trace, "slope")
+    intercept = value(trace, "intercept")
+    inlier_noise = value(trace, "inlier_noise")
     xmin, xmax = minimum(xs), maximum(xs)
     xspan = xmax - xmin
     ymin, ymax = minimum(ys), maximum(ys)

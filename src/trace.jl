@@ -90,6 +90,20 @@ function parametrize!(trace::DifferentiableTrace, name::String, val::Float64)
     trace.interventions[name] = GenFloat(val, trace.tape)
 end
 
+function parametrize!(trace::DifferentiableTrace, name::String, val::Matrix{Float64})
+    check_not_exists(trace, name)
+    trace.interventions[name] = GenMatrix(val, trace.tape)
+end
+
+function parametrize!(trace::DifferentiableTrace, name::String, val::Array{Float64,1})
+    check_not_exists(trace, name)
+    # convert to a column vector
+    trace.interventions[name] = GenMatrix(reshape(val, length(val), 1), trace.tape)
+end
+
+
+
+
 function propose!(trace::AbstractTrace, name::String)
     check_not_exists(trace, name)
     push!(trace.proposals, name)
