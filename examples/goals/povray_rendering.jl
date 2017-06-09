@@ -206,7 +206,7 @@ end
 function add_start(trace::Trace, povray_scene::PovrayRendering)
     if hasvalue(trace, "start")
         start = value(trace, "start")
-        render_agent(povray_scene, start, [1, 0.5, 0.5])
+        render_agent(povray_scene, start, [0, 0, 1])
     end
 end
 
@@ -227,12 +227,15 @@ function add_optimized_path(trace::Trace, povray_scene::PovrayRendering)
 end
 
 function add_measurements(trace::Trace, povray_scene::PovrayRendering)
+    #println("add masurements")
     if hasvalue(trace, "times")
         times = value(trace, "times")
+        #println("times: $times")
         measured_xs = []
         measured_ys = []
         for i=1:length(times)
-            if hasconstraint(trace, "x$i") && hasconstraint(trace, "y$i")
+            if hasvalue(trace, "x$i") && hasvalue(trace, "y$i")
+            #if hasconstraint(trace, "x$i") && hasconstraint(trace, "y$i")
                 location = Point(value(trace, "x$i"), value(trace, "y$i"))
                 render_agent(povray_scene, location, [1, 0.5, 0.5])
             end

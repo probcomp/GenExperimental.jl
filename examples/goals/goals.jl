@@ -152,53 +152,61 @@ function neural_network(T::AbstractTrace, features::Array{Float64,1}, num_hidden
     hidden = sigmoid(W_hidden * features + b_hidden)
     #println("hidden: $(hidden.datum)")
     x_mu = (W_output_x_mu' * hidden + b_output_x_mu)[1]
-    #println("x_mu: $(concrete(x_mu))")
+    println("x_mu: $(concrete(x_mu))")
     x_std = exp(W_output_x_log_std' * hidden + b_output_x_log_std)[1]
-    #println("x_std: $(concrete(x_std))")
+    println("x_std: $(concrete(x_std))")
     output_x = normal(x_mu, x_std) ~ "output-x"
     #println("output-x: $(concrete(output_x))")
     y_mu = (W_output_y_mu' * hidden + b_output_y_mu)[1]
-    #println("y_mu: $(concrete(y_mu))")
+    println("y_mu: $(concrete(y_mu))")
     y_std = exp(W_output_y_log_std' * hidden + b_output_y_log_std)[1]
-    #println("y_std: $(concrete(y_std))")
+    println("y_std: $(concrete(y_std))")
     output_y = normal(y_mu, y_std) ~ "output-y"
     #println("output-y: $(concrete(output_y))")
 end
 
-function scale{T}(x::T)
+function scale_coordinate{T}(x::T)
     (x - 50.) / 100.
 end
 
-function train_neural_network(model_trace::Trace)
+function unscale_coordinate{T}(x::T)
+    x * 100. + 50.
+end
+
+type TrainingParams 
+    num_hidden::Int
+    step_a::Float64
+    step_b::Float64
+    minibatch_size::Int
+    max_iter::Int
+end
+
+function train_neural_network(model_trace::Trace, params::TrainingParams)
     # TODO intervene to set the 'times' to 1:15 steps
     # the input trace contains interventions and/or constraints
     times = value(model_trace, "times")
     num_features = length(times) * 2 + 2 # start.x and start.y
+    num_hidden = params.num_hidden
 
     # NOTE: the argument for why you need the causal model at all is something
     # like "we could make a special input to the network for every possible
     # random variable, but that does not scale..". or it could be that you need the causal model to train the net..
-    num_hidden = 20
-    step_a = 100000.0
-    step_b = 0.75
-    minibatch_size = 1000
-    max_iter = 1000
 
     # initialize parameters
     parameters = Dict()
-    parameters["W-hidden"] = randn(num_hidden, num_features)
-    parameters["b-hidden"] = randn(num_hidden)
-    parameters["W-output-x-mu"] = randn(num_hidden)
+    parameters["W-hidden"] = randn(num_hidden, num_features) / num_hidden
+    parameters["b-hidden"] = randn(num_hidden) / num_hidden
+    parameters["W-output-x-mu"] = randn(num_hidden) / num_hidden
     parameters["b-output-x-mu"] = randn()
-    parameters["W-output-x-log-std"] = randn(num_hidden)
+    parameters["W-output-x-log-std"] = randn(num_hidden) / num_hidden
     parameters["b-output-x-log-std"] = randn()
-    parameters["W-output-y-mu"] = randn(num_hidden)
+    parameters["W-output-y-mu"] = randn(num_hidden) / num_hidden
     parameters["b-output-y-mu"] = randn()
-    parameters["W-output-y-log-std"] = randn(num_hidden)
+    parameters["W-output-y-log-std"] = randn(num_hidden) / num_hidden
     parameters["b-output-y-log-std"] = randn()
     network_trace = DifferentiableTrace()
 
-    for iter=1:max_iter
+    for iter=1:params.max_iter
         println("iter: $iter")
 
         objective_function = 0.0
@@ -214,32 +222,28 @@ function train_neural_network(model_trace::Trace)
         gradients["W-output-y-log-std"] = zeros(num_hidden)
         gradients["b-output-y-log-std"] = 0.0
         num_samples = 0
-        for i=1:minibatch_size
-            #println("sample $i")
+        for i=1:params.minibatch_size
             # simulate new values for start, destination, and measurments
             agent_model(model_trace)
             path = value(model_trace, "path")
             if isnull(path)
-                #println("$i planning failed..")
                 continue
-            #else
-                #println("$i planning succeeded..")
             end
             start = value(model_trace, "start")
             destination = value(model_trace, "destination")
-            xs = map((i) -> value(model_trace, "x$i"), 1:length(times))
-            ys = map((i) -> value(model_trace, "y$i"), 1:length(times))
-            features = scale(vcat([start.x, start.y], xs, ys))
+            xs = map((j) -> value(model_trace, "x$j"), 1:length(times))
+            ys = map((j) -> value(model_trace, "y$j"), 1:length(times))
+            features = scale_coordinate(vcat([start.x, start.y], xs, ys))
+
             if hasvalue(network_trace, "output-x")
                 delete!(network_trace, "output-x")
             end
             if hasvalue(network_trace, "output-y")
                 delete!(network_trace, "output-y")
             end
-            constrain!(network_trace, "output-x", scale(destination.x))
-            constrain!(network_trace, "output-y", scale(destination.y))
-
-            #println("running neural network..")
+            println("ground truth: $destination")
+            constrain!(network_trace, "output-x", scale_coordinate(destination.x))
+            constrain!(network_trace, "output-y", scale_coordinate(destination.y))
             reset_score(network_trace)
             for key in keys(parameters)
                 if hasvalue(network_trace, key)
@@ -249,30 +253,62 @@ function train_neural_network(model_trace::Trace)
             end
             neural_network(network_trace, features, num_hidden)
 
-            #println("backpropagating...")
             backprop(network_trace)
             for key in keys(parameters)
-                d = derivative(network_trace, key)
-                #println("$key => $(any(isnan(d)))")
-                gradients[key] += d
+                gradients[key] += derivative(network_trace, key)
             end
-
-            #println(score(network_trace))
             objective_function += score(network_trace)
             num_samples += 1
+
+            delete!(network_trace, "output-x")
+            delete!(network_trace, "output-y")
+            neural_network(network_trace, features, num_hidden)
+            output_x = unscale_coordinate(value(network_trace, "output-x"))
+            output_y = unscale_coordinate(value(network_trace, "output-y"))
+            println("predicted: $(Point(output_x, output_y))")
+
         end
 
-        println("num_samples: $num_samples")
-        println("objective function: $(objective_function / num_samples )")
-        step_size = (step_a + iter) ^ (-step_b)
-        println("step_size: $step_size")
-        for key in keys(parameters)
-            gradient = gradients[key] / num_samples 
-            #println()
-            #println("$key: $gradient")
-            parameters[key] += step_size * gradient
+        #println("num_samples: $num_samples")
+        println("objective function: $(objective_function / num_samples)")
+        step_size = (params.step_a + iter) ^ (-params.step_b)
+        #println("step_size: $step_size")
+        if num_samples > 0
+            for key in keys(parameters)
+                gradient = gradients[key] / num_samples 
+                #println()
+                #println("$key")
+                #println(gradient)
+                parameters[key] += step_size * gradient
+            end
         end
     end
+
+    # run some fresh simulations on these parameters
+    println("---------- testing network on fresh simulations ----------")
+    new_network_trace = DifferentiableTrace()
+    for key in keys(parameters)
+        parametrize!(new_network_trace, key, parameters[key])
+    end
+    for i=1:100
+        agent_model(model_trace)
+        path = value(model_trace, "path")
+        if isnull(path)
+            continue
+        end
+        start = value(model_trace, "start")
+        times = value(model_trace, "times")
+        xs = map((j) -> value(model_trace, "x$j"), 1:length(times))
+        ys = map((j) -> value(model_trace, "y$j"), 1:length(times))
+        features = scale_coordinate(vcat([start.x, start.y], xs, ys))
+        neural_network(new_network_trace, features, params.num_hidden)
+        output_x = unscale_coordinate(value(new_network_trace, "output-x"))
+        output_y = unscale_coordinate(value(new_network_trace, "output-y"))
+        println(Point(output_x, output_y))
+
+    end
+
+    return parameters
 end
 
 # ---- neural network demo ---- #
@@ -280,6 +316,8 @@ end
 function neural_network_demo()
 
     trace = Trace()
+
+    intervene!(trace, "measurement_noise", 1.0)
 
     # add trees
     intervene!(trace, "is-tree-1", true)
@@ -319,9 +357,55 @@ function neural_network_demo()
     intervene!(trace, "times", collect(linspace(0., 8., 15)))
 
     # TODO modify the model to have some limited uncertainty over the scene (the bottom enclosure)
+    training_params = TrainingParams(10, 1000.0, 0.75, 1, 10000)#1000 # max iter
+    network_parameters = train_neural_network(trace, training_params)
 
-    # NOTE: the start position, destination, path, and measurements are all unconstrained
-    train_neural_network(trace)
+    # make predictions for several simulations and render them..
+    network_trace = DifferentiableTrace()
+    for key in keys(network_parameters)
+        println("setting parameter $key")
+        intervene!(network_trace, key, network_parameters[key])
+    end
+    
+    println("making predictions..")
+    camera_location = [50., -30., 120.]
+    camera_look_at = [50., 50., 0.]
+    light_location = [50., 50., 150.]
+    num_simulations = 16
+    num_predictions = 50
+    for i=1:num_simulations
+        println("simulation $i")
+        frame = PovrayRendering(camera_location, camera_look_at, light_location)
+        frame.quality = 10
+        frame.num_threads = 4
+        agent_model(trace)
+        if isnull(value(trace, "path"))
+            println("planning failed")
+        else
+            delete!(trace, "destination")
+            #delete!(trace, "optimized_path")
+            render_trace(frame, trace)
+            start = value(trace, "start")
+            times = value(trace, "times")
+            println("times: $times")
+            xs = map((i) -> value(trace, "x$i"), 1:length(times))
+            ys = map((i) -> value(trace, "y$i"), 1:length(times))
+            println("xs: $xs")
+            features = scale_coordinate(vcat([start.x, start.y], xs, ys))
+            for j=1:num_predictions
+                println("i: $i, j: $j")
+                neural_network(network_trace, features, training_params.num_hidden)
+                output_x = unscale_coordinate(value(network_trace, "output-x"))
+                output_y = unscale_coordinate(value(network_trace, "output-y"))
+                destination = Point(output_x, output_y)
+                println(destination)
+                render_destination(frame, destination)
+            end
+        end
+        finish(frame, "neural_net_predictions/$i.png")
+    end
+
+
 
 end
 
