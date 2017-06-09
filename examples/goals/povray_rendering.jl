@@ -234,7 +234,7 @@ function add_measurements(trace::Trace, povray_scene::PovrayRendering)
         for i=1:length(times)
             if hasconstraint(trace, "x$i") && hasconstraint(trace, "y$i")
                 location = Point(value(trace, "x$i"), value(trace, "y$i"))
-                render_agent(povray_scene, location, [1, 1, 1])
+                render_agent(povray_scene, location, [1, 0.5, 0.5])
             end
         end
     end
