@@ -146,17 +146,17 @@ function neural_network(T::AbstractTrace, features::Array{Float64,1}, num_hidden
     W_output_y_log_std =  zeros(num_hidden) ~ "W-output-y-log-std"
     b_output_y_log_std = 0.0 ~ "b-output-y-log-std"
     hidden = sigmoid(W_hidden * features + b_hidden)
-    output_x = normal(W_output_x_mu * hidden + b_output_x_mu, 
-                      exp(W_output_x_log_std * hidden + b_output_x_log_std)) ~ "output-x"
-    output_y = normal(W_output_y_mu * hidden + b_output_y_mu, 
-                      exp(W_output_y_log_std * hidden + b_output_y_log_std)) ~ "output-y"
+    output_x = normal((W_output_x_mu' * hidden + b_output_x_mu)[1],
+                      (exp(W_output_x_log_std' * hidden + b_output_x_log_std))[1]) ~ "output-x"
+    output_y = normal((W_output_y_mu' * hidden + b_output_y_mu)[1], 
+                      (exp(W_output_y_log_std' * hidden + b_output_y_log_std))[1]) ~ "output-y"
 end
 
 function train_neural_network(model_trace::Trace)
     # TODO intervene to set the 'times' to 1:15 steps
     # the input trace contains interventions and/or constraints
     times = value(model_trace, "times")
-    num_features = length(times) + 2 # start.x and start.y
+    num_features = length(times) * 2 + 2 # start.x and start.y
 
     # NOTE: the argument for why you need the causal model at all is something
     # like "we could make a special input to the network for every possible
@@ -197,9 +197,15 @@ function train_neural_network(model_trace::Trace)
         gradients["b-output-y-mu"] = 0.0
         gradients["W-output-y-log-std"] = zeros(num_hidden)
         gradients["b-output-y-log-std"] = 0.0
+        num_samples = 0
         for i=1:minibatch_size
             # simulate new values for start, destination, and measurments
             agent_model(model_trace)
+            path = value(model_trace, "path")
+            if isnull(path)
+                println("$i planning failed..")
+                continue
+            end
             start = value(model_trace, "start")
             destination = value(model_trace, "destination")
             xs = map((i) -> value(model_trace, "x$i"), 1:length(times))
@@ -212,12 +218,13 @@ function train_neural_network(model_trace::Trace)
             end
             objective_function += score(network_trace)
             reset_score(network_trace)
+            num_samples += 1
         end
         step_size = (step_a + iter) ^ (-step_b)
         for key in keys(parameters)
-            parameters[key] += steps_size * gradients[key] / minibatch_size
+            parameters[key] += step_size * gradients[key] / num_samples 
         end
-        println("objective function: $(objective_function / minibatch_size)")
+        println("objective function: $(objective_function / num_samples )")
     end
 end
 
