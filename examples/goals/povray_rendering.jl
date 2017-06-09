@@ -16,8 +16,8 @@ type PovrayRendering
     function PovrayRendering(camera_loc::Array{Float64,1},
                              camera_look_at::Array{Float64,1},
                              light_loc::Array{Float64,1})
-        show_axes = true
-        scale = 0.5
+        show_axes = false
+        scale = 0.4
         povray_inc_dir=ENV["POVRAY_INC_DIR"]
 
         included = String[]
@@ -73,11 +73,12 @@ type PovrayRendering
 end
 
 function add_grass(scene::PovrayRendering)
-    grass = vapory.Plane([0, 0, 1], 0.0, 
+    grass = vapory.Plane([0, 0, 1.], 0., 
         vapory.Texture(
-            vapory.Pigment("color", [0.35, 0.35, 0.35] * 0.85), 
+            vapory.Pigment("color", [0.25, 0.45, 0.15] * 0.85), 
             vapory.Normal("bumps", 0.75 ,"scale", 0.15), # 0.015
-            vapory.Finish("phong", 0.1)))
+            vapory.Finish("phong", 0.1),
+            vapory.Finish("ambient", 0.5)))
     push!(scene.objects, grass)
 end
 
@@ -98,8 +99,8 @@ end
 
 function render_agent(scene::PovrayRendering, location::Point, color)
     yaw = 0
-    z = 10
-    push!(scene.objects, vapory.Object("quadrocopter", "scale", 2.0 * scene.scale,
+    z = 20.
+    push!(scene.objects, vapory.Object("quadrocopter", "scale", 3.0 * scene.scale,
         "translate", [0, 0, 0], # translate to origin first so we can rotate
         "rotate", [-15, 0, yaw], # the drone model is angled a bit
         # the drone model is centered at some vertical offset of about 1.0
@@ -114,7 +115,7 @@ function render(scene::PovrayRendering, wall::Wall)
     else # y
         corner2 = Point(corner1.x + wall.thickness, corner1.y + wall.length)
     end
-    color_rgbt = [0.5, 0.5, 0.5, 0.0]
+    color_rgbt = [0.5, 0.5, 0.5, 0.5]
     push!(scene.objects, vapory.Box(
         [corner1.x * scene.scale, corner1.y * scene.scale, 0 * scene.scale], 
         [corner2.x * scene.scale, corner2.y * scene.scale, wall.height * scene.scale],
@@ -122,9 +123,9 @@ function render(scene::PovrayRendering, wall::Wall)
 end
 
 function render(scene::PovrayRendering, path::Path)
-    height = 10.0 # TODO ??
+    height = 20.0 # TODO ??
     width = 0.2
-    color_rgbt=[1, 1, 1, 0.3]
+    color_rgbt=[1, 1, 1, 0.1]
     for i=1:length(path.points)-1
         segment_start = path.points[i]
         segment_end = path.points[i+1]
@@ -155,9 +156,10 @@ end
 
 
 function render_destination(scene::PovrayRendering, location::Point)
-    radius = 0.5 # TODO??
+    height = 20.0
+    radius = 1.0
     color_rgbt=[1.0, 0.0, 0.0, 0.6]
-    location = array(location) * scene.scale
+    location = scene.scale * [location.x, location.y, height]
     push!(scene.objects, vapory.Sphere(location, radius * scene.scale,
         vapory.Texture(vapory.Pigment("color", "rgbt", color_rgbt), vapory.Finish("ambient", 0.6)),
         "no_shadow"))
@@ -180,22 +182,49 @@ end
 
 # design pattern: a given rendering (in this case a scene::PovrayRendering) is opened.
 # then we composite multiple traces onto this rendering, manually controlling which aspects of each trace are renderered
-function render(povray_scene::PovrayRendering, trace::Trace)
+function render_trace(povray_scene::PovrayRendering, trace::Trace)
 
-    if hasvalue(trace, "scene")
-        println("rendering scene..")
-        scene = value(trace, "scene")
-        add_grass(povray_scene)
-        for object in scene.obstacles
-            render(povray_scene, object)
+    # render grass
+    add_grass(povray_scene)
+
+    # render trees
+    i = 1
+    while true
+        if hasvalue(trace, "tree-$i")
+            tree = value(trace, "tree-$i")
+            render(povray_scene, tree)
+            i += 1
+        else
+            break
         end
     end
 
+    # render walls
+    i = 1
+    while true
+        if hasvalue(trace, "wall-$i")
+            wall = value(trace, "wall-$i")
+            render(povray_scene, wall)
+            i += 1
+        else
+            break
+        end
+    end
+
+    # render start
     if hasvalue(trace, "start")
-        println("rendering start..")
         start = value(trace, "start")
         render_agent(povray_scene, start, [1, 0.5, 0.5])
     end
+
+    #if hasvalue(trace, "scene")
+        #println("rendering scene..")
+        #scene = value(trace, "scene")
+        ##add_grass(povray_scene) TODO?
+        #for object in scene.obstacles
+            #render(povray_scene, object)
+        #end
+    #end
 
     if hasvalue(trace, "destination")
         println("rendering destination..")
@@ -203,7 +232,7 @@ function render(povray_scene::PovrayRendering, trace::Trace)
         render_destination(povray_scene, dest)
     end
 
-    # TODO render this?
+    # TODO
     #if hasvalue(trace, "tree")
         #tree = value(trace, "tree")
         #render(tree, 1.0)
@@ -240,22 +269,27 @@ function render(povray_scene::PovrayRendering, trace::Trace)
         #end
     #end
 
-    times = value(trace, "times")
-    measured_xs = []
-    measured_ys = []
-    for i=1:length(times)
-        if hasconstraint(trace, "x$i") && hasconstraint(trace, "y$i")
-            println("rendering (x$i, y$i)..")
-            location = Point(value(trace, "x$i"), value(trace, "y$i"))
-            render_agent(povray_scene, location, [1, 1, 1])
+    if hasvalue(trace, "times")
+        times = value(trace, "times")
+        measured_xs = []
+        measured_ys = []
+        for i=1:length(times)
+            if hasconstraint(trace, "x$i") && hasconstraint(trace, "y$i")
+                println("rendering (x$i, y$i)..")
+                location = Point(value(trace, "x$i"), value(trace, "y$i"))
+                render_agent(povray_scene, location, [1, 1, 1])
+            end
         end
     end
 end
 
 function render_samples(rendering::PovrayRendering, particles::Array{Trace})
 
+    add_grass(povray_scene)
+    # TODO rewrite this function to not jist call the underlying single trace renderings. it is customized!
+    return
+
     times = value(particles[1], "times")
-    println(times)
 
     # don't show the tree for any particles
     for trace in particles
@@ -273,8 +307,8 @@ function render_samples(rendering::PovrayRendering, particles::Array{Trace})
         delete!(trace, "start")
     end
 
-    for (i, trace) in enumerate(particles)
-        println("rendering trace $i")
-        render(rendering, trace)
-    end
+    #for (i, trace) in enumerate(particles)
+        #println("rendering trace $i")
+        #render(rendering, trace)
+    #end
 end
