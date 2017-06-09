@@ -1,67 +1,84 @@
 abstract AbstractOperator
-abstract Dual{T}
+abstract GenVal{T}
 
 type Tape
-    nums::Array{Dual, 1}
+    nums::Array{GenVal, 1}
     function Tape()
-        new(Array{Dual, 1}())
+        new(Array{GenVal, 1}())
     end
 end
 nums(t::Tape) = t.nums
 
-
-# TODO generalize to other number types besides Float64?
-
-type GenFloat{T <: AbstractOperator} <: Dual{T}
+type GenScalar{T <: AbstractOperator} <: GenVal{T}
     # NOTE: the datum is intended to be immutable
     datum::Float64
     adj::Float64
     tape::Tape
-    tapeIdx::Int # we will walk backward from this index
-    op::T # stores parameters to operator, and has derivative method
+    tapeIdx::Int
+    op::T
 end
 
-type GenMatrix{T <: AbstractOperator} <: Dual{T}
+type GenVector{T <: AbstractOperator} <: GenVal{T}
+    # NOTE: the datum is intended to be immutable (there should be no setindex operator)
+    datum::Vector{Float64}
+    adj::Vector{Float64}
+    tape::Tape
+    tapeIdx::Int
+    op::T
+end
+
+type GenMatrix{T <: AbstractOperator} <: GenVal{T}
     # NOTE: the datum is intended to be immutable (there should be no setindex operator)
     datum::Matrix{Float64}
     adj::Matrix{Float64}
     tape::Tape
-    tapeIdx::Int # we will walk backward from this index
-    op::T # stores parameters to operator, and has derivative method
+    tapeIdx::Int
+    op::T
 end
 
-concrete(x::GenFloat) = x.datum
+concrete(x::GenVal) = x.datum
 concrete(x::Real) = x
 
-function show(num::GenFloat)
-    println("GenFloat(datum=$(num.datum), adj=$(num.adj), idx=$(num.tapeIdx))")
+function show(num::GenScalar)
+    println("GenScalar(datum=$(num.datum), adj=$(num.adj), idx=$(num.tapeIdx))")
 end
 
-function GenFloat{T <: AbstractOperator}(datum::Float64, tape::Tape, op::T)
+function GenScalar{T <: AbstractOperator}(datum::Float64, tape::Tape, op::T)
     ns = nums(tape)
-    num = GenFloat{T}(datum, 0.0, tape, length(ns) + 1, op)
+    num = GenScalar{T}(datum, 0.0, tape, length(ns) + 1, op)
     push!(ns, num)
     num
 end
 
-function GenMatrix{T <: AbstractOperator}(datum::Array{Float64,2}, tape::Tape, op::T)
+function GenVector{T <: AbstractOperator}(datum::Vector{Float64}, tape::Tape, op::T)
+    ns = nums(tape)
+    num = GenScalar{T}(datum, 0.0, tape, length(ns) + 1, op)
+    push!(ns, num)
+    num
+end
+
+function GenMatrix{T <: AbstractOperator}(datum::Matrix{Float64}, tape::Tape, op::T)
     ns = nums(tape)
     num = GenMatrix{T}(datum, zeros(datum), tape, length(ns) + 1, op)
     push!(ns, num)
     num
 end
 
-function check_tapes(a::Dual, b::Dual)
+function check_tapes(a::GenVal, b::GenVal)
     if a.tape != b.tape
         error("cannot $a and $b use different tapes")
     end
 end
 
-function GenFloat(datum::Float64, tape::Tape)
-    GenFloat(datum, tape, Input())
+function GenScalar(datum::Float64, tape::Tape)
+    GenScalar(datum, tape, Input())
 end
 
-function GenMatrix(datum::Array{Float64,2}, tape::Tape)
+function GenVector(datum::Vector{Float64}, tape::Tape)
+    GenVector(datum, tape, Input())
+end
+
+function GenMatrix(datum::Matrix{Float64}, tape::Tape)
     GenMatrix(datum, tape, Input())
 end
 
@@ -74,18 +91,18 @@ macro generate_ad_binary_operator(op, opType)
                 left::T
                 right::U
             end
-            function ($op)(l::GenFloat, r::GenFloat)
+            function ($op)(l::GenScalar, r::GenScalar)
                 check_tapes(l, r)
-                GenFloat($(op)(l.datum, r.datum), l.tape, ($opType)(l, r))
+                GenScalar($(op)(l.datum, r.datum), l.tape, ($opType)(l, r))
             end
 
-            function ($op)(l::GenFloat, r::Float64)
-                rnum = GenFloat(r, l.tape, Input())
-                GenFloat($(op)(l.datum, r), l.tape, ($opType)(l, rnum))
+            function ($op)(l::GenScalar, r::Float64)
+                rnum = GenScalar(r, l.tape, Input())
+                GenScalar($(op)(l.datum, r), l.tape, ($opType)(l, rnum))
             end
-            function ($op)(l::Float64, r::GenFloat)
-                lnum = GenFloat(l, r.tape, Input())
-                GenFloat($(op)(l, r.datum), r.tape, ($opType)(lnum, r))
+            function ($op)(l::Float64, r::GenScalar)
+                lnum = GenScalar(l, r.tape, Input())
+                GenScalar($(op)(l, r.datum), r.tape, ($opType)(lnum, r))
             end
 
             function ($op)(l::GenMatrix, r::GenMatrix)
@@ -103,22 +120,28 @@ macro generate_ad_binary_operator(op, opType)
             end
 
             function ($op)(l::GenMatrix, r::Float64)
-                rnum = GenFloat(r, l.tape, Input())
+                rnum = GenScalar(r, l.tape, Input())
                 GenMatrix($(op)(l.datum, r), l.tape, ($opType)(l, rnum))
             end
             function ($op)(l::Float64, r::GenMatrix)
-                lnum = GenFloat(l, r.tape, Input())
+                lnum = GenScalar(l, r.tape, Input())
                 GenMatrix($(op)(l, r.datum), r.tape, ($opType)(lnum, r))
             end
 
-            function ($op)(l::GenMatrix, r::GenFloat)
+            function ($op)(l::GenMatrix, r::GenScalar)
                 check_tapes(l, r)
                 GenMatrix($(op)(l.datum, r.datum), l.tape, ($opType)(l, r))
             end
-            function ($op)(l::GenFloat, r::GenMatrix)
+            function ($op)(l::GenScalar, r::GenMatrix)
                 check_tapes(l, r)
                 GenMatrix($(op)(l.datum, r.datum), r.tape, ($opType)(l, r))
             end
+
+            function ($op){T}(l::T, r::T)
+                check_tapes(l, r)
+                T($(op)(l.datum, r.datum), l.tape, ($opType)(l, r))
+            end
+
         end)
 end
 
@@ -127,8 +150,8 @@ macro generate_ad_unary_operator(op, opType)
             immutable ($opType){T} <: AbstractOperator
                 arg::T
             end
-            function ($op)(arg::GenFloat)
-                GenFloat($(op)(arg.datum), arg.tape, ($opType)(arg))
+            function ($op)(arg::GenScalar)
+                GenScalar($(op)(arg.datum), arg.tape, ($opType)(arg))
             end
             function ($op)(arg::GenMatrix)
                 GenMatrix($(op)(arg.datum), arg.tape, ($opType)(arg))
@@ -138,59 +161,104 @@ end
 
 # getindex
 import Base.getindex
-immutable GetIndex <: AbstractOperator
+immutable GetVectorIndex <: AbstractOperator
+    arg::GenVector
+    i::Real
+end
+function getindex(arg::GenVector, i::Real)
+    GenScalar(arg.datum[i], arg.tape, GetVectorIndex(arg, i))
+end
+function propagate(op::GetVectorIndex, datum::Float64, adj::Float64)
+    op.arg.adj[op.i] += adj
+end
+immutable GetMatrixIndex <: AbstractOperator
     arg::GenMatrix
     i1::Real
     i2::Real
 end
 function getindex(arg::GenMatrix, i1::Real, i2::Real)
-    GenFloat(arg.datum[i1, i2], arg.tape, GetIndex(arg, i1, i2))
+    GenScalar(arg.datum[i1, i2], arg.tape, GetMatrixIndex(arg, i1, i2))
 end
-function propagate(op::GetIndex, datum::Float64, adj::Float64)
+function propagate(op::GetMatrixIndex, datum::Float64, adj::Float64)
     op.arg.adj[op.i1, op.i2] += adj
 end
 
+# TODO support more elaborate indexing schemes
+# TODO support hcat, vcat
+
 # transpose
 import Base.transpose
-immutable TransposeOp <: AbstractOperator
+immutable TransposeVector <: AbstractOperator
+    arg::GenVector
+end
+function transpose(arg::GenVector)
+    # transposing a vector creates a row matrix
+    GenMatrix(arg.datum', arg.tape, TransposeVector(arg))
+end
+function propagate(op::TransposeVector, datum::Matrix{Float64}, adj::Matrix{Float64})
+    op.arg.adj += adj[:]
+end
+immutable TransposeMatrix <: AbstractOperator
     arg::GenMatrix
 end
 function transpose(arg::GenMatrix)
-    GenMatrix(arg.datum', arg.tape, TransposeOp(arg))
+    GenMatrix(arg.datum', arg.tape, TransposeMatrix(arg))
 end
-function propagate(op::TransposeOp, datum::Matrix{Float64}, adj::Matrix{Float64})
+function propagate(op::TransposeMatrix, datum::Matrix{Float64}, adj::Matrix{Float64})
     op.arg.adj += adj'
 end
 
-
 # sum
 import Base.sum
-immutable Sum <: AbstractOperator
+immutable VectorSum <: AbstractOperator
+    arg::GenVector
+end
+function sum(arg::GenVector)
+    GenScalar(sum(arg.datum), arg.tape, VectorSum(arg))
+end
+function propagate(op::VectorSum, datum::Float64, adj::Float64)
+    op.arg.adj += adj
+end
+immutable MatrixSum <: AbstractOperator
     arg::GenMatrix
 end
 function sum(arg::GenMatrix)
-    GenFloat(sum(arg.datum), arg.tape, Sum(arg))
+    GenScalar(sum(arg.datum), arg.tape, MatrixSum(arg))
 end
-function propagate(op::Sum, datum::Float64, adj::Float64)
+function propagate(op::MatrixSum, datum::Float64, adj::Float64)
     op.arg.adj += adj
 end
+
+# TODO handle broadcasting
 
 # +
 import Base.+
 @generate_ad_binary_operator(+, Plus)
-function propagate{T<:GenFloat,U<:GenFloat}(op::Plus{T,U}, datum::Float64, adj::Float64)
+function propagate{T<:GenScalar,U<:GenScalar}(op::Plus{T,U}, datum::Float64, adj::Float64)
     op.left.adj += adj
     op.right.adj += adj
 end
-function propagate{T<:GenMatrix,U<:GenFloat}(op::Plus{T,U}, datum::Matrix{Float64}, adj::Matrix{Float64})
+function propagate{T<:GenMatrix,U<:GenScalar}(op::Plus{T,U}, datum::Matrix{Float64}, adj::Matrix{Float64})
     op.left.adj += adj
     op.right.adj += sum(adj)
 end
-function propagate{T<:GenFloat,U<:GenMatrix}(op::Plus{T,U}, datum::Matrix{Float64}, adj::Matrix{Float64})
+function propagate{T<:GenScalar,U<:GenMatrix}(op::Plus{T,U}, datum::Matrix{Float64}, adj::Matrix{Float64})
     op.left.adj += sum(adj)
     op.right.adj += adj
 end
 function propagate{T<:GenMatrix,U<:GenMatrix}(op::Plus{T,U}, datum::Matrix{Float64}, adj::Matrix{Float64})
+    op.left.adj += adj
+    op.right.adj += adj
+end
+function propagate{T<:GenVector,U<:GenScalar}(op::Plus{T,U}, datum::Vector{Float64}, adj::Vector{Float64})
+    op.left.adj += adj
+    op.right.adj += sum(adj)
+end
+function propagate{T<:GenScalar,U<:GenVector}(op::Plus{T,U}, datum::Vector{Float64}, adj::Vector{Float64})
+    op.left.adj += sum(adj)
+    op.right.adj += adj
+end
+function propagate{T<:GenVector,U<:GenVector}(op::Plus{T,U}, datum::Vector{Float64}, adj::Vector{Float64})
     op.left.adj += adj
     op.right.adj += adj
 end
@@ -206,16 +274,28 @@ end
 # -
 import Base.-
 @generate_ad_binary_operator(-, Minus)
-function propagate{T<:GenFloat,U<:GenFloat}(op::Minus{T,U}, datum::Float64, adj::Float64)
+function propagate{T<:GenScalar,U<:GenScalar}(op::Minus{T,U}, datum::Float64, adj::Float64)
     op.left.adj += adj
     op.right.adj -= adj
 end
-function propagate{T<:GenMatrix,U<:GenFloat}(op::Minus{T,U}, datum::Matrix{Float64}, adj::Matrix{Float64})
+function propagate{T<:GenMatrix,U<:GenScalar}(op::Minus{T,U}, datum::Matrix{Float64}, adj::Matrix{Float64})
     op.left.adj += adj
     op.right.adj -= sum(adj)
 end
-function propagate{T<:GenFloat,U<:GenMatrix}(op::Minus{T,U}, datum::Matrix{Float64}, adj::Matrix{Float64})
+function propagate{T<:GenScalar,U<:GenMatrix}(op::Minus{T,U}, datum::Matrix{Float64}, adj::Matrix{Float64})
     op.left.adj += sum(adj)
+    op.right.adj -= adj
+end
+function propagate{T<:GenVector,U<:GenScalar}(op::Minus{T,U}, datum::Vector{Float64}, adj::Float64)
+    op.left.adj += adj
+    op.right.adj -= sum(adj)
+end
+function propagate{T<:GenScalar,U<:GenVector}(op::Minus{T,U}, datum::Float64, adj::Vector{Float64})
+    op.left.adj += sum(adj)
+    op.right.adj -= adj
+end
+function propagate{T<:GenVector,U<:GenVector}(op::Minus{T,U}, datum::Vector{Float64}, adj::Vector{Float64})
+    op.left.adj += adj
     op.right.adj -= adj
 end
 
@@ -230,16 +310,16 @@ end
 # *
 import Base.*
 @generate_ad_binary_operator(*, Times)
-function propagate{T<:GenFloat,U<:GenFloat}(op::Times{T,U}, datum::Float64, adj::Float64)
+function propagate{T<:GenScalar,U<:GenScalar}(op::Times{T,U}, datum::Float64, adj::Float64)
     op.left.adj += adj * op.right.datum
     op.right.adj += adj * op.left.datum
 end
-function propagate{T<:GenFloat,U<:GenMatrix}(op::Times{T,U}, datum::Matrix{Float64}, adj::Matrix{Float64})
+function propagate{T<:GenScalar,U<:GenMatrix}(op::Times{T,U}, datum::Matrix{Float64}, adj::Matrix{Float64})
     # scalar * matrix
     op.left.adj += sum(adj .* op.right.datum)
     op.right.adj += adj * op.left.datum
 end
-function propagate{T<:GenMatrix,U<:GenFloat}(op::Times{T,U}, datum::Matrix{Float64}, adj::Matrix{Float64})
+function propagate{T<:GenMatrix,U<:GenScalar}(op::Times{T,U}, datum::Matrix{Float64}, adj::Matrix{Float64})
     # matrix * scalar 
     op.left.adj += adj * op.right.datum
     op.right.adj += sum(adj .* op.left.datum)
@@ -249,15 +329,26 @@ function propagate{T<:GenMatrix,U<:GenMatrix}(op::Times{T,U}, datum::Matrix{Floa
     op.left.adj += adj * op.right.datum'
     op.right.adj += op.left.datum' * adj
 end
+function propagate{T<:GenMatrix,U<:GenVector}(op::Times{T,U}, datum::Vector{Float64}, adj::Vector{Float64})
+    # matrix * vector 
+    op.left.adj += adj * op.right.datum' # TODO
+    op.right.adj += op.left.datum' * adj
+end
+function propagate{T<:GenVector,U<:GenScalar}(op::Times{T,U}, datum::Vector{Float64}, adj::Vector{Float64})
+    # matrix * scalar
+    op.left.adj += adj * op.right.datum' # TODO
+    op.right.adj += op.left.datum' * adj
+end
+
 
 # /
 import Base./
 @generate_ad_binary_operator(/, Divide)
-function propagate{T<:GenFloat,U<:GenFloat}(op::Divide{T,U}, datum::Float64, adj::Float64)
+function propagate{T<:GenScalar,U<:GenScalar}(op::Divide{T,U}, datum::Float64, adj::Float64)
     op.left.adj += adj / op.right.datum
     op.right.adj += adj * (-op.left.datum / (op.right.datum * op.right.datum))
 end
-function propagate{T<:GenMatrix,U<:GenFloat}(op::Divide{T,U}, datum::Matrix{Float64}, adj::Matrix{Float64})
+function propagate{T<:GenMatrix,U<:GenScalar}(op::Divide{T,U}, datum::Matrix{Float64}, adj::Matrix{Float64})
     op.left.adj += adj / op.right.datum
     op.right.adj += sum(adj .* (-op.left.datum / (op.right.datum * op.right.datum)))
 end
@@ -265,11 +356,11 @@ end
 # ./
 import Base.(./)
 @generate_ad_binary_operator(./, ElementwiseDivide)
-function propagate{T<:GenFloat,U<:GenFloat}(op::ElementwiseDivide{T,U}, datum::Float64, adj::Float64)
+function propagate{T<:GenScalar,U<:GenScalar}(op::ElementwiseDivide{T,U}, datum::Float64, adj::Float64)
     op.left.adj += adj / op.right.datum
     op.right.adj += adj * (-op.left.datum / (op.right.datum * op.right.datum))
 end
-function propagate{T<:GenFloat,U<:GenMatrix}(op::ElementwiseDivide{T,U}, datum::Matrix{Float64}, adj::Matrix{Float64})
+function propagate{T<:GenScalar,U<:GenMatrix}(op::ElementwiseDivide{T,U}, datum::Matrix{Float64}, adj::Matrix{Float64})
     op.left.adj += sum(adj ./ op.right.datum)
     op.right.adj += adj .* (-op.left.datum ./ (op.right.datum .* op.right.datum))
 end
@@ -302,7 +393,7 @@ function propagate{T}(op::LogGamma, datum::T, adj::T)
 end
 
 # backward pass
-function backprop(a::GenFloat)
+function backprop(a::GenScalar)
     a.adj = 1.0 # this is the root node
     ns = nums(a.tape)
     for i=a.tapeIdx:-1:1
@@ -310,12 +401,12 @@ function backprop(a::GenFloat)
     end
 end
 
-partial{T <: Dual}(a::T) = a.adj # partial derivative
+partial{T <: GenVal}(a::T) = a.adj # partial derivative
 
 # exports
 export Tape
 export show 
-export GenFloat
+export GenScalar
 export GenMatrix
 export concrete
 export backprop
