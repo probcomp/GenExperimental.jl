@@ -13,8 +13,8 @@ using Base.Test
     
         # binary plus
         tape = Tape()
-        a = GenFloat(a_val, tape)
-        b = GenFloat(b_val, tape)
+        a = GenScalar(a_val, tape)
+        b = GenScalar(b_val, tape)
         c = a + b
         backprop(c)
         @test isapprox(partial(a), 1.0)
@@ -23,7 +23,7 @@ using Base.Test
 
         # unary plus
         tape = Tape()
-        a = GenFloat(a_val, tape)
+        a = GenScalar(a_val, tape)
         c = +a
         backprop(c)
         @test isapprox(partial(a), 1.0)
@@ -31,8 +31,8 @@ using Base.Test
     
         # binary minus
         tape = Tape()
-        a = GenFloat(a_val, tape)
-        b = GenFloat(b_val, tape)
+        a = GenScalar(a_val, tape)
+        b = GenScalar(b_val, tape)
         c = a - b
         backprop(c)
         @test isapprox(partial(a), 1.0)
@@ -41,7 +41,7 @@ using Base.Test
     
         # unary minus
         tape = Tape()
-        a = GenFloat(a_val, tape)
+        a = GenScalar(a_val, tape)
         c = -a
         backprop(c)
         @test isapprox(partial(a), -1.0)
@@ -49,8 +49,8 @@ using Base.Test
 
         # times
         tape = Tape()
-        a = GenFloat(a_val, tape)
-        b = GenFloat(b_val, tape)
+        a = GenScalar(a_val, tape)
+        b = GenScalar(b_val, tape)
         c = a * b
         backprop(c)
         @test isapprox(partial(a), b_val)
@@ -59,8 +59,8 @@ using Base.Test
     
         # divide
         tape = Tape()
-        a = GenFloat(a_val, tape)
-        b = GenFloat(b_val, tape)
+        a = GenScalar(a_val, tape)
+        b = GenScalar(b_val, tape)
         c = a / b
         backprop(c)
         @test isapprox(partial(a), 1.0 / b_val)
@@ -69,7 +69,7 @@ using Base.Test
     
         # log 
         tape = Tape()
-        a = GenFloat(a_val, tape)
+        a = GenScalar(a_val, tape)
         c = log(a)
         backprop(c)
         @test isapprox(partial(a), 1.0 / a_val)
@@ -77,7 +77,7 @@ using Base.Test
     
         # exp 
         tape = Tape()
-        a = GenFloat(a_val, tape)
+        a = GenScalar(a_val, tape)
         c = exp(a)
         backprop(c)
         @test isapprox(partial(a), exp(a_val))
@@ -85,7 +85,7 @@ using Base.Test
 
         # exp 
         tape = Tape()
-        a = GenFloat(a_val, tape)
+        a = GenScalar(a_val, tape)
         c = lgamma(a)
         backprop(c)
         @test isapprox(partial(a), digamma(a_val))
@@ -100,9 +100,9 @@ using Base.Test
 
         # w = x + y + z
         tape = Tape()
-        x = GenFloat(x_val, tape)
-        y = GenFloat(y_val, tape)
-        z = GenFloat(z_val, tape)
+        x = GenScalar(x_val, tape)
+        y = GenScalar(y_val, tape)
+        z = GenScalar(z_val, tape)
         w = x + y - z
         backprop(w)
         @test isapprox(partial(x), 1.0)
@@ -115,7 +115,7 @@ using Base.Test
         srand(1)
         sig = (x) -> Float64(1.0) / (Float64(1.0) + exp(-x))
         tape = Tape()
-        x = GenFloat(rand(), tape)
+        x = GenScalar(rand(), tape)
         y = sig(x)
         backprop(y)
         @test isapprox(partial(x), concrete(y * (1.0 - y)))
@@ -173,6 +173,62 @@ using Base.Test
         @test isapprox(partial(a), exp(a_val))
     
     end
+
+    @testset "operations involving vectors" begin
+
+        # getindex
+        tape = Tape()
+        a_val = rand(2)
+        a = GenVector(a_val, tape)
+        b = a[2]
+        backprop(b)
+        @test isapprox(partial(a), [0., 1.])
+        @test concrete(b) == a_val[2]
+
+        # transpose
+        tape = Tape()
+        a_val = rand(2)
+        a = GenVector(a_val, tape)
+        b = a'
+        @test typeof(b) <: GenMatrix
+        @test concrete(b) == a_val'
+        backprop(b[1, 2])
+        @test isapprox(partial(a), [0., 1.])
+
+        # matrix-vector multiply
+        tape = Tape()
+        a_val = rand(2)
+        b_val = rand(3, 2)
+        a = GenVector(a_val, tape)
+        b = GenMatrix(b_val, tape)
+        c = b * a
+        @test typeof(c) <: GenVector
+        @test concrete(c) == b_val * a_val
+        backprop(c[1])
+        # b * a
+        # (b * a)[1] = b[1,1]*a[1] + b[1,2]*a[2] 
+        # deriv a[1] = b[1,1]
+        # deriv a[2] = b[1,2]
+        @test isapprox(partial(a), [b_val[1,1], b_val[1,2]])
+        
+        # deriv b[1,1] = a[1]
+        # deriv b[1,2] = a[2]
+        # deriv b[2,1] = 0.
+        # deriv b[2,2] = 0.
+        # deriv b[3,1] = 0.
+        # deriv b[3,2] = 0.
+        @test isapprox(partial(b), [[a_val[1] a_val[2]]; [0. 0.]; [0. 0.]])
+
+        # elementwise op
+        tape = Tape()
+        a_val = rand(2)
+        a = GenVector(a_val, tape)
+        b = exp(a)
+        backprop(sum(b))
+        @test isapprox(partial(a), exp(a_val))
+    
+    end
+
 
 end
 
