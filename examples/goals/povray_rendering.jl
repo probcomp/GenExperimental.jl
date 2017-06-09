@@ -129,7 +129,6 @@ function render(scene::PovrayRendering, path::Path)
     for i=1:length(path.points)-1
         segment_start = path.points[i]
         segment_end = path.points[i+1]
-        println("rendering path from $segment_start to $segment_end")
 
         # add a flat ribbon
         # compute the normal vector in the x-y plane
@@ -138,7 +137,6 @@ function render(scene::PovrayRendering, path::Path)
         side = [-forward[2], forward[1]]
         @assert isapprox(norm(side), 1.0)
         offset_ribbon = [side[1], side[2], 0]
-        println("offset_ribbon: $offset_ribbon, scene.scale: $(scene.scale), width: $width")
         p1 = ([segment_start.x * scene.scale, segment_start.y * scene.scale, scene.scale * height]
              + scene.scale * width * offset_ribbon)
         p2 = ([segment_start.x * scene.scale, segment_start.y * scene.scale, scene.scale * height]
@@ -147,7 +145,6 @@ function render(scene::PovrayRendering, path::Path)
              - scene.scale * width * offset_ribbon)
         p4 = ([segment_end.x * scene.scale, segment_end.y * scene.scale, scene.scale * height]
              + scene.scale * width * offset_ribbon)
-        println("$p1, $p2, $p3, $p4")
         push!(scene.objects, vapory.Polygon(4, p1, p2, p3, p4, 
             vapory.Texture(vapory.Pigment("color", "rgbt", color_rgbt), vapory.Finish("ambient", 1.0)),
             "no_shadow"))
@@ -180,14 +177,7 @@ function finish(scene::PovrayRendering, fname::String)
 
 end
 
-# design pattern: a given rendering (in this case a scene::PovrayRendering) is opened.
-# then we composite multiple traces onto this rendering, manually controlling which aspects of each trace are renderered
-function render_trace(povray_scene::PovrayRendering, trace::Trace)
-
-    # render grass
-    add_grass(povray_scene)
-
-    # render trees
+function add_trees(trace::Trace, povray_scene::PovrayRendering)
     i = 1
     while true
         if hasvalue(trace, "tree-$i")
@@ -198,8 +188,9 @@ function render_trace(povray_scene::PovrayRendering, trace::Trace)
             break
         end
     end
+end
 
-    # render walls
+function add_walls(trace::Trace, povray_scene::PovrayRendering)
     i = 1
     while true
         if hasvalue(trace, "wall-$i")
@@ -210,42 +201,63 @@ function render_trace(povray_scene::PovrayRendering, trace::Trace)
             break
         end
     end
+end
 
-    # render start
+function add_start(trace::Trace, povray_scene::PovrayRendering)
     if hasvalue(trace, "start")
         start = value(trace, "start")
         render_agent(povray_scene, start, [1, 0.5, 0.5])
     end
+end
 
-    #if hasvalue(trace, "scene")
-        #println("rendering scene..")
-        #scene = value(trace, "scene")
-        ##add_grass(povray_scene) TODO?
-        #for object in scene.obstacles
-            #render(povray_scene, object)
-        #end
-    #end
-
+function add_destination(trace::Trace, povray_scene::PovrayRendering)
     if hasvalue(trace, "destination")
-        println("rendering destination..")
         dest = value(trace, "destination")
         render_destination(povray_scene, dest)
     end
+end
+
+function add_optimized_path(trace::Trace, povray_scene::PovrayRendering)
+    if hasvalue(trace, "optimized_path")
+        optimized_path = value(trace, "optimized_path")
+        if !isnull(optimized_path)
+            render(povray_scene, get(optimized_path))
+        end
+    end
+end
+
+function add_measurements(trace::Trace, povray_scene::PovrayRendering)
+    if hasvalue(trace, "times")
+        times = value(trace, "times")
+        measured_xs = []
+        measured_ys = []
+        for i=1:length(times)
+            if hasconstraint(trace, "x$i") && hasconstraint(trace, "y$i")
+                location = Point(value(trace, "x$i"), value(trace, "y$i"))
+                render_agent(povray_scene, location, [1, 1, 1])
+            end
+        end
+    end
+end
+
+
+# design pattern: a given rendering (in this case a scene::PovrayRendering) is opened.
+# then we composite multiple traces onto this rendering, manually controlling which aspects of each trace are renderered
+function render_trace(povray_scene::PovrayRendering, trace::Trace)
+
+    add_grass(povray_scene)
+    add_trees(trace, povray_scene)
+    add_walls(trace, povray_scene)
+    add_start(trace, povray_scene)
+    add_destination(trace, povray_scene)
+    add_optimized_path(trace, povray_scene)
+    add_measurements(trace, povray_scene)
 
     # TODO
     #if hasvalue(trace, "tree")
         #tree = value(trace, "tree")
         #render(tree, 1.0)
     #end
-
-    if hasvalue(trace, "optimized_path")
-        println("rendering optimized path..")
-        optimized_path = value(trace, "optimized_path")
-        if !isnull(optimized_path)
-            render(povray_scene, get(optimized_path))
-            #render(get(optimized_path), "purple")
-        end
-    end
 
     # TODO render this?
     #if hasvalue(trace, "path")
@@ -269,46 +281,26 @@ function render_trace(povray_scene::PovrayRendering, trace::Trace)
         #end
     #end
 
-    if hasvalue(trace, "times")
-        times = value(trace, "times")
-        measured_xs = []
-        measured_ys = []
-        for i=1:length(times)
-            if hasconstraint(trace, "x$i") && hasconstraint(trace, "y$i")
-                println("rendering (x$i, y$i)..")
-                location = Point(value(trace, "x$i"), value(trace, "y$i"))
-                render_agent(povray_scene, location, [1, 1, 1])
-            end
-        end
-    end
 end
 
-function render_samples(rendering::PovrayRendering, particles::Array{Trace})
+function render_traces(povray_scene::PovrayRendering, traces::Array{Trace})
 
     add_grass(povray_scene)
-    # TODO rewrite this function to not jist call the underlying single trace renderings. it is customized!
-    return
 
-    times = value(particles[1], "times")
+    # the traces are assumed to share the same scene and measuremnets
+    # the traces only differ in the destination and the optimized path
+    # only render the scene and measurements from the first 
+    # render trees
+    trace = traces[1]
+    add_grass(povray_scene)
+    add_trees(trace, povray_scene)
+    add_walls(trace, povray_scene)
+    add_start(trace, povray_scene)
+    add_measurements(trace, povray_scene)
 
-    # don't show the tree for any particles
-    for trace in particles
-        delete!(trace, "tree")
-        delete!(trace, "path")
-        delete!(trace, "locations")
+    for trace in traces
+        add_destination(trace, povray_scene)
+        add_optimized_path(trace, povray_scene)
     end
 
-    for trace in particles[2:end]
-        for i=1:length(times)
-            delete!(trace, "x$i")
-            delete!(trace, "y$i")
-        end
-        delete!(trace, "scene")
-        delete!(trace, "start")
-    end
-
-    #for (i, trace) in enumerate(particles)
-        #println("rendering trace $i")
-        #render(rendering, trace)
-    #end
 end

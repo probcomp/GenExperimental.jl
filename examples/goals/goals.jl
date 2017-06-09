@@ -5,22 +5,21 @@
 
 @everywhere include("path_planner.jl")
 
-function uniform_2d_simulate(xmin::Real, xmax::Real, ymin::Real, ymax::Real)
+@everywhere function uniform_2d_simulate(xmin::Real, xmax::Real, ymin::Real, ymax::Real)
     x, log_weight_x = uniform_simulate(xmin, xmax)
     y, log_weight_y = uniform_simulate(ymin, ymax)
     Point(x, y), log_weight_x + log_weight_y
 end
-function uniform_2d_regenerate(point::Point, xmin::Real, xmax::Real, ymin::Real, ymax::Real)
+@everywhere function uniform_2d_regenerate(point::Point, xmin::Real, xmax::Real, ymin::Real, ymax::Real)
     log_weight_x = uniform_regenerate(point.x, xmin, xmax)
     log_weight_y = uniform_regenerate(point.y, ymin, ymax)
     log_weight_x + log_weight_y
 end
-@register_module2(:uniform_2d, uniform_2d_simulate, uniform_2d_regenerate)
-export uniform_2d_simulate
-export uniform_2d_regenerate
-uniform_2d = (args...) -> (uniform_2d_simulate)(args...)[1]
-export uniform_2d
-
+@everywhere @register_module2(:uniform_2d, uniform_2d_simulate, uniform_2d_regenerate)
+@everywhere export uniform_2d_simulate
+@everywhere export uniform_2d_regenerate
+@everywhere uniform_2d = (args...) -> (uniform_2d_simulate)(args...)[1]
+@everywhere export uniform_2d
 
 @everywhere function agent_model(T::Trace)
 
@@ -96,18 +95,6 @@ export uniform_2d
     return nothing
 end
 
-@everywhere function add_scene_elements!(trace::Trace)
-    # TODO rewrite
-    intervene!(trace, "num_trees", 3)
-    constrain!(trace, "tree-1-location", Point(30, 20))
-    constrain!(trace, "tree-2-location", Point(83, 80))
-    constrain!(trace, "tree-3-location", Point(80, 40))
-    constrain!(trace, "tree-1-size", 10.)
-    constrain!(trace, "tree-2-size", 10.)
-    constrain!(trace, "tree-3-size", 10.)
-    constrain!(trace, "start", Point(90., 10.))
-end
-
 @everywhere function add_observations!(trace::Trace, measured_xs::Array{Float64,1}, measured_ys::Array{Float64,1}, tmax::Int)
     for s=1:tmax
         constrain!(trace, "x$s", measured_xs[s])
@@ -115,22 +102,25 @@ end
     end
 end
 
-@everywhere function mh_inference(measured_xs::Array{Float64,1}, measured_ys::Array{Float64,1}, t::Int, num_iter::Int)
-    # initialize
-    trace = Trace()
-    add_scene_elements!(trace)
+@everywhere function mh_inference(scene_trace::Trace, measured_xs::Array{Float64,1}, measured_ys::Array{Float64,1}, t::Int, num_iter::Int)
+
+    # the input scene_trace is assumed to contain only the scene
+    @assert !hasvalue(scene_trace, "destination")
+    @assert !hasvalue(scene_trace, "optimized_path")
+    @assert !hasvalue(scene_trace, "x1")
+    trace = deepcopy(scene_trace)
     add_observations!(trace, measured_xs, measured_ys, t)
     agent_model(trace)
+    delete!(trace, "tree") # avoid copying this huge data structure
 
+    # MH steps
     for iter=0:num_iter
-
-        # propose
-        proposal_trace = Trace()
-        add_scene_elements!(proposal_trace)
-        add_observations!(proposal_trace, measured_xs, measured_ys, t)
+        proposal_trace = deepcopy(trace)
+        reset_score(proposal_trace)
         agent_model(proposal_trace)
         if log(rand()) < score(proposal_trace) - score(trace)
             trace = proposal_trace
+            delete!(trace, "tree")
         end
     end
     trace
@@ -138,7 +128,7 @@ end
 
 include("povray_rendering.jl")
 
-function particle_cloud_demo(num_particles::Int, num_iter::Int)
+function demo()
 
     camera_location = [50., -30., 120.]
     camera_look_at = [50., 50., 0.]
@@ -147,13 +137,21 @@ function particle_cloud_demo(num_particles::Int, num_iter::Int)
     function render(trace::Trace, fname::String) 
         frame = PovrayRendering(camera_location, camera_look_at, light_location)
         frame.quality = 10
-        frame.num_threads = 4
+        frame.num_threads = 16
         render_trace(frame, trace)
         finish(frame, fname)
         println(fname)
     end
 
-#-> draw(trace, fname, camera_location, camera_look_at, light_location)
+    function render(traces::Array{Trace,1}, fname::String) 
+        frame = PovrayRendering(camera_location, camera_look_at, light_location)
+        frame.quality = 10
+        frame.num_threads = 16
+        render_traces(frame, traces)
+        finish(frame, fname)
+        println(fname)
+    end
+
 
     # frame index
     f = 0
@@ -210,9 +208,16 @@ function particle_cloud_demo(num_particles::Int, num_iter::Int)
     intervene!(trace, "wall-9", Wall(Point(0., 0.), 2, 100., 2., boundary_wall_height))
     render(trace, "frames/frame_$f.png") ; f += 1
 
+    # prevent the program from adding new wall or trees
+    intervene!(trace, "is-tree-4", false)
+    intervene!(trace, "is-wall-10", false)
+
     # add the drone starting position
     constrain!(trace, "start", Point(90., 10.))
     render(trace, "frames/frame_$f.png") ; f += 1
+    
+    # copy this trace for future reference (it contains just the scene A)
+    scene_a_trace = deepcopy(trace)
 
     # add a known ground truth goal
     intervene!(trace, "measurement_noise", 1.0)
@@ -220,9 +225,6 @@ function particle_cloud_demo(num_particles::Int, num_iter::Int)
     render(trace, "frames/frame_$f.png") ; f += 1
 
     # run model and extract observations, render ground druth
-    # (prevent the model from adding new wall or trees)
-    intervene!(trace, "is-tree-4", false)
-    intervene!(trace, "is-wall-10", false)
     agent_model(trace)
     times = value(trace, "times")
     measured_xs = map((i) -> value(trace, "x$i"), 1:length(times))
@@ -240,7 +242,7 @@ function particle_cloud_demo(num_particles::Int, num_iter::Int)
     end
     render(trace, "frames/frame_$f.png") ; f += 1
 
-    # add the data incrementally using constraints
+    # add the observations incrementally using constraints
     for t=1:length(times)
         constrain!(trace, "x$t", measured_xs[t])
         constrain!(trace, "y$t", measured_ys[t])
@@ -263,29 +265,41 @@ function particle_cloud_demo(num_particles::Int, num_iter::Int)
     intervene!(trace, "is-wall-11", false)
     render(trace, "frames/frame_$f.png") ; f += 1
 
-    # add the data incrementally using constraints
+    # copy this trace for future reference (it contains just the scene B)
+    scene_b_trace = deepcopy(trace)
+
+    # add the observations incrementally using constraints
     for t=1:length(times)
         constrain!(trace, "x$t", measured_xs[t])
         constrain!(trace, "y$t", measured_ys[t])
         render(trace, "frames/frame_$f.png") ; f += 1
     end
 
-    println("done with first phase!")
-    # REWRITE BELOW
-    # generate the particle clouds (use higher noise in algorithm)
-    for t=1:length(measured_xs)
-        println("time: $t")
-        
-        # note: can parallelize
-        particles::Array{Trace,1} = pmap((i) -> mh_inference(measured_xs, measured_ys, t, num_iter), 1:num_particles)
+    # remove observations
+    for t=1:length(times)
+        delete!(trace, "x$t")
+        delete!(trace, "y$t")
+    end
 
-        # TODO this part needs to get rewritten
-        frame = new_frame()
-        render_samples(frame, particles)
-        finish(frame, "particle_cloud/mh_$(num_iter)_$t.png")
+    # generate particle clouds showing the result of inference at each stage
+    num_particles = 60
+    num_iter = 100
+
+    # for scene a
+    for t=1:length(measured_xs)
+        println("scene a, time: $t")
+        particles::Array{Trace,1} = pmap((i) -> mh_inference(scene_a_trace, measured_xs, measured_ys, t, num_iter), 1:num_particles)
+        render(particles, "frames/frame_$f.png") ; f += 1
+    end
+
+    # for scene b
+    for t=1:length(measured_xs)
+        println("scene b, time: $t")
+        particles::Array{Trace,1} = pmap((i) -> mh_inference(scene_b_trace, measured_xs, measured_ys, t, num_iter), 1:num_particles)
+        render(particles, "frames/frame_$f.png") ; f += 1
     end
 
 end
 
 srand(3)
-particle_cloud_demo(20, 100)
+demo()
