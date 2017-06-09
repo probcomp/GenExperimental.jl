@@ -24,7 +24,7 @@ type DifferentiableTrace <: AbstractTrace
     interventions::OrderedDict{String,Any}
     proposals::OrderedSet{String}
     recorded::OrderedDict{String,Any}
-    log_weight::GenFloat # becomes type GenFloat (which can be automatically converted from a Float64)
+    log_weight::GenScalar # becomes type GenFloat (which can be automatically converted from a Float64)
     tape::Tape
     function DifferentiableTrace()
         tape = Tape()
@@ -32,7 +32,7 @@ type DifferentiableTrace <: AbstractTrace
         interventions = OrderedDict{String,Any}()
         proposals = OrderedSet{String}()
         recorded = OrderedDict{String,Any}()
-        new(constraints, interventions, proposals, recorded, GenFloat(0.0, tape), tape)
+        new(constraints, interventions, proposals, recorded, GenScalar(0.0, tape), tape)
     end
 end
 
@@ -85,24 +85,20 @@ function intervene!(trace::AbstractTrace, name::String, val::Any)
 end
 
 function parametrize!(trace::DifferentiableTrace, name::String, val::Float64)
-    # just an intervene! that converts it to a GenFloat first (with the right tape)
+    # just an intervene! that converts it to a GenScalar first (with the right tape)
     check_not_exists(trace, name)
-    trace.interventions[name] = GenFloat(val, trace.tape)
+    trace.interventions[name] = GenScalar(val, trace.tape)
+end
+
+function parametrize!(trace::DifferentiableTrace, name::String, val::Vector{Float64})
+    check_not_exists(trace, name)
+    trace.interventions[name] = GenVector(val, trace.tape)
 end
 
 function parametrize!(trace::DifferentiableTrace, name::String, val::Matrix{Float64})
     check_not_exists(trace, name)
     trace.interventions[name] = GenMatrix(val, trace.tape)
 end
-
-function parametrize!(trace::DifferentiableTrace, name::String, val::Array{Float64,1})
-    check_not_exists(trace, name)
-    # convert to a column vector
-    trace.interventions[name] = GenMatrix(reshape(val, length(val), 1), trace.tape)
-end
-
-
-
 
 function propose!(trace::AbstractTrace, name::String)
     check_not_exists(trace, name)
@@ -123,7 +119,7 @@ end
 
 function reset_score(trace::DifferentiableTrace)
     trace.tape = Tape()
-    trace.log_weight= GenFloat(0.0, tape)
+    trace.log_weight= GenScalar(0.0, trace.tape)
 end
 
 function derivative(trace::DifferentiableTrace, name::String)

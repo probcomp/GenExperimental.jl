@@ -52,7 +52,7 @@ end
 
 function GenVector{T <: AbstractOperator}(datum::Vector{Float64}, tape::Tape, op::T)
     ns = nums(tape)
-    num = GenScalar{T}(datum, 0.0, tape, length(ns) + 1, op)
+    num = GenVector{T}(datum, zeros(datum), tape, length(ns) + 1, op)
     push!(ns, num)
     num
 end
@@ -91,6 +91,7 @@ macro generate_ad_binary_operator(op, opType)
                 left::T
                 right::U
             end
+    
             function ($op)(l::GenScalar, r::GenScalar)
                 check_tapes(l, r)
                 GenScalar($(op)(l.datum, r.datum), l.tape, ($opType)(l, r))
@@ -100,6 +101,7 @@ macro generate_ad_binary_operator(op, opType)
                 rnum = GenScalar(r, l.tape, Input())
                 GenScalar($(op)(l.datum, r), l.tape, ($opType)(l, rnum))
             end
+
             function ($op)(l::Float64, r::GenScalar)
                 lnum = GenScalar(l, r.tape, Input())
                 GenScalar($(op)(l, r.datum), r.tape, ($opType)(lnum, r))
@@ -114,6 +116,7 @@ macro generate_ad_binary_operator(op, opType)
                 rnum = GenMatrix(r, l.tape, Input())
                 GenMatrix($(op)(l.datum, r), l.tape, ($opType)(l, rnum))
             end
+
             function ($op)(l::Matrix{Float64}, r::GenMatrix)
                 lnum = GenMatrix(l, r.tape, Input())
                 GenMatrix($(op)(l, r.datum), r.tape, ($opType)(lnum, r))
@@ -123,6 +126,7 @@ macro generate_ad_binary_operator(op, opType)
                 rnum = GenScalar(r, l.tape, Input())
                 GenMatrix($(op)(l.datum, r), l.tape, ($opType)(l, rnum))
             end
+
             function ($op)(l::Float64, r::GenMatrix)
                 lnum = GenScalar(l, r.tape, Input())
                 GenMatrix($(op)(l, r.datum), r.tape, ($opType)(lnum, r))
@@ -132,14 +136,62 @@ macro generate_ad_binary_operator(op, opType)
                 check_tapes(l, r)
                 GenMatrix($(op)(l.datum, r.datum), l.tape, ($opType)(l, r))
             end
+
             function ($op)(l::GenScalar, r::GenMatrix)
                 check_tapes(l, r)
                 GenMatrix($(op)(l.datum, r.datum), r.tape, ($opType)(l, r))
             end
 
-            function ($op){T}(l::T, r::T)
+            # involving vectors
+
+            function ($op)(l::GenMatrix, r::GenVector)
                 check_tapes(l, r)
-                T($(op)(l.datum, r.datum), l.tape, ($opType)(l, r))
+                GenVector($(op)(l.datum, r.datum), l.tape, ($opType)(l, r))
+            end
+
+            function ($op)(l::GenMatrix, r::Vector{Float64})
+                rnum = GenVector(r, l.tape, Input())
+                GenVector($(op)(l.datum, r), l.tape, ($opType)(l, rnum))
+            end
+
+            function ($op)(l::Matrix{Float64}, r::GenVector)
+                lnum = GenMatrix(l, r.tape, Input())
+                GenVector($(op)(l, r.datum), r.tape, ($opType)(lnum, r))
+            end
+
+            function ($op)(l::GenVector, r::Float64)
+                rnum = GenScalar(r, l.tape, Input())
+                GenVector($(op)(l.datum, r), l.tape, ($opType)(l, rnum))
+            end
+
+            function ($op)(l::Float64, r::GenVector)
+                lnum = GenScalar(l, r.tape, Input())
+                GenVector($(op)(l, r.datum), r.tape, ($opType)(lnum, r))
+            end
+
+            function ($op)(l::GenVector, r::GenScalar)
+                check_tapes(l, r)
+                GenVector($(op)(l.datum, r.datum), l.tape, ($opType)(l, r))
+            end
+
+            function ($op)(l::GenScalar, r::GenVector)
+                check_tapes(l, r)
+                GenVector($(op)(l.datum, r.datum), r.tape, ($opType)(l, r))
+            end
+
+            function ($op)(l::GenVector, r::GenVector)
+                check_tapes(l, r)
+                GenVector($(op)(l.datum, r.datum), r.tape, ($opType)(l, r))
+            end
+
+            function ($op)(l::GenVector, r::Vector{Float64})
+                rnum = GenVector(r, l.tape, Input())
+                GenVector($(op)(l.datum, r), l.tape, ($opType)(l, rnum))
+            end
+
+            function ($op)(l::Vector{Float64}, r::GenVector)
+                lnum = GenVector(l, r.tape, Input())
+                GenVector($(op)(l, r.datum), r.tape, ($opType)(lnum, r))
             end
 
         end)
@@ -152,6 +204,9 @@ macro generate_ad_unary_operator(op, opType)
             end
             function ($op)(arg::GenScalar)
                 GenScalar($(op)(arg.datum), arg.tape, ($opType)(arg))
+            end
+            function ($op)(arg::GenVector)
+                GenVector($(op)(arg.datum), arg.tape, ($opType)(arg))
             end
             function ($op)(arg::GenMatrix)
                 GenMatrix($(op)(arg.datum), arg.tape, ($opType)(arg))
@@ -169,6 +224,8 @@ function getindex(arg::GenVector, i::Real)
     GenScalar(arg.datum[i], arg.tape, GetVectorIndex(arg, i))
 end
 function propagate(op::GetVectorIndex, datum::Float64, adj::Float64)
+    @assert !isnan(datum)
+    @assert !isnan(adj)
     op.arg.adj[op.i] += adj
 end
 immutable GetMatrixIndex <: AbstractOperator
@@ -180,6 +237,8 @@ function getindex(arg::GenMatrix, i1::Real, i2::Real)
     GenScalar(arg.datum[i1, i2], arg.tape, GetMatrixIndex(arg, i1, i2))
 end
 function propagate(op::GetMatrixIndex, datum::Float64, adj::Float64)
+    @assert !isnan(datum)
+    @assert !isnan(adj)
     op.arg.adj[op.i1, op.i2] += adj
 end
 
@@ -196,6 +255,8 @@ function transpose(arg::GenVector)
     GenMatrix(arg.datum', arg.tape, TransposeVector(arg))
 end
 function propagate(op::TransposeVector, datum::Matrix{Float64}, adj::Matrix{Float64})
+    @assert !any(isnan(datum))
+    @assert !any(isnan(adj))
     op.arg.adj += adj[:]
 end
 immutable TransposeMatrix <: AbstractOperator
@@ -205,6 +266,8 @@ function transpose(arg::GenMatrix)
     GenMatrix(arg.datum', arg.tape, TransposeMatrix(arg))
 end
 function propagate(op::TransposeMatrix, datum::Matrix{Float64}, adj::Matrix{Float64})
+    @assert !any(isnan(datum))
+    @assert !any(isnan(adj))
     op.arg.adj += adj'
 end
 
@@ -235,30 +298,44 @@ end
 import Base.+
 @generate_ad_binary_operator(+, Plus)
 function propagate{T<:GenScalar,U<:GenScalar}(op::Plus{T,U}, datum::Float64, adj::Float64)
+    @assert !any(isnan(datum))
+    @assert !any(isnan(adj))
     op.left.adj += adj
     op.right.adj += adj
 end
 function propagate{T<:GenMatrix,U<:GenScalar}(op::Plus{T,U}, datum::Matrix{Float64}, adj::Matrix{Float64})
+    @assert !any(isnan(datum))
+    @assert !any(isnan(adj))
     op.left.adj += adj
     op.right.adj += sum(adj)
 end
 function propagate{T<:GenScalar,U<:GenMatrix}(op::Plus{T,U}, datum::Matrix{Float64}, adj::Matrix{Float64})
+    @assert !any(isnan(datum))
+    @assert !any(isnan(adj))
     op.left.adj += sum(adj)
     op.right.adj += adj
 end
 function propagate{T<:GenMatrix,U<:GenMatrix}(op::Plus{T,U}, datum::Matrix{Float64}, adj::Matrix{Float64})
+    @assert !any(isnan(datum))
+    @assert !any(isnan(adj))
     op.left.adj += adj
     op.right.adj += adj
 end
 function propagate{T<:GenVector,U<:GenScalar}(op::Plus{T,U}, datum::Vector{Float64}, adj::Vector{Float64})
+    @assert !any(isnan(datum))
+    @assert !any(isnan(adj))
     op.left.adj += adj
     op.right.adj += sum(adj)
 end
 function propagate{T<:GenScalar,U<:GenVector}(op::Plus{T,U}, datum::Vector{Float64}, adj::Vector{Float64})
+    @assert !any(isnan(datum))
+    @assert !any(isnan(adj))
     op.left.adj += sum(adj)
     op.right.adj += adj
 end
 function propagate{T<:GenVector,U<:GenVector}(op::Plus{T,U}, datum::Vector{Float64}, adj::Vector{Float64})
+    @assert !any(isnan(datum))
+    @assert !any(isnan(adj))
     op.left.adj += adj
     op.right.adj += adj
 end
@@ -275,26 +352,38 @@ end
 import Base.-
 @generate_ad_binary_operator(-, Minus)
 function propagate{T<:GenScalar,U<:GenScalar}(op::Minus{T,U}, datum::Float64, adj::Float64)
+    @assert !any(isnan(datum))
+    @assert !any(isnan(adj))
     op.left.adj += adj
     op.right.adj -= adj
 end
 function propagate{T<:GenMatrix,U<:GenScalar}(op::Minus{T,U}, datum::Matrix{Float64}, adj::Matrix{Float64})
+    @assert !any(isnan(datum))
+    @assert !any(isnan(adj))
     op.left.adj += adj
     op.right.adj -= sum(adj)
 end
 function propagate{T<:GenScalar,U<:GenMatrix}(op::Minus{T,U}, datum::Matrix{Float64}, adj::Matrix{Float64})
+    @assert !any(isnan(datum))
+    @assert !any(isnan(adj))
     op.left.adj += sum(adj)
     op.right.adj -= adj
 end
 function propagate{T<:GenVector,U<:GenScalar}(op::Minus{T,U}, datum::Vector{Float64}, adj::Float64)
+    @assert !any(isnan(datum))
+    @assert !any(isnan(adj))
     op.left.adj += adj
     op.right.adj -= sum(adj)
 end
-function propagate{T<:GenScalar,U<:GenVector}(op::Minus{T,U}, datum::Float64, adj::Vector{Float64})
+function propagate{T<:GenScalar,U<:GenVector}(op::Minus{T,U}, datum::Vector{Float64}, adj::Vector{Float64})
+    @assert !any(isnan(datum))
+    @assert !any(isnan(adj))
     op.left.adj += sum(adj)
     op.right.adj -= adj
 end
 function propagate{T<:GenVector,U<:GenVector}(op::Minus{T,U}, datum::Vector{Float64}, adj::Vector{Float64})
+    @assert !any(isnan(datum))
+    @assert !any(isnan(adj))
     op.left.adj += adj
     op.right.adj -= adj
 end
@@ -303,6 +392,8 @@ end
 import Base.-
 @generate_ad_unary_operator(-, UnaryMinus)
 function propagate{T}(op::UnaryMinus, datum::T, adj::T)
+    @assert !any(isnan(datum))
+    @assert !any(isnan(adj))
     op.arg.adj -= adj
 end
 
@@ -311,33 +402,52 @@ end
 import Base.*
 @generate_ad_binary_operator(*, Times)
 function propagate{T<:GenScalar,U<:GenScalar}(op::Times{T,U}, datum::Float64, adj::Float64)
+    @assert !any(isnan(datum))
+    @assert !any(isnan(adj))
     op.left.adj += adj * op.right.datum
     op.right.adj += adj * op.left.datum
 end
 function propagate{T<:GenScalar,U<:GenMatrix}(op::Times{T,U}, datum::Matrix{Float64}, adj::Matrix{Float64})
+    @assert !any(isnan(datum))
+    @assert !any(isnan(adj))
     # scalar * matrix
     op.left.adj += sum(adj .* op.right.datum)
     op.right.adj += adj * op.left.datum
 end
 function propagate{T<:GenMatrix,U<:GenScalar}(op::Times{T,U}, datum::Matrix{Float64}, adj::Matrix{Float64})
+    @assert !any(isnan(datum))
+    @assert !any(isnan(adj))
     # matrix * scalar 
     op.left.adj += adj * op.right.datum
     op.right.adj += sum(adj .* op.left.datum)
 end
 function propagate{T<:GenMatrix,U<:GenMatrix}(op::Times{T,U}, datum::Matrix{Float64}, adj::Matrix{Float64})
+    @assert !any(isnan(datum))
+    @assert !any(isnan(adj))
     # matrix * matrix
     op.left.adj += adj * op.right.datum'
     op.right.adj += op.left.datum' * adj
 end
 function propagate{T<:GenMatrix,U<:GenVector}(op::Times{T,U}, datum::Vector{Float64}, adj::Vector{Float64})
+    @assert !any(isnan(datum))
+    @assert !any(isnan(adj))
     # matrix * vector 
     op.left.adj += adj * op.right.datum' # TODO
     op.right.adj += op.left.datum' * adj
 end
 function propagate{T<:GenVector,U<:GenScalar}(op::Times{T,U}, datum::Vector{Float64}, adj::Vector{Float64})
-    # matrix * scalar
-    op.left.adj += adj * op.right.datum' # TODO
-    op.right.adj += op.left.datum' * adj
+    @assert !any(isnan(datum))
+    @assert !any(isnan(adj))
+    # vector * scalar
+    op.left.adj += adj * op.right.datum
+    op.right.adj += sum(adj .* op.left.datum)
+end
+function propagate{T<:GenScalar,U<:GenVector}(op::Times{T,U}, datum::Vector{Float64}, adj::Vector{Float64})
+    @assert !any(isnan(datum))
+    @assert !any(isnan(adj))
+    # scalar * vector
+    op.left.adj += sum(adj .* op.right.datum)
+    op.right.adj += adj * op.left.datum
 end
 
 
@@ -345,10 +455,20 @@ end
 import Base./
 @generate_ad_binary_operator(/, Divide)
 function propagate{T<:GenScalar,U<:GenScalar}(op::Divide{T,U}, datum::Float64, adj::Float64)
+    @assert !any(isnan(datum))
+    @assert !any(isnan(adj))
     op.left.adj += adj / op.right.datum
     op.right.adj += adj * (-op.left.datum / (op.right.datum * op.right.datum))
 end
+function propagate{T<:GenVector,U<:GenScalar}(op::Divide{T,U}, datum::Vector{Float64}, adj::Vector{Float64})
+    @assert !any(isnan(datum))
+    @assert !any(isnan(adj))
+    op.left.adj += adj / op.right.datum
+    op.right.adj += sum(adj .* (-op.left.datum / (op.right.datum * op.right.datum)))
+end
 function propagate{T<:GenMatrix,U<:GenScalar}(op::Divide{T,U}, datum::Matrix{Float64}, adj::Matrix{Float64})
+    @assert !any(isnan(datum))
+    @assert !any(isnan(adj))
     op.left.adj += adj / op.right.datum
     op.right.adj += sum(adj .* (-op.left.datum / (op.right.datum * op.right.datum)))
 end
@@ -357,24 +477,82 @@ end
 import Base.(./)
 @generate_ad_binary_operator(./, ElementwiseDivide)
 function propagate{T<:GenScalar,U<:GenScalar}(op::ElementwiseDivide{T,U}, datum::Float64, adj::Float64)
+    @assert !any(isnan(datum))
+    @assert !any(isnan(adj))
     op.left.adj += adj / op.right.datum
     op.right.adj += adj * (-op.left.datum / (op.right.datum * op.right.datum))
 end
+function propagate{T<:GenScalar,U<:GenVector}(op::ElementwiseDivide{T,U}, datum::Vector{Float64}, adj::Vector{Float64})
+    @assert !any(isnan(datum))
+    @assert !any(isnan(adj))
+    op.left.adj += sum(adj ./ op.right.datum)
+    op.right.adj += adj .* (-op.left.datum ./ (op.right.datum .* op.right.datum))
+end
+function propagate{T<:GenVector,U<:GenMatrix}(op::ElementwiseDivide{T,U}, datum::Vector{Float64}, adj::Vector{Float64})
+    @assert !any(isnan(datum))
+    @assert !any(isnan(adj))
+    op.left.adj += adj ./ op.right.datum
+    op.right.adj += adj .* (-op.left.datum ./ (op.right.datum .* op.right.datum))
+end
 function propagate{T<:GenScalar,U<:GenMatrix}(op::ElementwiseDivide{T,U}, datum::Matrix{Float64}, adj::Matrix{Float64})
+    @assert !any(isnan(datum))
+    @assert !any(isnan(adj))
     op.left.adj += sum(adj ./ op.right.datum)
     op.right.adj += adj .* (-op.left.datum ./ (op.right.datum .* op.right.datum))
 end
 function propagate{T<:GenMatrix,U<:GenMatrix}(op::ElementwiseDivide{T,U}, datum::Matrix{Float64}, adj::Matrix{Float64})
+    @assert !any(isnan(datum))
+    @assert !any(isnan(adj))
     op.left.adj += adj ./ op.right.datum
     op.right.adj += adj .* (-op.left.datum ./ (op.right.datum .* op.right.datum))
 end
 
-
+# .*
+import Base.(.*)
+@generate_ad_binary_operator(.*, ElementwiseMultiply)
+function propagate{T<:GenScalar,U<:GenScalar}(op::ElementwiseMultiply{T,U}, datum::Float64, adj::Float64)
+    @assert !any(isnan(datum))
+    @assert !any(isnan(adj))
+    op.left.adj += adj * op.right.datum
+    op.right.adj += adj * op.left.datum
+end
+function propagate{T<:GenScalar,U<:GenVector}(op::ElementwiseMultiply{T,U}, datum::Vector{Float64}, adj::Vector{Float64})
+    @assert !any(isnan(datum))
+    @assert !any(isnan(adj))
+    op.left.adj += sum(adj .* op.right.datum)
+    op.right.adj += adj * op.left.datum
+end
+function propagate{T<:GenVector,U<:GenScalar}(op::ElementwiseMultiply{T,U}, datum::Vector{Float64}, adj::Vector{Float64})
+    @assert !any(isnan(datum))
+    @assert !any(isnan(adj))
+    op.left.adj += adj * op.right.datum 
+    op.right.adj += sum(adj .* op.left.datum)
+end
+function propagate{T<:GenScalar,U<:GenMatrix}(op::ElementwiseMultiply{T,U}, datum::Matrix{Float64}, adj::Matrix{Float64})
+    @assert !any(isnan(datum))
+    @assert !any(isnan(adj))
+    op.left.adj += sum(adj .* op.right.datum)
+    op.right.adj += adj * op.left.datum
+end
+function propagate{T<:GenMatrix,U<:GenScalar}(op::ElementwiseMultiply{T,U}, datum::Matrix{Float64}, adj::Matrix{Float64})
+    @assert !any(isnan(datum))
+    @assert !any(isnan(adj))
+    op.left.adj += adj * op.right.datum 
+    op.right.adj += sum(adj .* op.left.datum)
+end
+function propagate{T<:GenMatrix,U<:GenMatrix}(op::ElementwiseMultiply{T,U}, datum::Matrix{Float64}, adj::Matrix{Float64})
+    @assert !any(isnan(datum))
+    @assert !any(isnan(adj))
+    op.left.adj += adj .* op.right.datum
+    op.right.adj += adj .* op.left.datum
+end
 
 # log
 import Base.log
 @generate_ad_unary_operator(log, Log)
 function propagate{T}(op::Log, datum::T, adj::T)
+    @assert !any(isnan(datum))
+    @assert !any(isnan(adj))
     op.arg.adj += adj ./ op.arg.datum
 end
 
@@ -382,13 +560,24 @@ end
 import Base.exp
 @generate_ad_unary_operator(exp, Exp)
 function propagate{T}(op::Exp, datum::T, adj::T)
+    @assert !any(isnan(datum))
+    @assert !any(isnan(adj))
+    @assert !any(isnan(op.arg.adj))
     op.arg.adj += adj .* datum
+    if any(isnan(op.arg.adj))
+        println("op.arg.adj: $(op.arg.adj)")
+        println("adj: $adj")
+        println("datum: $datum")
+    end
+    @assert !any(isnan(op.arg.adj))
 end
 
 # lgamma 
 import Base.lgamma
 @generate_ad_unary_operator(lgamma, LogGamma)
 function propagate{T}(op::LogGamma, datum::T, adj::T)
+    @assert !any(isnan(datum))
+    @assert !any(isnan(adj))
     op.arg.adj += adj .* digamma(op.arg.datum)
 end
 
@@ -407,6 +596,7 @@ partial{T <: GenVal}(a::T) = a.adj # partial derivative
 export Tape
 export show 
 export GenScalar
+export GenVector
 export GenMatrix
 export concrete
 export backprop
