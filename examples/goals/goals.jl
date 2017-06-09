@@ -128,6 +128,151 @@ end
 
 include("povray_rendering.jl")
 
+# ---- amortized inference ----- #
+
+function sigmoid{T}(val::T)
+    1.0 ./ (1.0 + exp(-val))
+end
+
+function neural_network(T::AbstractTrace, features::Array{Float64,1}, num_hidden::Int)
+    W_hidden = zeros(num_hidden, length(features)) ~ "W-hidden"
+    b_hidden = zeros(num_hidden) ~ "b-hidden"
+    W_output_x_mu = zeros(num_hidden) ~ "W-output-x-mu"
+    b_output_x_mu = 0.0 ~ "b-output-x-mu"
+    W_output_x_log_std = zeros(num_hidden) ~ "W-output-x-log-std"
+    b_output_x_log_std = 0.0 ~ "b-output-x-log-std"
+    W_output_y_mu = zeros(num_hidden) ~ "W-output-y-mu"
+    b_output_y_mu = 0.0 ~ "b-output-y-mu"
+    W_output_y_log_std =  zeros(num_hidden) ~ "W-output-y-log-std"
+    b_output_y_log_std = 0.0 ~ "b-output-y-log-std"
+    hidden = sigmoid(W_hidden * features + b_hidden)
+    output_x = normal(W_output_x_mu * hidden + b_output_x_mu, 
+                      exp(W_output_x_log_std * hidden + b_output_x_log_std)) ~ "output-x"
+    output_y = normal(W_output_y_mu * hidden + b_output_y_mu, 
+                      exp(W_output_y_log_std * hidden + b_output_y_log_std)) ~ "output-y"
+end
+
+function train_neural_network(model_trace::Trace)
+    # TODO intervene to set the 'times' to 1:15 steps
+    # the input trace contains interventions and/or constraints
+    times = value(model_trace, "times")
+    num_features = length(times) + 2 # start.x and start.y
+
+    # NOTE: the argument for why you need the causal model at all is something
+    # like "we could make a special input to the network for every possible
+    # random variable, but that does not scale..". or it could be that you need the causal model to train the net..
+    num_hidden = 50
+    step_a = 2000.0
+    step_b = 0.75
+    minibatch_size = 100
+    max_iter = 1000
+
+    # initialize parameters
+    parameters = Dict()
+    parameters["W-hidden"] = randn(num_hidden, num_features)
+    parameters["b-hidden"] = randn(num_hidden)
+    parameters["W-output-x-mu"] = randn(num_hidden)
+    parameters["b-output-x-mu"] = randn()
+    parameters["W-output-x-log-std"] = randn(num_hidden)
+    parameters["b-output-x-log-std"] = randn()
+    parameters["W-output-y-mu"] = randn(num_hidden)
+    parameters["b-output-y-mu"] = randn()
+    parameters["W-output-y-log-std"] = randn(num_hidden)
+    parameters["b-output-y-log-std"] = randn()
+    network_trace = DifferentiableTrace()
+    for key in keys(parameters)
+        parametrize!(network_trace, key, parameters[key])
+    end
+
+    for iter=1:max_iter
+        objective_function = 0.0
+        gradients = Dict()
+        gradients["W-hidden"] = zeros(num_hidden, num_features)
+        gradients["b-hidden"] = zeros(num_hidden)
+        gradients["W-output-x-mu"] = zeros(num_hidden)
+        gradients["b-output-x-mu"] = 0.0
+        gradients["W-output-x-log-std"] = zeros(num_hidden)
+        gradients["b-output-x-log-std"] = 0.0
+        gradients["W-output-y-mu"] = zeros(num_hidden)
+        gradients["b-output-y-mu"] = 0.0
+        gradients["W-output-y-log-std"] = zeros(num_hidden)
+        gradients["b-output-y-log-std"] = 0.0
+        for i=1:minibatch_size
+            # simulate new values for start, destination, and measurments
+            agent_model(model_trace)
+            start = value(model_trace, "start")
+            destination = value(model_trace, "destination")
+            xs = map((i) -> value(model_trace, "x$i"), 1:length(times))
+            ys = map((i) -> value(model_trace, "y$i"), 1:length(times))
+            features = vcat([start.x, start.y], xs, ys)
+            neural_network(network_trace, features, num_hidden)
+            backprop(network_trace)
+            for key in keys(parameters)
+                gradients[key] += derivative(network_trace, key)
+            end
+            objective_function += score(network_trace)
+            reset_score(network_trace)
+        end
+        step_size = (step_a + iter) ^ (-step_b)
+        for key in keys(parameters)
+            parameters[key] += steps_size * gradients[key] / minibatch_size
+        end
+        println("objective function: $(objective_function / minibatch_size)")
+    end
+end
+
+# ---- neural network demo ---- #
+
+function neural_network_demo()
+
+    trace = Trace()
+
+    # add trees
+    intervene!(trace, "is-tree-1", true)
+    intervene!(trace, "tree-1", Tree(Point(30, 20), 10.))
+    intervene!(trace, "is-tree-2", true)
+    intervene!(trace, "tree-2", Tree(Point(83, 80), 10.))
+    intervene!(trace, "is-tree-3", true)
+    intervene!(trace, "tree-3", Tree(Point(80, 40), 10.))
+
+    # add walls
+    wall_height = 30.
+    intervene!(trace, "is-wall-1", true)
+    intervene!(trace, "wall-1", Wall(Point(20., 40.), 1, 40., 2., wall_height))
+    intervene!(trace, "is-wall-2", true)
+    intervene!(trace, "wall-2", Wall(Point(60., 40.), 2, 40., 2., wall_height))
+    intervene!(trace, "is-wall-3", true)
+    intervene!(trace, "wall-3", Wall(Point(60.-15., 80.), 1, 15. + 2., 2., wall_height))
+    intervene!(trace, "is-wall-4", true)
+    intervene!(trace, "wall-4", Wall(Point(20., 80.), 1, 15., 2., wall_height))
+    intervene!(trace, "is-wall-5", true)
+    intervene!(trace, "wall-5", Wall(Point(20., 40.), 2, 40., 2., wall_height))
+    boundary_wall_height = 2.
+    intervene!(trace, "is-wall-6", true)
+    intervene!(trace, "wall-6", Wall(Point(0., 0.), 1, 100., 2., boundary_wall_height))
+    intervene!(trace, "is-wall-7", true)
+    intervene!(trace, "wall-7", Wall(Point(100., 0.), 2, 100., 2., boundary_wall_height))
+    intervene!(trace, "is-wall-8", true)
+    intervene!(trace, "wall-8", Wall(Point(0., 100.), 1, 100., 2., boundary_wall_height))
+    intervene!(trace, "is-wall-9", true)
+    intervene!(trace, "wall-9", Wall(Point(0., 0.), 2, 100., 2., boundary_wall_height))
+
+    # prevent the program from adding new wall or trees
+    intervene!(trace, "is-tree-4", false)
+    intervene!(trace, "is-wall-10", false)
+    
+    # only simultae 15 time steps (first 8 seconds)
+    intervene!(trace, "times", collect(linspace(0., 8., 15)))
+
+    # TODO modify the model to have some limited uncertainty over the scene (the bottom enclosure)
+
+    # NOTE: the start position, destination, path, and measurements are all unconstrained
+    train_neural_network(trace)
+
+end
+
+# ---- demo ---- #
+
 function demo()
 
     camera_location = [50., -30., 120.]
@@ -301,5 +446,8 @@ function demo()
 
 end
 
+#srand(3)
+#demo()
+
 srand(3)
-demo()
+neural_network_demo()
