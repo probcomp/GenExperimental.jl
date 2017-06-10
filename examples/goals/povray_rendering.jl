@@ -13,6 +13,8 @@ type PovrayRendering
     objects::Array
     included::Array{String,1}
     global_settings::Array
+    agent_height::Float64
+    path_height::Float64
     function PovrayRendering(camera_loc::Array{Float64,1},
                              camera_look_at::Array{Float64,1},
                              light_loc::Array{Float64,1})
@@ -68,7 +70,10 @@ type PovrayRendering
         antialiasing = 0.01
         quality = 10
         num_threads = 1
-        new(width, height, antialiasing, quality, num_threads, camera, scale, light, objects, included, global_settings)
+        agent_height = 22.
+        path_height = 20.
+        new(width, height, antialiasing, quality, num_threads, camera, scale, light, objects, included, global_settings,
+            agent_height, path_height)
     end
 end
 
@@ -99,12 +104,11 @@ end
 
 function render_agent(scene::PovrayRendering, location::Point, color)
     yaw = 0
-    z = 20.
     push!(scene.objects, vapory.Object("quadrocopter", "scale", 3.0 * scene.scale,
         "translate", [0, 0, 0], # translate to origin first so we can rotate
         "rotate", [-15, 0, yaw], # the drone model is angled a bit
         # the drone model is centered at some vertical offset of about 1.0
-        "translate", [location.x * scene.scale, location.y * scene.scale, scene.scale * z - 1.0],
+        "translate", [location.x * scene.scale, location.y * scene.scale, scene.scale * scene.agent_height - 1.0],
         vapory.Texture(vapory.Pigment("color", color))))
 end
 
@@ -123,7 +127,6 @@ function render(scene::PovrayRendering, wall::Wall)
 end
 
 function render(scene::PovrayRendering, path::Path)
-    height = 20.0 # TODO ??
     width = 0.2
     color_rgbt=[1, 1, 1, 0.1]
     for i=1:length(path.points)-1
@@ -137,13 +140,13 @@ function render(scene::PovrayRendering, path::Path)
         side = [-forward[2], forward[1]]
         @assert isapprox(norm(side), 1.0)
         offset_ribbon = [side[1], side[2], 0]
-        p1 = ([segment_start.x * scene.scale, segment_start.y * scene.scale, scene.scale * height]
+        p1 = ([segment_start.x * scene.scale, segment_start.y * scene.scale, scene.scale * scene.path_height]
              + scene.scale * width * offset_ribbon)
-        p2 = ([segment_start.x * scene.scale, segment_start.y * scene.scale, scene.scale * height]
+        p2 = ([segment_start.x * scene.scale, segment_start.y * scene.scale, scene.scale * scene.path_height]
              - scene.scale * width * offset_ribbon)
-        p3 = ([segment_end.x * scene.scale, segment_end.y * scene.scale, scene.scale * height]
+        p3 = ([segment_end.x * scene.scale, segment_end.y * scene.scale, scene.scale * scene.path_height]
              - scene.scale * width * offset_ribbon)
-        p4 = ([segment_end.x * scene.scale, segment_end.y * scene.scale, scene.scale * height]
+        p4 = ([segment_end.x * scene.scale, segment_end.y * scene.scale, scene.scale * scene.path_height]
              + scene.scale * width * offset_ribbon)
         push!(scene.objects, vapory.Polygon(4, p1, p2, p3, p4, 
             vapory.Texture(vapory.Pigment("color", "rgbt", color_rgbt), vapory.Finish("ambient", 1.0)),
@@ -153,10 +156,9 @@ end
 
 
 function render_destination(scene::PovrayRendering, location::Point)
-    height = 20.0
     radius = 1.0
     color_rgbt=[1.0, 0.0, 0.0, 0.6]
-    location = scene.scale * [location.x, location.y, height]
+    location = scene.scale * [location.x, location.y, scene.path_height]
     push!(scene.objects, vapory.Sphere(location, radius * scene.scale,
         vapory.Texture(vapory.Pigment("color", "rgbt", color_rgbt), vapory.Finish("ambient", 0.6)),
         "no_shadow"))
@@ -228,8 +230,6 @@ function add_optimized_path(trace::Trace, povray_scene::PovrayRendering)
 end
 
 function add_measurements(trace::Trace, povray_scene::PovrayRendering)
-    #println("add masurements")
-    println("has times? $(hasvalue(trace, "times"))")
     if hasvalue(trace, "times")
         times = value(trace, "times")
         add_measurements(trace, povray_scene, length(times))
@@ -237,16 +237,13 @@ function add_measurements(trace::Trace, povray_scene::PovrayRendering)
 end
 
 function add_measurements(trace::Trace, povray_scene::PovrayRendering, max_measurement_time::Int)
-    #println("add masurements")
     if hasvalue(trace, "times")
         times = value(trace, "times")
-        #println("times: $times")
         measured_xs = []
         measured_ys = []
         println("max_measurement_time: $max_measurement_time")
         for i=1:max_measurement_time
             if hasvalue(trace, "x$i") && hasvalue(trace, "y$i")
-            #if hasconstraint(trace, "x$i") && hasconstraint(trace, "y$i")
                 location = Point(value(trace, "x$i"), value(trace, "y$i"))
                 render_agent(povray_scene, location, [1, 0.5, 0.5])
             end
