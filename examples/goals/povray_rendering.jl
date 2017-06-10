@@ -170,6 +170,7 @@ function render(scene::PovrayRendering, out_fname::String, )
 end
 
 function finish(scene::PovrayRendering, fname::String)
+    println("finishing frame $fname")
     vapory_scene = vapory.Scene(scene.camera, objects=scene.objects, included=scene.included, global_settings=scene.global_settings)
     vapory_scene[:render](fname, width=scene.width, height=scene.height, 
                 antialiasing=scene.antialiasing, quality=scene.quality, 
@@ -228,6 +229,7 @@ end
 
 function add_measurements(trace::Trace, povray_scene::PovrayRendering)
     #println("add masurements")
+    println("has times? $(hasvalue(trace, "times"))")
     if hasvalue(trace, "times")
         times = value(trace, "times")
         add_measurements(trace, povray_scene, length(times))
@@ -241,6 +243,7 @@ function add_measurements(trace::Trace, povray_scene::PovrayRendering, max_measu
         #println("times: $times")
         measured_xs = []
         measured_ys = []
+        println("max_measurement_time: $max_measurement_time")
         for i=1:max_measurement_time
             if hasvalue(trace, "x$i") && hasvalue(trace, "y$i")
             #if hasconstraint(trace, "x$i") && hasconstraint(trace, "y$i")
