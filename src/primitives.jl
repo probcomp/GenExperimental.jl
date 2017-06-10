@@ -10,7 +10,7 @@ macro register_module(name, simulator, regenerator)
         $name = (args...) -> ($simulator)(args...)[1]
         export $name
     end
-    println(statement)
+    #println(statement)
     eval(statement)
     #eval(quote export $simulator end)
     #eval(quote export $regenerator end)

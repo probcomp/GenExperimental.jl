@@ -230,10 +230,18 @@ function add_measurements(trace::Trace, povray_scene::PovrayRendering)
     #println("add masurements")
     if hasvalue(trace, "times")
         times = value(trace, "times")
+        add_measurements(trace, povray_scene, length(times))
+    end
+end
+
+function add_measurements(trace::Trace, povray_scene::PovrayRendering, max_measurement_time::Int)
+    #println("add masurements")
+    if hasvalue(trace, "times")
+        times = value(trace, "times")
         #println("times: $times")
         measured_xs = []
         measured_ys = []
-        for i=1:length(times)
+        for i=1:max_measurement_time
             if hasvalue(trace, "x$i") && hasvalue(trace, "y$i")
             #if hasconstraint(trace, "x$i") && hasconstraint(trace, "y$i")
                 location = Point(value(trace, "x$i"), value(trace, "y$i"))
@@ -242,6 +250,8 @@ function add_measurements(trace::Trace, povray_scene::PovrayRendering)
         end
     end
 end
+
+
 
 
 # design pattern: a given rendering (in this case a scene::PovrayRendering) is opened.
@@ -286,7 +296,7 @@ function render_trace(povray_scene::PovrayRendering, trace::Trace)
 
 end
 
-function render_traces(povray_scene::PovrayRendering, traces::Array{Trace})
+function render_traces(povray_scene::PovrayRendering, traces::Array{Trace}, max_measurement_time::Int)
 
     add_grass(povray_scene)
 
@@ -299,7 +309,7 @@ function render_traces(povray_scene::PovrayRendering, traces::Array{Trace})
     add_trees(trace, povray_scene)
     add_walls(trace, povray_scene)
     add_start(trace, povray_scene)
-    add_measurements(trace, povray_scene)
+    add_measurements(trace, povray_scene, max_measurement_time)
 
     for trace in traces
         add_destination(trace, povray_scene)
