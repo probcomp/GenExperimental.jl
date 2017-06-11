@@ -313,7 +313,7 @@ function render_traces(povray_scene::PovrayRendering, traces::Array{Trace}, max_
 
     for trace in traces
         add_destination(trace, povray_scene)
-        add_optimized_path(trace, povray_scene)
+        #add_optimized_path(trace, povray_scene)
     end
 
 end
