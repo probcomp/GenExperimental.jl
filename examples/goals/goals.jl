@@ -97,23 +97,12 @@ end
     return nothing
 end
 
-@everywhere function add_observations!(trace::Trace, measured_xs::Array{Float64,1}, measured_ys::Array{Float64,1}, tmax::Int)
-    for s=1:tmax
-        constrain!(trace, "x$s", measured_xs[s])
-        constrain!(trace, "y$s", measured_ys[s])
-    end
-end
-
-@everywhere function mh_inference(scene_trace::Trace, measured_xs::Array{Float64,1}, measured_ys::Array{Float64,1}, t::Int, num_iter::Int)
-
-    # the input scene_trace is assumed to contain only the scene
-    @assert !hasvalue(scene_trace, "destination")
-    @assert !hasvalue(scene_trace, "optimized_path")
-    @assert !hasvalue(scene_trace, "x1")
-    trace = deepcopy(scene_trace)
-    add_observations!(trace, measured_xs, measured_ys, t)
+@everywhere function mh_inference(trace::Trace, num_iter::Int)
+    @assert !hasvalue(trace, "tree") # don't want to copy this huge data structure
+    @assert hasvalue(trace, "x1")
+    trace = deepcopy(trace)
     agent_model(trace)
-    delete!(trace, "tree") # avoid copying this huge data structure
+    delete!(trace, "tree")
 
     # MH steps
     for iter=1:num_iter
@@ -482,6 +471,62 @@ function render_text_frame(text::String, fname::String)
     plt[:savefig](fname)
 end
 
+function generate_scene_a()
+    trace = Trace()
+    intervene!(trace, "is-tree-1", true)
+    intervene!(trace, "tree-1", Tree(Point(30, 20), 10.))
+    intervene!(trace, "is-tree-2", true)
+    intervene!(trace, "tree-2", Tree(Point(83, 80), 10.))
+    intervene!(trace, "is-tree-3", true)
+    intervene!(trace, "tree-3", Tree(Point(80, 40), 10.))
+
+    wall_height = 30.
+    intervene!(trace, "is-wall-1", true)
+    intervene!(trace, "wall-1", Wall(Point(20., 40.), 1, 40., 2., wall_height))
+    intervene!(trace, "is-wall-2", true)
+    intervene!(trace, "wall-2", Wall(Point(60., 40.), 2, 40., 2., wall_height))
+    intervene!(trace, "is-wall-3", true)
+    intervene!(trace, "wall-3", Wall(Point(60.-15., 80.), 1, 15. + 2., 2., wall_height))
+    intervene!(trace, "is-wall-4", true)
+    intervene!(trace, "wall-4", Wall(Point(20., 80.), 1, 15., 2., wall_height))
+    intervene!(trace, "is-wall-5", true)
+    intervene!(trace, "wall-5", Wall(Point(20., 40.), 2, 40., 2., wall_height))
+
+    boundary_wall_height = 2.
+    intervene!(trace, "is-wall-6", true)
+    intervene!(trace, "wall-6", Wall(Point(0., 0.), 1, 100., 2., boundary_wall_height))
+    intervene!(trace, "is-wall-7", true)
+    intervene!(trace, "wall-7", Wall(Point(100., 0.), 2, 100., 2., boundary_wall_height))
+    intervene!(trace, "is-wall-8", true)
+    intervene!(trace, "wall-8", Wall(Point(0., 100.), 1, 100., 2., boundary_wall_height))
+    intervene!(trace, "is-wall-9", true)
+    intervene!(trace, "wall-9", Wall(Point(0., 0.), 2, 100., 2., boundary_wall_height))
+
+    # prevent the program from adding new wall or trees
+    intervene!(trace, "is-tree-4", false)
+    intervene!(trace, "is-wall-10", false)
+
+    # add the drone starting position
+    constrain!(trace, "start", Point(90., 10.))
+    return trace
+end
+
+function generate_scene_b()
+    trace = generate_scene_a()
+
+    # change the walls to add a bottom passageway
+    delete!(trace, "wall-1")
+    intervene!(trace, "wall-1", Wall(Point(20., 40.), 1, 15., 2., wall_height))
+    delete!(trace, "is-tree-10")
+    delete!(trace, "is-wall-10")
+    intervene!(trace, "is-wall-10", true)
+    intervene!(trace, "wall-10", Wall(Point(60.- 15, 40.), 1, 15., 2., wall_height))
+    intervene!(trace, "is-wall-11", false)
+    return trace
+end
+
+
+
 function demo()
 
     camera_location = [50., -30., 120.]
@@ -506,221 +551,114 @@ function demo()
         println(fname)
     end
 
-
     # frame index
     f = 0
-
-    # first show a few unconstrained and unintervened samples
-    render_text_frame("Unconstrained samples from model program", "frames/frame_$f.png") ; f += 1
-    num_unconstrained_samples = 5
-    for i=1:num_unconstrained_samples
-        trace = Trace()
-        intervene!(trace, "measurement_noise", 1.0)
-        agent_model(trace)
-        render(trace, "frames/frame_$f.png") ; f += 1
-    end
-
-    # build up the scene incrementally, starting from an empty trace
-    render_text_frame("Adding trace elements incrementally", "frames/frame_$f.png") ; f += 1
-
-    trace = Trace()
-    render(trace, "frames/frame_$f.png") ; f += 1
-    intervene!(trace, "is-tree-1", true)
-    intervene!(trace, "tree-1", Tree(Point(30, 20), 10.))
-    render(trace, "frames/frame_$f.png") ; f += 1
-    intervene!(trace, "is-tree-2", true)
-    intervene!(trace, "tree-2", Tree(Point(83, 80), 10.))
-    render(trace, "frames/frame_$f.png") ; f += 1
-    intervene!(trace, "is-tree-3", true)
-    intervene!(trace, "tree-3", Tree(Point(80, 40), 10.))
-    render(trace, "frames/frame_$f.png") ; f += 1
-
-    wall_height = 30.
-    intervene!(trace, "is-wall-1", true)
-    intervene!(trace, "wall-1", Wall(Point(20., 40.), 1, 40., 2., wall_height))
-    render(trace, "frames/frame_$f.png") ; f += 1
-    intervene!(trace, "is-wall-2", true)
-    intervene!(trace, "wall-2", Wall(Point(60., 40.), 2, 40., 2., wall_height))
-    render(trace, "frames/frame_$f.png") ; f += 1
-    intervene!(trace, "is-wall-3", true)
-    intervene!(trace, "wall-3", Wall(Point(60.-15., 80.), 1, 15. + 2., 2., wall_height))
-    render(trace, "frames/frame_$f.png") ; f += 1
-    intervene!(trace, "is-wall-4", true)
-    intervene!(trace, "wall-4", Wall(Point(20., 80.), 1, 15., 2., wall_height))
-    render(trace, "frames/frame_$f.png") ; f += 1
-    intervene!(trace, "is-wall-5", true)
-    intervene!(trace, "wall-5", Wall(Point(20., 40.), 2, 40., 2., wall_height))
-    render(trace, "frames/frame_$f.png") ; f += 1
-
-    boundary_wall_height = 2.
-    intervene!(trace, "is-wall-6", true)
-    intervene!(trace, "wall-6", Wall(Point(0., 0.), 1, 100., 2., boundary_wall_height))
-    render(trace, "frames/frame_$f.png") ; f += 1
-    intervene!(trace, "is-wall-7", true)
-    intervene!(trace, "wall-7", Wall(Point(100., 0.), 2, 100., 2., boundary_wall_height))
-    render(trace, "frames/frame_$f.png") ; f += 1
-    intervene!(trace, "is-wall-8", true)
-    intervene!(trace, "wall-8", Wall(Point(0., 100.), 1, 100., 2., boundary_wall_height))
-    render(trace, "frames/frame_$f.png") ; f += 1
-    intervene!(trace, "is-wall-9", true)
-    intervene!(trace, "wall-9", Wall(Point(0., 0.), 2, 100., 2., boundary_wall_height))
-    render(trace, "frames/frame_$f.png") ; f += 1
-
-    # prevent the program from adding new wall or trees
-    intervene!(trace, "is-tree-4", false)
-    intervene!(trace, "is-wall-10", false)
-
-    # add the drone starting position
-    constrain!(trace, "start", Point(90., 10.))
-    render(trace, "frames/frame_$f.png") ; f += 1
     
-    # copy this trace for future reference (it contains just the scene A)
-    scene_a_trace = deepcopy(trace)
+    trace = generate_scene_a()
 
     # add a known ground truth goal
     intervene!(trace, "measurement_noise", 1.0)
     intervene!(trace, "destination", Point(40., 60.))
-    render(trace, "frames/frame_$f.png") ; f += 1
+    
+    # show scene A, start, and goal position
+    #render(trace, "frames/frame_$f.png") ; f += 1
 
-    # run model and extract observations, render ground druth
-    render_text_frame("A model simulation", "frames/frame_$f.png") ; f += 1
-    agent_model(trace)
+    # run model and extract observations, render ground truth
+    # three times
+    for i=1:3
+        # TODO replace with waypoint model
+        agent_model(trace)
+        #render(trace, "frames/frame_$f.png") ; f += 1
+    end
     times = value(trace, "times")
-    measured_xs = map((i) -> value(trace, "x$i"), 1:length(times))
-    measured_ys = map((i) -> value(trace, "y$i"), 1:length(times))
-    render(trace, "frames/frame_$f.png") ; f += 1
 
-    # delete the ground truth information from the trace
-    render_text_frame("Scene a", "frames/frame_$f.png") ; f += 1
+    # fresh trace with a random goal location
+    trace = generate_scene_a()
+    agent_model(trace)
     delete!(trace, "tree")
     delete!(trace, "path")
     delete!(trace, "optimized_path")
-    delete!(trace, "destination")
     for i=1:length(times)
         delete!(trace, "x$i")
         delete!(trace, "y$i")
     end
-    render(trace, "frames/frame_$f.png") ; f += 1
+    #render(trace, "frames/frame_$f.png") ; f += 1
 
-    # add the observations incrementally using constraints
-    render_text_frame("Scene a\nAdding observations", "frames/frame_$f.png") ; f += 1
-    for t=1:length(times)
-        constrain!(trace, "x$t", measured_xs[t])
-        constrain!(trace, "y$t", measured_ys[t])
-        render(trace, "frames/frame_$f.png") ; f += 1
-    end
-
-    # remove observations
-    for t=1:length(times)
-        delete!(trace, "x$t")
-        delete!(trace, "y$t")
-    end
-
-    # change the walls to add a bottom passageway
-    render_text_frame("Scene b", "frames/frame_$f.png") ; f += 1
-    delete!(trace, "wall-1")
-    intervene!(trace, "wall-1", Wall(Point(20., 40.), 1, 15., 2., wall_height))
-    delete!(trace, "is-tree-10")
-    delete!(trace, "is-wall-10")
-    intervene!(trace, "is-wall-10", true)
-    intervene!(trace, "wall-10", Wall(Point(60.- 15, 40.), 1, 15., 2., wall_height))
-    intervene!(trace, "is-wall-11", false)
-    render(trace, "frames/frame_$f.png") ; f += 1
-
-    # return noise to the default level defined in the program
-    delete!(trace, "measurement_noise")
-
-    # copy this trace for future reference (it contains just the scene B)
-    scene_b_trace = deepcopy(trace)
-
-    # add the observations incrementally using constraints
-    render_text_frame("Scene b\nAdding observations", "frames/frame_$f.png") ; f += 1
-    for t=1:length(times)
-        constrain!(trace, "x$t", measured_xs[t])
-        constrain!(trace, "y$t", measured_ys[t])
-        render(trace, "frames/frame_$f.png") ; f += 1
-    end
-
-    # remove observations
-    for t=1:length(times)
-        delete!(trace, "x$t")
-        delete!(trace, "y$t")
-    end
-
-    # generate particle clouds showing the result of inference at each stage
-    num_particles = 4
-    num_iter = 20 # TODO was 100
-    for (scene_name, scene_trace) in [("a", scene_a_trace), ("b", scene_b_trace)]
-        render_text_frame("Metropolis-Hastings inferences\nScene $scene_name\nAdding observations\nFixed number of MH iterations", "frames/frame_$f.png") ; f += 1
-        for t=1:length(measured_xs)
-            println("scene $scene_name, time: $t")
-            particles::Array{Trace,1} = pmap((i) -> mh_inference(scene_trace, measured_xs, measured_ys, t, num_iter), 1:num_particles)
-            render(particles, "frames/frame_$f.png", t) ; f += 1
-        end
-    end
-
-    # show particle clouds for a single observation sequence, with increasing numbers of MH iterations 
-    max_iter = 20 # TODO was 60
-    for (scene_name, scene_trace) in [("a", scene_a_trace), ("b", scene_b_trace)]
-        for time in [6, 12]
-            render_text_frame("Metropolis-Hastings inferences\nScene $scene_name\nFixed observations (1-$time)\nIncreasing numbers of MH iterations", "frames/frame_$f.png") ; f += 1
-            for num_iter=0:max_iter
-                println("scene $scene_name, time: $time, iters: $num_iter")
-                particles::Array{Trace,1} = pmap((i) -> mh_inference(scene_trace, measured_xs, measured_ys, time, num_iter), 1:num_particles)
-                render(particles, "frames/frame_$f.png", time) ; f += 1
-            end
-        end
-    end
-
-    # neural network experiments
-    for (scene_name, scene_trace) in [("a", scene_a_trace), ("b", scene_b_trace)]
-
-        println("using neural network for scene: $scene_name")
-        if !hasvalue(scene_trace, "times")
-            intervene!(scene_trace, "times", times)
-        end
-
-        # show neural network predictions for both scenes
-        # the neural network was trained for a specific number of observations (max_t
-        max_iter = 10^4 # was 4 # TODO
-        network_parameters = load_neural_network("network_scene_$(scene_name)_$(max_iter).json")
-        max_t = Int((size(network_parameters["W-hidden"])[2] - 2) / 2)
+    # add observations (generate the observations synthetically in another trace)
+    synthetic_data_trace = generate_scene_a()
+    intervene!(synthetic_data_trace, "measurement_noise", 1.0)
+    intervene!(synthetic_data_trace, "destination", Point(40., 60.))
+    agent_model(synthetic_data_trace)
+    num_obs = 12
+    measured_xs = map((i) -> value(synthetic_data_trace, "x$i"), 1:num_obs)
+    measured_ys = map((i) -> value(synthetic_data_trace, "y$i"), 1:num_obs)
     
-        # constrain the prefix of observed data
-        xs = measured_xs[1:max_t]
-        ys = measured_ys[1:max_t]
-        trace = deepcopy(scene_trace)
-        for t=1:max_t
-            constrain!(trace, "x$t", xs[t])
-            constrain!(trace, "y$t", ys[t])
-        end
-        start = value(trace, "start")
-    
-        # show neural network predictions of the goal for our observed data set
-        println("making predictions..")
-        num_predictions = 60
-        frame = PovrayRendering(camera_location, camera_look_at, light_location)
-        frame.quality = 1
-        frame.num_threads = 4
-        render_trace(frame, trace)
-        for j=1:num_predictions
-            destination, _ = neural_network_predict(network_parameters, start, xs, ys)
-            render_destination(frame, destination)
-        end
-        render_text_frame("Neural network predictions of destination\nScene $scene_name, $max_iter training simulations", "frames/frame_$f.png") ; f += 1
-        finish(frame, "frames/frame_$f.png") ; f += 1
-    
-        # use neural network as proposal and show trajectory predictions
-        num_particles = 4 # TODO 60
-        println("neural MH scene a, max_time: $max_t")
-        @assert length(xs) == max_t
-        render_text_frame("Metropolis-Hastings inferences with neural assistance\nScene $scene_name\nIncreasing number of MH iterations", "frames/frame_$f.png") ; f += 1
-        for num_iter=0:10
-            println("num_iter: $num_iter")
-            particles::Array{Trace,1} = pmap((i) -> mh_neural_inference(trace, xs, ys, max_t, num_iter, network_parameters), 1:num_particles)
-            render(particles, "frames/frame_$f.png", max_t) ; f += 1
-        end
+    # show observations in the trace with the random goal locaiton
+    for i=1:num_obs
+        constrain!(trace, "x$i", measured_xs[i])
+        constrain!(trace, "y$i", measured_ys[i])
     end
+    #render(trace, "frames/frame_$f.png") ; f += 1
+   
+    # show some inference happening (just the clouds)
+    num_particles = 4 # TODO 60
+    max_iter = 20
+
+    traces::Array{Trace, 1} = map((i) -> deepcopy(trace), 1:num_particles) # infer fork
+    for num_iter=0:max_iter
+        println("MH for num_iter=$num_iter")
+        traces = pmap((trace) -> mh_inference(trace, num_iter), traces)
+        render(traces, "frames/frame_$f.png", num_obs) ; f += 1
+    end
+
+    ## neural network experiments
+    #for (scene_name, scene_trace) in [("a", scene_a_trace), ("b", scene_b_trace)]
+#
+        #println("using neural network for scene: $scene_name")
+        #if !hasvalue(scene_trace, "times")
+            #intervene!(scene_trace, "times", times)
+        #end
+#
+        ## show neural network predictions for both scenes
+        ## the neural network was trained for a specific number of observations (max_t
+        #max_iter = 10^4 # was 4 # TODO
+        #network_parameters = load_neural_network("network_scene_$(scene_name)_$(max_iter).json")
+        #max_t = Int((size(network_parameters["W-hidden"])[2] - 2) / 2)
+    #
+        ## constrain the prefix of observed data
+        #xs = measured_xs[1:max_t]
+        #ys = measured_ys[1:max_t]
+        #trace = deepcopy(scene_trace)
+        #for t=1:max_t
+            #constrain!(trace, "x$t", xs[t])
+            #constrain!(trace, "y$t", ys[t])
+        #end
+        #start = value(trace, "start")
+    #
+        ## show neural network predictions of the goal for our observed data set
+        #println("making predictions..")
+        #num_predictions = 60
+        #frame = PovrayRendering(camera_location, camera_look_at, light_location)
+        #frame.quality = 1
+        #frame.num_threads = 4
+        #render_trace(frame, trace)
+        #for j=1:num_predictions
+            #destination, _ = neural_network_predict(network_parameters, start, xs, ys)
+            #render_destination(frame, destination)
+        #end
+        #render_text_frame("Neural network predictions of destination\nScene $scene_name, $max_iter training simulations", "frames/frame_$f.png") ; f += 1
+        #finish(frame, "frames/frame_$f.png") ; f += 1
+    #
+        ## use neural network as proposal and show trajectory predictions
+        #println("neural MH scene a, max_time: $max_t")
+        #@assert length(xs) == max_t
+        #render_text_frame("Metropolis-Hastings inferences with neural assistance\nScene $scene_name\nIncreasing number of MH iterations", "frames/frame_$f.png") ; f += 1
+        #for num_iter=0:10
+            #println("num_iter: $num_iter")
+            #particles::Array{Trace,1} = pmap((i) -> mh_neural_inference(trace, xs, ys, max_t, num_iter, network_parameters), 1:num_particles)
+            #render(particles, "frames/frame_$f.png", max_t) ; f += 1
+        #end
+    #end
 
 end
 
