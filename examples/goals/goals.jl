@@ -81,7 +81,7 @@ end
         locations = walk_path(get(optimized_path), speed, times) ~ "locations"
 
         # add measurement noise to the true locations
-        measurement_noise = 8.0 ~ "measurement_noise"
+        measurement_noise = 1.0 ~ "measurement_noise" # TODO Was 8.0 changed to 1.0
         measurements = Array{Point,1}(length(times))
         for (i, loc) in enumerate(locations)
             measurements[i] = Point(normal(loc.x, measurement_noise) ~ "x$i", 
@@ -398,7 +398,7 @@ function train_neural_networks()
     intervene!(trace, "is-wall-11", false)
     scene_b_trace = deepcopy(trace)
 
-    for exponent in [4]#3, 4, 5, 6] # TODO train for longer..
+    for exponent in [4,5]#3, 4, 5, 6] # TODO train for longer..
         # TODO do with the other scene as well
         # TODO show that the two networks are different
         max_iter = 10^exponent
@@ -490,8 +490,8 @@ function demo()
 
     function render(trace::Trace, fname::String) 
         frame = PovrayRendering(camera_location, camera_look_at, light_location)
-        frame.quality = 1
-        frame.num_threads = 4
+        frame.quality = 10
+        frame.num_threads = 60
         render_trace(frame, trace)
         finish(frame, fname)
         println(fname)
@@ -499,8 +499,8 @@ function demo()
 
     function render(traces::Array{Trace,1}, fname::String, max_measurement_time::Int)
         frame = PovrayRendering(camera_location, camera_look_at, light_location)
-        frame.quality = 1
-        frame.num_threads = 4
+        frame.quality = 10
+        frame.num_threads = 60
         render_traces(frame, traces, max_measurement_time)
         finish(frame, fname)
         println(fname)
@@ -648,8 +648,8 @@ function demo()
     end
 
     # generate particle clouds showing the result of inference at each stage
-    num_particles = 4
-    num_iter = 20 # TODO was 100
+    num_particles = 60
+    num_iter = 100 # TODO was 100
     for (scene_name, scene_trace) in [("a", scene_a_trace), ("b", scene_b_trace)]
         render_text_frame("Metropolis-Hastings inferences\nScene $scene_name\nAdding observations\nFixed number of MH iterations", "frames/frame_$f.png") ; f += 1
         for t=1:length(measured_xs)
@@ -660,7 +660,7 @@ function demo()
     end
 
     # show particle clouds for a single observation sequence, with increasing numbers of MH iterations 
-    max_iter = 20 # TODO was 60
+    max_iter = 100 # TODO was 60
     for (scene_name, scene_trace) in [("a", scene_a_trace), ("b", scene_b_trace)]
         for time in [6, 12]
             render_text_frame("Metropolis-Hastings inferences\nScene $scene_name\nFixed observations (1-$time)\nIncreasing numbers of MH iterations", "frames/frame_$f.png") ; f += 1
@@ -682,7 +682,7 @@ function demo()
 
         # show neural network predictions for both scenes
         # the neural network was trained for a specific number of observations (max_t
-        max_iter = 10^4 # was 4 # TODO
+        max_iter = 10^5 # was 4 # TODO
         network_parameters = load_neural_network("network_scene_$(scene_name)_$(max_iter).json")
         max_t = Int((size(network_parameters["W-hidden"])[2] - 2) / 2)
     
@@ -700,8 +700,8 @@ function demo()
         println("making predictions..")
         num_predictions = 60
         frame = PovrayRendering(camera_location, camera_look_at, light_location)
-        frame.quality = 1
-        frame.num_threads = 4
+        frame.quality = 10
+        frame.num_threads = 60
         render_trace(frame, trace)
         for j=1:num_predictions
             destination, _ = neural_network_predict(network_parameters, start, xs, ys)
@@ -711,11 +711,11 @@ function demo()
         finish(frame, "frames/frame_$f.png") ; f += 1
     
         # use neural network as proposal and show trajectory predictions
-        num_particles = 4 # TODO 60
+        num_particles = 60
         println("neural MH scene a, max_time: $max_t")
         @assert length(xs) == max_t
         render_text_frame("Metropolis-Hastings inferences with neural assistance\nScene $scene_name\nIncreasing number of MH iterations", "frames/frame_$f.png") ; f += 1
-        for num_iter=0:10
+        for num_iter=0:100
             println("num_iter: $num_iter")
             particles::Array{Trace,1} = pmap((i) -> mh_neural_inference(trace, xs, ys, max_t, num_iter, network_parameters), 1:num_particles)
             render(particles, "frames/frame_$f.png", max_t) ; f += 1
@@ -732,8 +732,8 @@ end
 # network_scene_b_10_3.json (trained on 1000 samples)
 # network_scene_b_10_6.json (trained on 1000000 samples)
 
-#srand(4)
-#train_neural_networks()
+srand(4)
+train_neural_networks()
 
 srand(3)
 demo()
