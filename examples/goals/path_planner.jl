@@ -16,6 +16,24 @@ immutable Path
     points::Array{Point,1}
 end
 
+function concatenate(a::Path, b::Path)
+    if a.goal.x != b.start.x || a.goal.y != b.start.y
+        error("goal of first path muts be start of second path")
+    end
+    points = Array{Point,1}()
+    for point in a.points
+        push!(points, point)
+    end
+    for point in b.points[2:end]
+        push!(points, point)
+    end
+    @assert points[1].x == a.start.x
+    @assert points[1].y == a.start.y
+    @assert points[end].x == b.goal.x
+    @assert points[end].y == b.goal.y
+    Path(a.start, b.goal, points)
+end
+
 function simplify_path(scene::Scene, original::Path)
     new_points = Array{Point,1}()
     push!(new_points, original.start)
