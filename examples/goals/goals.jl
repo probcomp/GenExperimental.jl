@@ -66,10 +66,22 @@ end
     # set destination of the drone
     destination = uniform_2d(xmin, xmax, ymin, ymax) ~ "destination"
 
-    # plan a path from starting location to destination
+    # plan a path from starting location to destination, 
+    # optionally using a waypoint
     planner_params = PlannerParams(2000, 3.0, 10000, 1.)
-    tree, path, optimized_path = plan_path(start, destination, scene,
-                                           planner_params)
+    optimized_path::Nullable{Path}
+    if (flip(0.5) ~ "use-waypoint")
+        waypoint = uniform_2d(xmin, xmax, ymin, ymax) ~ "waypoint"
+        tree1, path1, optimized_path1 = plan_path(start, waypoint, scene, planner_params)
+        tree2, path2, optimized_path2 = plan_path(waypoint, destination, scene, planner_params)
+        if isnull(optimized_path1) || isnull(optimized_path2)
+            optimized_path = Nullable{Path}()
+        else
+            optimized_path = concatenate(get(optimized_path1), get(optimized_path2))
+        end
+    else
+        tree, path, optimized_path = plan_path(start, destination, scene, planner_params)
+    end
 
     if isnull(optimized_path)
         # no path found
@@ -90,8 +102,6 @@ end
     end
 
     # record for rendering purposes
-    tree ~ "tree"
-    path ~ "path"
     optimized_path ~ "optimized_path"
     
     return nothing
@@ -102,7 +112,6 @@ end
     @assert hasvalue(trace, "x1")
     trace = deepcopy(trace)
     agent_model(trace)
-    delete!(trace, "tree")
 
     # MH steps
     for iter=1:num_iter
@@ -111,7 +120,6 @@ end
         agent_model(proposal_trace)
         if log(rand()) < score(proposal_trace) - score(trace)
             trace = proposal_trace
-            delete!(trace, "tree")
         end
     end
     trace
@@ -142,7 +150,6 @@ end
         intervene!(trace, "destination", initial_destination)
         reset_score(trace)
         agent_model(trace)
-        delete!(trace, "tree") # avoid copying this huge data structure
         model_score = score(trace)
         tries += 1
     end
@@ -165,7 +172,6 @@ end
         proposed_model_score = score(proposal_trace)
         if log(rand()) < (score(proposal_trace) - proposal_score) - (prev_model_score - prev_proposal_score)
             trace = proposal_trace
-            delete!(trace, "tree")
             prev_proposal_score = proposal_score
         end
     end
@@ -282,8 +288,8 @@ function train_neural_network(model_trace::Trace, params::TrainingParams)
         for i=1:params.minibatch_size
             # simulate new values for start, destination, and measurments
             agent_model(model_trace)
-            path = value(model_trace, "path")
-            if isnull(path)
+            optimized_path = value(model_trace, "optimized-path")
+            if isnull(optimized_path)
                 continue
             end
             start = value(model_trace, "start")
@@ -561,28 +567,26 @@ function demo()
     intervene!(trace, "destination", Point(40., 60.))
     
     # show scene A, start, and goal position
-    #render(trace, "frames/frame_$f.png") ; f += 1
+    render(trace, "frames/frame_$f.png") ; f += 1
 
     # run model and extract observations, render ground truth
     # three times
-    for i=1:3
+    for i=1:10
         # TODO replace with waypoint model
         agent_model(trace)
-        #render(trace, "frames/frame_$f.png") ; f += 1
+        render(trace, "frames/frame_$f.png") ; f += 1
     end
     times = value(trace, "times")
 
     # fresh trace with a random goal location
     trace = generate_scene_a()
     agent_model(trace)
-    delete!(trace, "tree")
-    delete!(trace, "path")
     delete!(trace, "optimized_path")
     for i=1:length(times)
         delete!(trace, "x$i")
         delete!(trace, "y$i")
     end
-    #render(trace, "frames/frame_$f.png") ; f += 1
+    render(trace, "frames/frame_$f.png") ; f += 1
 
     # add observations (generate the observations synthetically in another trace)
     synthetic_data_trace = generate_scene_a()
@@ -598,7 +602,7 @@ function demo()
         constrain!(trace, "x$i", measured_xs[i])
         constrain!(trace, "y$i", measured_ys[i])
     end
-    #render(trace, "frames/frame_$f.png") ; f += 1
+    render(trace, "frames/frame_$f.png") ; f += 1
    
     # show some inference happening (just the clouds)
     num_particles = 4 # TODO 60
