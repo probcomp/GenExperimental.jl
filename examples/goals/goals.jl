@@ -197,169 +197,6 @@ include("povray_rendering.jl")
 
 # ---- amortized inference ----- #
 
-@everywhere function sigmoid{T}(val::T)
-    1.0 ./ (1.0 + exp(-val))
-end
-
-# TODO instead of two separate neural networks, just write one probabilistic
-# program that first runs one neural network to predict use-waypoint and then
-# runs a second neural network if use-waypoint = true
-
-@everywhere function neural_network(T::AbstractTrace, features::Array{Float64,1}, num_hidden::Int)
-    # predict whether there is a waypoint or not
-    W_hidden = zeros(num_hidden, length(features)) ~ "bool-W-hidden"
-    b_hidden = zeros(num_hidden) ~ "bool-b-hidden"
-    W_output = zeros(num_hidden) ~ "bool-W-output"
-    b_output = 0.0 ~ "bool-b-output"
-    hidden = sigmoid(W_hidden * features + b_hidden)
-    output_prob = sigmoid(W_output' * hidden + b_output)[1]
-    use_waypoint = flip(output_prob) ~ "use-waypoint"
-
-    #if use_waypoint
-        ## predict the value of the waypoint using a separate neural network
-        #W_hidden = zeros(num_hidden, length(features)) ~ "W-hidden"
-        #b_hidden = zeros(num_hidden) ~ "b-hidden"
-        #W_output_x_mu = zeros(num_hidden) ~ "W-output-x-mu"
-        #b_output_x_mu = 0.0 ~ "b-output-x-mu"
-        #W_output_x_log_std = zeros(num_hidden) ~ "W-output-x-log-std"
-        #b_output_x_log_std = 0.0 ~ "b-output-x-log-std"
-        #W_output_y_mu = zeros(num_hidden) ~ "W-output-y-mu"
-        #b_output_y_mu = 0.0 ~ "b-output-y-mu"
-        #W_output_y_log_std =  zeros(num_hidden) ~ "W-output-y-log-std"
-        #b_output_y_log_std = 0.0 ~ "b-output-y-log-std"
-        #hidden = sigmoid(W_hidden * features + b_hidden)
-        #x_mu = (W_output_x_mu' * hidden + b_output_x_mu)[1]
-        #x_std = exp(W_output_x_log_std' * hidden + b_output_x_log_std)[1]
-        #output_x = normal(x_mu, x_std) ~ "output-x"
-        #y_mu = (W_output_y_mu' * hidden + b_output_y_mu)[1]
-        #y_std = exp(W_output_y_log_std' * hidden + b_output_y_log_std)[1]
-        #output_y = normal(y_mu, y_std) ~ "output-y"
-    #end
-end
-
-@everywhere function scale_coordinate{T}(x::T)
-    (x - 50.) / 100.
-end
-
-@everywhere function unscale_coordinate{T}(x::T)
-    x * 100. + 50.
-end
-
-type TrainingParams
-    # the number of time points to use as observations (currently a separate
-    # network would need to be trained for each distinct number of
-    # observations)
-    max_t::Int 
-    num_hidden::Int
-    step_a::Float64
-    step_b::Float64
-    minibatch_size::Int
-    max_iter::Int
-end
-
-
-@everywhere function neural_network_predict(parameters::Dict, start::Point, xs::Vector{Float64}, ys::Vector{Float64})
-    features = scale_coordinate(vcat([start.x, start.y], xs, ys))
-    trace = Trace()
-    for key in keys(parameters)
-        intervene!(trace, key, parameters[key])
-    end
-    propose!(trace, "use-waypoint")
-    propose!(trace, "output-x")
-    propose!(trace, "output-y")
-    num_hidden = length(parameters["b-hidden"])
-    println("num-hidden: $num_hidden")
-    neural_network(trace, features, num_hidden)
-    use_waypoint = value(trace, "use-waypoint")
-    if use_waypoint
-        output_x = unscale_coordinate(value(trace, "output-x"))
-        output_y = unscale_coordinate(value(trace, "output-y"))
-    else
-        output_x = NaN
-        output_y = NaN
-    end
-    (use_waypoint, Point(output_x, output_y)), score(trace)
-end
-
-function initialize_network_parameters(num_hidden::Int, max_t::Int)
-    num_features = max_t * 2 + 2 # start.x and start.y
-    parameters = Dict()
-    parameters["bool-W-hidden"] = randn(num_hidden, num_features) / num_hidden
-    parameters["bool-b-hidden"] = randn(num_hidden) / num_hidden
-    parameters["bool-W-output"] = randn(num_hidden) / num_hidden
-    parameters["bool-b-output"] = randn()
-
-    #parameters["W-hidden"] = randn(num_hidden, num_features) / num_hidden
-    #parameters["b-hidden"] = randn(num_hidden) / num_hidden
-    #parameters["W-output-x-mu"] = randn(num_hidden) / num_hidden
-    #parameters["b-output-x-mu"] = randn()
-    #parameters["W-output-x-log-std"] = randn(num_hidden) / num_hidden
-    #parameters["b-output-x-log-std"] = randn()
-    #parameters["W-output-y-mu"] = randn(num_hidden) / num_hidden
-    #parameters["b-output-y-mu"] = randn()
-    #parameters["W-output-y-log-std"] = randn(num_hidden) / num_hidden
-    #parameters["b-output-y-log-std"] = randn()
-    return parameters
-end
-
-function initialize_network_gradients(num_hidden::Int, max_t::Int)
-    num_features = max_t * 2 + 2 # start.x and start.y
-    gradients = Dict()
-    gradients["bool-W-hidden"] = zeros(num_hidden, num_features)
-    gradients["bool-b-hidden"] = zeros(num_hidden)
-    gradients["bool-W-output"] = zeros(num_hidden)
-    gradients["bool-b-output"] = 0.0
-
-    #gradients["W-hidden"] = zeros(num_hidden, num_features)
-    #gradients["b-hidden"] = zeros(num_hidden)
-    #gradients["W-output-x-mu"] = zeros(num_hidden)
-    #gradients["b-output-x-mu"] = 0.0
-    #gradients["W-output-x-log-std"] = zeros(num_hidden)
-    #gradients["b-output-x-log-std"] = 0.0
-    #gradients["W-output-y-mu"] = zeros(num_hidden)
-    #gradients["b-output-y-mu"] = 0.0
-    #gradients["W-output-y-log-std"] = zeros(num_hidden)
-    #gradients["b-output-y-log-std"] = 0.0
-    return gradients
-end
-
-function construct_network_input(network_trace::AbstractTrace, model_trace::Trace)
-    max_t = Int((size(value(network_trace, "bool-W-hidden"))[2] - 2) / 2)
-    start = value(model_trace, "start")
-    xs = map((j) -> value(model_trace, "x$j"), 1:max_t)
-    ys = map((j) -> value(model_trace, "y$j"), 1:max_t)
-    scale_coordinate(vcat([start.x, start.y], xs, ys))
-end
-
-function constrain_network!(network_trace::AbstractTrace, model_trace::Trace)
-    use_waypoint = value(model_trace, "use-waypoint")
-    #num_hidden = length(value(network_trace, "bool-b-hidden"))
-    if hasvalue(network_trace, "use-waypoint")
-        delete!(network_trace, "use-waypoint")
-    end
-    #if hasvalue(network_trace, "output-x")
-        #delete!(network_trace, "output-x")
-    #end
-    #if hasvalue(network_trace, "output-y")
-        #delete!(network_trace, "output-y")
-    #end
-
-    constrain!(network_trace, "use-waypoint", use_waypoint)
-    #if use_waypoint
-        #waypoint = value(model_trace, "waypoint")
-        #constrain!(network_trace, "output-x", scale_coordinate(waypoint.x))
-        #constrain!(network_trace, "output-y", scale_coordinate(waypoint.y))
-    #end
-end
-
-
-# IDEA: allow us to subtype the 'trace' and avoid use of dictionaries?
-
-# objective function to be minimize:
-#
-#
-# 1. E_{f ~ P} KL(P(use-wp|f) || Q(use-wp;f)) + E_{f ~ P} KL(P(wp|f, use-wp=true) || Q(wp;f, use-wp=true))
-
 immutable ADAMParameters
     alpha::Float64
     beta_1::Float64
@@ -368,7 +205,7 @@ immutable ADAMParameters
 end
 
 function adam_optimize!(objective::Function, gradient::Function,
-                         theta::Dict, params::ADAMParameters)
+                         theta::Dict, params::ADAMParameters, max_iter::Int)
     # gradient ascent
     # theta is a dictionary mapping Strings to scalars or arrays
     m = Dict{Any,Any}()
@@ -377,7 +214,7 @@ function adam_optimize!(objective::Function, gradient::Function,
         m[key] = 0. * theta[key]
         v[key] = 0. * theta[key]
     end
-    for t=1:100
+    for t=2:max_iter
         g = gradient(t, theta)
         for key in keys(theta)
             m[key] = params.beta_1 * m[key] + (1. - params.beta_1) * g[key]
@@ -391,12 +228,125 @@ function adam_optimize!(objective::Function, gradient::Function,
     end
 end
 
+abstract AmortizedInference
 
-function train_neural_network(model_trace::Trace, params::TrainingParams)
+immutable NeuralNetworkInference <: AmortizedInference
+    neural_network::Function
 
-    # initialize network parameters
-    theta = initialize_network_parameters(params.num_hidden, params.max_t)
+    # Number of samples to use for gradient estimation
+    minibatch_size::Int
 
+    # Number of samples to use for objective function evaluation
+    num_eval::Int
+
+    # Number of ADAM steps
+    max_iter::Int
+
+    # Number of observation time-steps to take as input
+    max_t::Int
+
+    # Number of hidden units
+    num_hidden::Int
+end
+
+inference_program(inference::NeuralNetworkInference) = inference.neural_network
+
+function initialize_inference_parameters(inference::NeuralNetworkInference)
+    num_hidden = inference.num_hidden
+    num_features = inference.max_t * 2 #+ 2 # start.x and start.y
+    parameters = Dict()
+    parameters["bool-W-hidden"] = randn(num_hidden, num_features) / num_hidden
+    parameters["bool-b-hidden"] = randn(num_hidden) / num_hidden
+    parameters["bool-W-output"] = randn(num_hidden) / num_hidden
+    parameters["bool-b-output"] = randn()
+
+    parameters["W-hidden"] = randn(num_hidden, num_features) / num_hidden
+    parameters["b-hidden"] = randn(num_hidden) / num_hidden
+    parameters["W-output-x-mu"] = randn(num_hidden) / num_hidden
+    parameters["b-output-x-mu"] = randn()
+    parameters["W-output-x-log-std"] = randn(num_hidden) / num_hidden
+    parameters["b-output-x-log-std"] = randn()
+    parameters["W-output-y-mu"] = randn(num_hidden) / num_hidden
+    parameters["b-output-y-mu"] = randn()
+    parameters["W-output-y-log-std"] = randn(num_hidden) / num_hidden
+    parameters["b-output-y-log-std"] = randn()
+    return parameters
+end
+
+function construct_inference_input(inference::NeuralNetworkInference, model_trace::AbstractTrace)
+    #start = value(model_trace, "start")
+    xs = map((j) -> value(model_trace, "x$j"), 1:inference.max_t)
+    ys = map((j) -> value(model_trace, "y$j"), 1:inference.max_t)
+    #scale_coordinate(vcat([start.x, start.y], xs, ys))
+    scale_coordinate(vcat(xs, ys))
+end
+
+function constrain_inference_program!(inference::NeuralNetworkInference,
+                                      inference_trace::AbstractTrace, model_trace::AbstractTrace)
+    use_waypoint = value(model_trace, "use-waypoint")
+    if hasvalue(inference_trace, "use-waypoint")
+        delete!(inference_trace, "use-waypoint")
+    end
+    if hasvalue(inference_trace, "output-x")
+        delete!(inference_trace, "output-x")
+    end
+    if hasvalue(inference_trace, "output-y")
+        delete!(inference_trace, "output-y")
+    end
+
+    constrain!(inference_trace, "use-waypoint", use_waypoint)
+    if use_waypoint
+        waypoint = value(model_trace, "waypoint")
+        constrain!(inference_trace, "output-x", scale_coordinate(waypoint.x))
+        constrain!(inference_trace, "output-y", scale_coordinate(waypoint.y))
+    end
+end
+
+@everywhere function neural_network_predict(inference::NeuralNetworkInference, parameters::Dict, model_trace::Trace)
+    features = construct_inference_input(inference, model_trace)
+    trace = Trace()
+    for key in keys(parameters)
+        intervene!(trace, key, parameters[key])
+    end
+    propose!(trace, "use-waypoint")
+    propose!(trace, "output-x")
+    propose!(trace, "output-y")
+    inference.neural_network(trace, features, inference)
+    use_waypoint = value(trace, "use-waypoint")
+    if use_waypoint
+        output_x = unscale_coordinate(value(trace, "output-x"))
+        output_y = unscale_coordinate(value(trace, "output-y"))
+    else
+        output_x = NaN
+        output_y = NaN
+    end
+    (use_waypoint, Point(output_x, output_y)), score(trace)
+end
+
+
+# TODO generate a module as output?
+# and call it 'compile'
+# NOTE: what we actually generate are parameters for a probabilistic program (what about variational autoencoder case?)
+function train(inference::AmortizedInference, model_trace::Trace, model_program::Function)
+
+    function render(trace::Trace, fname::String) 
+        camera_location = [50., -30., 120.]
+        camera_look_at = [50., 50., 0.]
+        light_location = [50., 50., 150.]
+        frame = PovrayRendering(camera_location, camera_look_at, light_location)
+        frame.quality = 1
+        frame.num_threads = 4
+        render_trace(frame, trace)
+        finish(frame, fname)
+        println(fname)
+    end
+
+    program = inference_program(inference)
+
+    # initialize inference program parameters
+    theta = initialize_inference_parameters(inference)
+
+    # optimization algorithm parameters
     adam_params = ADAMParameters(0.001, 0.9, 0.999, 1e-8)
 
     # gradient function
@@ -405,21 +355,27 @@ function train_neural_network(model_trace::Trace, params::TrainingParams)
         for key in keys(theta)
             gradient[key] = 0. * theta[key]
         end
-        for i=1:params.minibatch_size
+        for i=1:inference.minibatch_size
             while true
-                agent_model(model_trace)
-                !isnull(value(model_trace, "optimized_path")) && break
+                reset_score(model_trace)
+                model_program(model_trace)
+                !isinf(score(model_trace)) && break # reject until it has non-infinite score (really its -inf)
+                # TODO: support rejection sampling in the model program
             end
-            network_trace = DifferentiableTrace()
+            @assert value(model_trace, "measurement_noise") == 1.
+            @assert value(model_trace, "start").x == 90.
+            #render(model_trace, "training_trace_$i.png")
+            inference_trace = DifferentiableTrace()
             for key in keys(theta)
-                parametrize!(network_trace, key, theta[key])
+                parametrize!(inference_trace, key, theta[key])
             end
-            constrain_network!(network_trace, model_trace)
-            features = construct_network_input(network_trace, model_trace)
-            neural_network(network_trace, features, params.num_hidden)
-            backprop(network_trace)
+    
+            constrain_inference_program!(inference, inference_trace, model_trace)
+            input = construct_inference_input(inference, model_trace)
+            program(inference_trace, input, inference)
+            backprop(inference_trace)
             for key in keys(gradient)
-                gradient[key] += derivative(network_trace, key)
+                gradient[key] += derivative(inference_trace, key)
             end
         end
         return gradient
@@ -428,30 +384,91 @@ function train_neural_network(model_trace::Trace, params::TrainingParams)
     # objective function
     function objective(t::Int, theta::Dict)
         objective = 0.0
-        num_eval_samples = 100
-        network_trace = Trace()
+        inference_trace = Trace()
         for key in keys(theta)
-            intervene!(network_trace, key, theta[key])
+            intervene!(inference_trace, key, theta[key])
         end
-        for i=1:num_eval_samples
+        for i=1:inference.num_eval
             while true
-                agent_model(model_trace)
-                !isnull(value(model_trace, "optimized_path")) && break
+                reset_score(model_trace)
+                model_program(model_trace)
+                !isinf(score(model_trace)) && break # reject until it has non-infinite score (really its -inf)
+                # TODO support rejection sampling in the model program
             end
-            constrain_network!(network_trace, model_trace)
-            features = construct_network_input(network_trace, model_trace)
-            reset_score(network_trace)
-            neural_network(network_trace, features, params.num_hidden)
-            objective += score(network_trace)
+            constrain_inference_program!(inference, inference_trace, model_trace)
+            input = construct_inference_input(inference, model_trace)
+            reset_score(inference_trace)
+            program(inference_trace, input, inference)
+            objective += score(inference_trace)
         end
         objective
     end
 
     # writes parameters
-    adam_optimize!(objective, gradient, theta, adam_params)
+    # TODO add a stopping condition
+    adam_optimize!(objective, gradient, theta, adam_params, inference.max_iter)
 
     return theta
+
 end
+
+
+@everywhere function sigmoid{T}(val::T)
+    1.0 ./ (1.0 + exp(-val))
+end
+
+# TODO instead of two separate neural networks, just write one probabilistic
+# program that first runs one neural network to predict use-waypoint and then
+# runs a second neural network if use-waypoint = true
+
+@everywhere function neural_network(T::AbstractTrace, features::Array{Float64,1}, inference::NeuralNetworkInference)
+    num_hidden = inference.num_hidden
+    # predict whether there is a waypoint or not
+    W_hidden = zeros(num_hidden, length(features)) ~ "bool-W-hidden"
+    b_hidden = zeros(num_hidden) ~ "bool-b-hidden"
+    W_output = zeros(num_hidden) ~ "bool-W-output"
+    b_output = 0.0 ~ "bool-b-output"
+    hidden = sigmoid(W_hidden * features + b_hidden)
+    output_prob = sigmoid(W_output' * hidden + b_output)[1]
+    use_waypoint = flip(output_prob) ~ "use-waypoint"
+
+    if use_waypoint
+        # predict the value of the waypoint using a separate neural network
+        W_hidden = zeros(num_hidden, length(features)) ~ "W-hidden"
+        b_hidden = zeros(num_hidden) ~ "b-hidden"
+        W_output_x_mu = zeros(num_hidden) ~ "W-output-x-mu"
+        b_output_x_mu = 0.0 ~ "b-output-x-mu"
+        W_output_x_log_std = zeros(num_hidden) ~ "W-output-x-log-std"
+        b_output_x_log_std = 0.0 ~ "b-output-x-log-std"
+        W_output_y_mu = zeros(num_hidden) ~ "W-output-y-mu"
+        b_output_y_mu = 0.0 ~ "b-output-y-mu"
+        W_output_y_log_std =  zeros(num_hidden) ~ "W-output-y-log-std"
+        b_output_y_log_std = 0.0 ~ "b-output-y-log-std"
+        hidden = sigmoid(W_hidden * features + b_hidden)
+        x_mu = (W_output_x_mu' * hidden + b_output_x_mu)[1]
+        x_std = exp(W_output_x_log_std' * hidden + b_output_x_log_std)[1]
+        output_x = normal(x_mu, x_std) ~ "output-x"
+        y_mu = (W_output_y_mu' * hidden + b_output_y_mu)[1]
+        y_std = exp(W_output_y_log_std' * hidden + b_output_y_log_std)[1]
+        output_y = normal(y_mu, y_std) ~ "output-y"
+    end
+end
+
+@everywhere function scale_coordinate{T}(x::T)
+    (x - 50.) / 100.
+end
+
+@everywhere function unscale_coordinate{T}(x::T)
+    x * 100. + 50.
+end
+
+# IDEA: allow us to subtype the 'trace' and avoid use of dictionaries?
+
+# objective function to be minimize:
+#
+#
+# 1. E_{f ~ P} KL(P(use-wp|f) || Q(use-wp;f)) + E_{f ~ P} KL(P(wp|f, use-wp=true) || Q(wp;f, use-wp=true))
+
 
 # ---- neural network demo ---- #
 
@@ -497,8 +514,9 @@ function train_neural_networks()
     # only predict using the first max_t observations
     max_t = 15
 
-    # scene a
-    scene_a_trace = deepcopy(trace)
+    # scene a (which has a fixed start)
+    scene_a_trace = generate_scene_a()
+    intervene!(scene_a_trace, "measurement_noise", 1.0)
 
     # scene b: change the walls to add a bottom passageway
     #wall_height = 30.
@@ -511,17 +529,17 @@ function train_neural_networks()
     #intervene!(trace, "is-wall-11", false)
     #scene_b_trace = deepcopy(trace)
 
-    for exponent in [5]#3, 4, 5, 6] # TODO train for longer..
+    for exponent in [2]#3, 4, 5, 6] # TODO train for longer..
         # TODO do with the other scene as well
         # TODO show that the two networks are different
         max_iter = 10^exponent
-        training_params = TrainingParams(max_t, 50, 1.0, 0.90, 100, max_iter)
+        inference = NeuralNetworkInference(neural_network, 100, 100, max_iter, max_t, 50)
         println("training scene a, $max_iter")
-        parameters = train_neural_network(scene_a_trace, training_params)
+        parameters = train(inference, scene_a_trace, agent_model)
         write_neural_network(parameters, "network_scene_a_$(max_iter).json")
         render_neural_network(parameters, "network_scene_a_$(max_iter).png")
         #println("training scene b, $max_iter")
-        #parameters = train_neural_network(scene_b_trace, training_params)
+        #parameters = train(inference, scene_b_trace, agent_model)
         #write_neural_network(parameters, "network_scene_b_$(max_iter).json")
         #render_neural_network(parameters, "network_scene_b_$(max_iter).png")
     end
@@ -781,13 +799,14 @@ function demo()
 
         # show neural network predictions for both scenes
         # the neural network was trained for a specific number of observations (max_t
-        max_iter = 10^5 # was 4 # TODO
+        max_iter = 10^2 # was 4 # TODO
         parameters = load_neural_network("network_scene_$(scene_name)_$(max_iter).json")
-        max_t = Int((size(parameters["W-hidden"])[2] - 2) / 2)
+        max_t = 15
+        inference = NeuralNetworkInference(neural_network, 100, 100, max_iter, max_t, 50) # TODO should be loaded from JSON alongside parameters
     
         # constrain the prefix of observed data
-        xs = measured_xs[1:max_t]
-        ys = measured_ys[1:max_t]
+        xs = measured_xs[1:inference.max_t]
+        ys = measured_ys[1:inference.max_t]
         trace = deepcopy(scene_trace)
         for t=1:max_t
             constrain!(trace, "x$t", xs[t])
@@ -803,7 +822,7 @@ function demo()
         frame.num_threads = 4
         render_trace(frame, trace)
         for j=1:num_predictions
-            (use_waypoint, waypoint), _ = neural_network_predict(parameters, start, xs, ys)
+            (use_waypoint, waypoint), _ = neural_network_predict(inference, parameters, trace)
             render_destination(frame, use_waypoint ? waypoint : Point(randn(), randn())) # NOTE: it will be red but it is actually the waypoint
         end
         finish(frame, "frames/frame_$f.png") ; f += 1
@@ -831,5 +850,5 @@ end
 srand(4)
 train_neural_networks()
 
-#srand(3)
-#demo()
+srand(3)
+demo()
