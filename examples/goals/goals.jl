@@ -215,26 +215,26 @@ end
     output_prob = sigmoid(W_output' * hidden + b_output)[1]
     use_waypoint = flip(output_prob) ~ "use-waypoint"
 
-    if use_waypoint
-        # predict the value of the waypoint using a separate neural network
-        W_hidden = zeros(num_hidden, length(features)) ~ "W-hidden"
-        b_hidden = zeros(num_hidden) ~ "b-hidden"
-        W_output_x_mu = zeros(num_hidden) ~ "W-output-x-mu"
-        b_output_x_mu = 0.0 ~ "b-output-x-mu"
-        W_output_x_log_std = zeros(num_hidden) ~ "W-output-x-log-std"
-        b_output_x_log_std = 0.0 ~ "b-output-x-log-std"
-        W_output_y_mu = zeros(num_hidden) ~ "W-output-y-mu"
-        b_output_y_mu = 0.0 ~ "b-output-y-mu"
-        W_output_y_log_std =  zeros(num_hidden) ~ "W-output-y-log-std"
-        b_output_y_log_std = 0.0 ~ "b-output-y-log-std"
-        hidden = sigmoid(W_hidden * features + b_hidden)
-        x_mu = (W_output_x_mu' * hidden + b_output_x_mu)[1]
-        x_std = exp(W_output_x_log_std' * hidden + b_output_x_log_std)[1]
-        output_x = normal(x_mu, x_std) ~ "output-x"
-        y_mu = (W_output_y_mu' * hidden + b_output_y_mu)[1]
-        y_std = exp(W_output_y_log_std' * hidden + b_output_y_log_std)[1]
-        output_y = normal(y_mu, y_std) ~ "output-y"
-    end
+    #if use_waypoint
+        ## predict the value of the waypoint using a separate neural network
+        #W_hidden = zeros(num_hidden, length(features)) ~ "W-hidden"
+        #b_hidden = zeros(num_hidden) ~ "b-hidden"
+        #W_output_x_mu = zeros(num_hidden) ~ "W-output-x-mu"
+        #b_output_x_mu = 0.0 ~ "b-output-x-mu"
+        #W_output_x_log_std = zeros(num_hidden) ~ "W-output-x-log-std"
+        #b_output_x_log_std = 0.0 ~ "b-output-x-log-std"
+        #W_output_y_mu = zeros(num_hidden) ~ "W-output-y-mu"
+        #b_output_y_mu = 0.0 ~ "b-output-y-mu"
+        #W_output_y_log_std =  zeros(num_hidden) ~ "W-output-y-log-std"
+        #b_output_y_log_std = 0.0 ~ "b-output-y-log-std"
+        #hidden = sigmoid(W_hidden * features + b_hidden)
+        #x_mu = (W_output_x_mu' * hidden + b_output_x_mu)[1]
+        #x_std = exp(W_output_x_log_std' * hidden + b_output_x_log_std)[1]
+        #output_x = normal(x_mu, x_std) ~ "output-x"
+        #y_mu = (W_output_y_mu' * hidden + b_output_y_mu)[1]
+        #y_std = exp(W_output_y_log_std' * hidden + b_output_y_log_std)[1]
+        #output_y = normal(y_mu, y_std) ~ "output-y"
+    #end
 end
 
 @everywhere function scale_coordinate{T}(x::T)
@@ -257,6 +257,7 @@ type TrainingParams
     max_iter::Int
 end
 
+
 @everywhere function neural_network_predict(parameters::Dict, start::Point, xs::Vector{Float64}, ys::Vector{Float64})
     features = scale_coordinate(vcat([start.x, start.y], xs, ys))
     trace = Trace()
@@ -267,6 +268,7 @@ end
     propose!(trace, "output-x")
     propose!(trace, "output-y")
     num_hidden = length(parameters["b-hidden"])
+    println("num-hidden: $num_hidden")
     neural_network(trace, features, num_hidden)
     use_waypoint = value(trace, "use-waypoint")
     if use_waypoint
@@ -287,16 +289,16 @@ function initialize_network_parameters(num_hidden::Int, max_t::Int)
     parameters["bool-W-output"] = randn(num_hidden) / num_hidden
     parameters["bool-b-output"] = randn()
 
-    parameters["W-hidden"] = randn(num_hidden, num_features) / num_hidden
-    parameters["b-hidden"] = randn(num_hidden) / num_hidden
-    parameters["W-output-x-mu"] = randn(num_hidden) / num_hidden
-    parameters["b-output-x-mu"] = randn()
-    parameters["W-output-x-log-std"] = randn(num_hidden) / num_hidden
-    parameters["b-output-x-log-std"] = randn()
-    parameters["W-output-y-mu"] = randn(num_hidden) / num_hidden
-    parameters["b-output-y-mu"] = randn()
-    parameters["W-output-y-log-std"] = randn(num_hidden) / num_hidden
-    parameters["b-output-y-log-std"] = randn()
+    #parameters["W-hidden"] = randn(num_hidden, num_features) / num_hidden
+    #parameters["b-hidden"] = randn(num_hidden) / num_hidden
+    #parameters["W-output-x-mu"] = randn(num_hidden) / num_hidden
+    #parameters["b-output-x-mu"] = randn()
+    #parameters["W-output-x-log-std"] = randn(num_hidden) / num_hidden
+    #parameters["b-output-x-log-std"] = randn()
+    #parameters["W-output-y-mu"] = randn(num_hidden) / num_hidden
+    #parameters["b-output-y-mu"] = randn()
+    #parameters["W-output-y-log-std"] = randn(num_hidden) / num_hidden
+    #parameters["b-output-y-log-std"] = randn()
     return parameters
 end
 
@@ -308,106 +310,147 @@ function initialize_network_gradients(num_hidden::Int, max_t::Int)
     gradients["bool-W-output"] = zeros(num_hidden)
     gradients["bool-b-output"] = 0.0
 
-    gradients["W-hidden"] = zeros(num_hidden, num_features)
-    gradients["b-hidden"] = zeros(num_hidden)
-    gradients["W-output-x-mu"] = zeros(num_hidden)
-    gradients["b-output-x-mu"] = 0.0
-    gradients["W-output-x-log-std"] = zeros(num_hidden)
-    gradients["b-output-x-log-std"] = 0.0
-    gradients["W-output-y-mu"] = zeros(num_hidden)
-    gradients["b-output-y-mu"] = 0.0
-    gradients["W-output-y-log-std"] = zeros(num_hidden)
-    gradients["b-output-y-log-std"] = 0.0
+    #gradients["W-hidden"] = zeros(num_hidden, num_features)
+    #gradients["b-hidden"] = zeros(num_hidden)
+    #gradients["W-output-x-mu"] = zeros(num_hidden)
+    #gradients["b-output-x-mu"] = 0.0
+    #gradients["W-output-x-log-std"] = zeros(num_hidden)
+    #gradients["b-output-x-log-std"] = 0.0
+    #gradients["W-output-y-mu"] = zeros(num_hidden)
+    #gradients["b-output-y-mu"] = 0.0
+    #gradients["W-output-y-log-std"] = zeros(num_hidden)
+    #gradients["b-output-y-log-std"] = 0.0
     return gradients
 end
 
-function update_gradients_network!(network_trace::DifferentiableTrace, model_trace::Trace, parameters::Dict, gradients::Dict)
-    use_waypoint = value(model_trace, "use-waypoint")
-    max_t = Int((size(parameters["W-hidden"])[2] - 2) / 2)
+function construct_network_input(network_trace::AbstractTrace, model_trace::Trace)
+    max_t = Int((size(value(network_trace, "bool-W-hidden"))[2] - 2) / 2)
     start = value(model_trace, "start")
     xs = map((j) -> value(model_trace, "x$j"), 1:max_t)
     ys = map((j) -> value(model_trace, "y$j"), 1:max_t)
-    features = scale_coordinate(vcat([start.x, start.y], xs, ys))
+    scale_coordinate(vcat([start.x, start.y], xs, ys))
+end
 
-    num_hidden = length(parameters["b-hidden"])
-
+function constrain_network!(network_trace::AbstractTrace, model_trace::Trace)
+    use_waypoint = value(model_trace, "use-waypoint")
+    #num_hidden = length(value(network_trace, "bool-b-hidden"))
     if hasvalue(network_trace, "use-waypoint")
         delete!(network_trace, "use-waypoint")
     end
-    if hasvalue(network_trace, "output-x")
-        delete!(network_trace, "output-x")
-    end
-    if hasvalue(network_trace, "output-y")
-        delete!(network_trace, "output-y")
-    end
+    #if hasvalue(network_trace, "output-x")
+        #delete!(network_trace, "output-x")
+    #end
+    #if hasvalue(network_trace, "output-y")
+        #delete!(network_trace, "output-y")
+    #end
 
     constrain!(network_trace, "use-waypoint", use_waypoint)
-    if use_waypoint
-        waypoint = value(model_trace, "waypoint")
-        constrain!(network_trace, "output-x", scale_coordinate(waypoint.x))
-        constrain!(network_trace, "output-y", scale_coordinate(waypoint.y))
-    end
+    #if use_waypoint
+        #waypoint = value(model_trace, "waypoint")
+        #constrain!(network_trace, "output-x", scale_coordinate(waypoint.x))
+        #constrain!(network_trace, "output-y", scale_coordinate(waypoint.y))
+    #end
+end
 
-    reset_score(network_trace)
-    for key in keys(parameters)
-        if hasvalue(network_trace, key)
-            delete!(network_trace, key)
+
+# IDEA: allow us to subtype the 'trace' and avoid use of dictionaries?
+
+# objective function to be minimize:
+#
+#
+# 1. E_{f ~ P} KL(P(use-wp|f) || Q(use-wp;f)) + E_{f ~ P} KL(P(wp|f, use-wp=true) || Q(wp;f, use-wp=true))
+
+immutable ADAMParameters
+    alpha::Float64
+    beta_1::Float64
+    beta_2::Float64
+    epsilon::Float64
+end
+
+function adam_optimize!(objective::Function, gradient::Function,
+                         theta::Dict, params::ADAMParameters)
+    # gradient ascent
+    # theta is a dictionary mapping Strings to scalars or arrays
+    m = Dict{Any,Any}()
+    v = Dict{Any,Any}()
+    for key in keys(theta)
+        m[key] = 0. * theta[key]
+        v[key] = 0. * theta[key]
+    end
+    for t=1:100
+        g = gradient(t, theta)
+        for key in keys(theta)
+            m[key] = params.beta_1 * m[key] + (1. - params.beta_1) * g[key]
+            v[key] = params.beta_2 * v[key] + (1. - params.beta_2) * (g[key] .* g[key])
+            mhat = m[key] / (1. - params.beta_1^t)
+            vhat = v[key] / (1. - params.beta_2^t)
+            theta[key] += params.alpha * mhat ./ (sqrt(vhat + params.epsilon))
         end
-        parametrize!(network_trace, key, parameters[key])
-    end
-
-    neural_network(network_trace, features, num_hidden)
-    backprop(network_trace)
-    for key in keys(parameters)
-        gradients[key] += derivative(network_trace, key)
+        f = objective(t, theta)
+    println("f: $f")
     end
 end
 
-function update_network_parameters!(parameters::Dict, gradients::Dict, num_samples::Int, step_size::Float64)
-    if num_samples > 0
-        for key in keys(parameters)
-            gradient = gradients[key] / num_samples 
-            parameters[key] += step_size * gradient
-        end
-    end
-end
 
 function train_neural_network(model_trace::Trace, params::TrainingParams)
 
-    # the input trace contains interventions and/or constraints that define the
-    # fixed context
-    num_features = params.max_t * 2 + 2 # start.x and start.y
-    num_hidden = params.num_hidden
+    # initialize network parameters
+    theta = initialize_network_parameters(params.num_hidden, params.max_t)
 
-    network_parameters = initialize_network_parameters(params.num_hidden, params.max_t)
-    network_trace = DifferentiableTrace()
+    adam_params = ADAMParameters(0.001, 0.9, 0.999, 1e-8)
 
-    for iter=1:params.max_iter
-        println("iter: $iter")
-
-        objective_function = 0.0
-        network_gradients = initialize_network_gradients(params.num_hidden, params.max_t)
-        num_samples = 0
-
-        for i=1:params.minibatch_size
-            agent_model(model_trace)
-            if isnull(value(model_trace, "optimized_path"))
-                continue
-            end
-
-            update_gradients_network!(network_trace, model_trace, network_parameters, network_gradients)
-            num_samples += 1
-
-            objective_function += score(network_trace) / num_samples
+    # gradient function
+    function gradient(t::Int, theta::Dict)
+        gradient = Dict{Any,Any}()
+        for key in keys(theta)
+            gradient[key] = 0. * theta[key]
         end
-
-        println("objective function: $(objective_function / num_samples)")
-
-        step_size = (params.step_a + iter) ^ (-params.step_b)
-        update_network_parameters!(network_parameters, network_gradients, num_samples, step_size)
+        for i=1:params.minibatch_size
+            while true
+                agent_model(model_trace)
+                !isnull(value(model_trace, "optimized_path")) && break
+            end
+            network_trace = DifferentiableTrace()
+            for key in keys(theta)
+                parametrize!(network_trace, key, theta[key])
+            end
+            constrain_network!(network_trace, model_trace)
+            features = construct_network_input(network_trace, model_trace)
+            neural_network(network_trace, features, params.num_hidden)
+            backprop(network_trace)
+            for key in keys(gradient)
+                gradient[key] += derivative(network_trace, key)
+            end
+        end
+        return gradient
     end
 
-    return network_parameters
+    # objective function
+    function objective(t::Int, theta::Dict)
+        objective = 0.0
+        num_eval_samples = 100
+        network_trace = Trace()
+        for key in keys(theta)
+            intervene!(network_trace, key, theta[key])
+        end
+        for i=1:num_eval_samples
+            while true
+                agent_model(model_trace)
+                !isnull(value(model_trace, "optimized_path")) && break
+            end
+            constrain_network!(network_trace, model_trace)
+            features = construct_network_input(network_trace, model_trace)
+            reset_score(network_trace)
+            neural_network(network_trace, features, params.num_hidden)
+            objective += score(network_trace)
+        end
+        objective
+    end
+
+    # writes parameters
+    adam_optimize!(objective, gradient, theta, adam_params)
+
+    return theta
 end
 
 # ---- neural network demo ---- #
@@ -472,31 +515,31 @@ function train_neural_networks()
         # TODO do with the other scene as well
         # TODO show that the two networks are different
         max_iter = 10^exponent
-        training_params = TrainingParams(max_t, 50, 1000.0, 0.75, 1, max_iter)
+        training_params = TrainingParams(max_t, 50, 1.0, 0.90, 100, max_iter)
         println("training scene a, $max_iter")
-        network_parameters = train_neural_network(scene_a_trace, training_params)
-        write_neural_network(network_parameters, "network_scene_a_$(max_iter).json")
-        render_neural_network(network_parameters, "network_scene_a_$(max_iter).png")
+        parameters = train_neural_network(scene_a_trace, training_params)
+        write_neural_network(parameters, "network_scene_a_$(max_iter).json")
+        render_neural_network(parameters, "network_scene_a_$(max_iter).png")
         #println("training scene b, $max_iter")
-        #network_parameters = train_neural_network(scene_b_trace, training_params)
-        #write_neural_network(network_parameters, "network_scene_b_$(max_iter).json")
-        #render_neural_network(network_parameters, "network_scene_b_$(max_iter).png")
+        #parameters = train_neural_network(scene_b_trace, training_params)
+        #write_neural_network(parameters, "network_scene_b_$(max_iter).json")
+        #render_neural_network(parameters, "network_scene_b_$(max_iter).png")
     end
 
     return trace
 end
 
-function write_neural_network(network_parameters::Dict, fname::String)
+function write_neural_network(parameters::Dict, fname::String)
     println("writing neural network to $fname..")
-    json = JSON.json(network_parameters)
+    json = JSON.json(parameters)
     open(fname, "w") do f
         write(f, json)
     end
 end
 
-function render_neural_network(network_parameters::Dict, fname::String)
+function render_neural_network(parameters::Dict, fname::String)
     plt[:figure]()
-    W_hidden = network_parameters["W-hidden"]
+    W_hidden = parameters["W-hidden"]
     plt[:imshow](W_hidden, interpolation="none", cmap="Greys")
     plt[:tight_layout]()
     plt[:savefig](fname)
@@ -687,44 +730,44 @@ function demo()
     # show some inference happening (just the clouds)
     num_particles = 60
 
-    traces::Array{Trace, 1} = map((i) -> deepcopy(trace), 1:num_particles) # infer fork
-    traces = pmap((trace) -> mh_inference(trace, 0), traces)
-    render(traces, "frames/frame_$f.png", num_obs) ; f += 1
-    traces = pmap((trace) -> mh_inference(trace, 1), traces)
-    render(traces, "frames/frame_$f.png", num_obs) ; f += 1
-    traces = pmap((trace) -> mh_inference(trace, 10), traces)
-    render(traces, "frames/frame_$f.png", num_obs) ; f += 1
-    traces = pmap((trace) -> mh_inference(trace, 100), traces)
-    render(traces, "frames/frame_$f.png", num_obs) ; f += 1
-    traces = pmap((trace) -> mh_inference(trace, 1000), traces)
-    render(traces, "frames/frame_$f.png", num_obs) ; f += 1
-    traces = pmap((trace) -> mh_inference(trace, 10000), traces)
-    render(traces, "frames/frame_$f.png", num_obs) ; f += 1
-
-    trace = generate_scene_b()
-    render(trace, "frames/frame_$f.png") ; f += 1
-
-    intervene!(trace, "times", value(synthetic_data_trace, "times"))
-    for i=1:num_obs
-        constrain!(trace, "x$i", measured_xs[i])
-        constrain!(trace, "y$i", measured_ys[i])
-    end
-    render(trace, "frames/frame_$f.png") ; f += 1
-
+    #traces::Array{Trace, 1} = map((i) -> deepcopy(trace), 1:num_particles) # infer fork
+    #traces = pmap((trace) -> mh_inference(trace, 0), traces)
+    #render(traces, "frames/frame_$f.png", num_obs) ; f += 1
+    #traces = pmap((trace) -> mh_inference(trace, 1), traces)
+    #render(traces, "frames/frame_$f.png", num_obs) ; f += 1
+    #traces = pmap((trace) -> mh_inference(trace, 10), traces)
+    #render(traces, "frames/frame_$f.png", num_obs) ; f += 1
+    #traces = pmap((trace) -> mh_inference(trace, 100), traces)
+    #render(traces, "frames/frame_$f.png", num_obs) ; f += 1
+    #traces = pmap((trace) -> mh_inference(trace, 1000), traces)
+    #render(traces, "frames/frame_$f.png", num_obs) ; f += 1
+    #traces = pmap((trace) -> mh_inference(trace, 10000), traces)
+    #render(traces, "frames/frame_$f.png", num_obs) ; f += 1
+#
+    #trace = generate_scene_b()
     #render(trace, "frames/frame_$f.png") ; f += 1
-    traces = map((i) -> deepcopy(trace), 1:num_particles) # infer fork
-    traces = pmap((trace) -> mh_inference(trace, 0), traces)
-    render(traces, "frames/frame_$f.png", num_obs) ; f += 1
-    traces = pmap((trace) -> mh_inference(trace, 1), traces)
-    render(traces, "frames/frame_$f.png", num_obs) ; f += 1
-    traces = pmap((trace) -> mh_inference(trace, 10), traces)
-    render(traces, "frames/frame_$f.png", num_obs) ; f += 1
-    traces = pmap((trace) -> mh_inference(trace, 100), traces)
-    render(traces, "frames/frame_$f.png", num_obs) ; f += 1
-    traces = pmap((trace) -> mh_inference(trace, 1000), traces)
-    render(traces, "frames/frame_$f.png", num_obs) ; f += 1
-    traces = pmap((trace) -> mh_inference(trace, 10000), traces)
-    render(traces, "frames/frame_$f.png", num_obs) ; f += 1
+#
+    #intervene!(trace, "times", value(synthetic_data_trace, "times"))
+    #for i=1:num_obs
+        #constrain!(trace, "x$i", measured_xs[i])
+        #constrain!(trace, "y$i", measured_ys[i])
+    #end
+    #render(trace, "frames/frame_$f.png") ; f += 1
+#
+    ##render(trace, "frames/frame_$f.png") ; f += 1
+    #traces = map((i) -> deepcopy(trace), 1:num_particles) # infer fork
+    #traces = pmap((trace) -> mh_inference(trace, 0), traces)
+    #render(traces, "frames/frame_$f.png", num_obs) ; f += 1
+    #traces = pmap((trace) -> mh_inference(trace, 1), traces)
+    #render(traces, "frames/frame_$f.png", num_obs) ; f += 1
+    #traces = pmap((trace) -> mh_inference(trace, 10), traces)
+    #render(traces, "frames/frame_$f.png", num_obs) ; f += 1
+    #traces = pmap((trace) -> mh_inference(trace, 100), traces)
+    #render(traces, "frames/frame_$f.png", num_obs) ; f += 1
+    #traces = pmap((trace) -> mh_inference(trace, 1000), traces)
+    #render(traces, "frames/frame_$f.png", num_obs) ; f += 1
+    #traces = pmap((trace) -> mh_inference(trace, 10000), traces)
+    #render(traces, "frames/frame_$f.png", num_obs) ; f += 1
 
     # neural network experiments
     scene_a_trace = generate_scene_a()
@@ -739,8 +782,8 @@ function demo()
         # show neural network predictions for both scenes
         # the neural network was trained for a specific number of observations (max_t
         max_iter = 10^5 # was 4 # TODO
-        network_parameters = load_neural_network("network_scene_$(scene_name)_$(max_iter).json")
-        max_t = Int((size(network_parameters["W-hidden"])[2] - 2) / 2)
+        parameters = load_neural_network("network_scene_$(scene_name)_$(max_iter).json")
+        max_t = Int((size(parameters["W-hidden"])[2] - 2) / 2)
     
         # constrain the prefix of observed data
         xs = measured_xs[1:max_t]
@@ -760,7 +803,7 @@ function demo()
         frame.num_threads = 4
         render_trace(frame, trace)
         for j=1:num_predictions
-            (use_waypoint, waypoint), _ = neural_network_predict(network_parameters, start, xs, ys)
+            (use_waypoint, waypoint), _ = neural_network_predict(parameters, start, xs, ys)
             render_destination(frame, use_waypoint ? waypoint : Point(randn(), randn())) # NOTE: it will be red but it is actually the waypoint
         end
         finish(frame, "frames/frame_$f.png") ; f += 1
@@ -770,7 +813,7 @@ function demo()
         @assert length(xs) == max_t
         for num_iter=0:100
             println("num_iter: $num_iter")
-            particles::Array{Trace,1} = pmap((i) -> mh_neural_inference(trace, xs, ys, max_t, num_iter, network_parameters), 1:num_particles)
+            particles::Array{Trace,1} = pmap((i) -> mh_neural_inference(trace, xs, ys, max_t, num_iter, parameters), 1:num_particles)
             render(particles, "frames/frame_$f.png", max_t) ; f += 1
         end
     end
@@ -788,5 +831,5 @@ end
 srand(4)
 train_neural_networks()
 
-srand(3)
-demo()
+#srand(3)
+#demo()
