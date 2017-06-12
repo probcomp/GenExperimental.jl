@@ -378,12 +378,13 @@ function train_neural_networks()
     intervene!(trace, "is-wall-10", false)
     
     # only predict using the first max_t observations
-    max_t = 12
+    max_t = 15
 
     # scene a
     scene_a_trace = deepcopy(trace)
 
     # scene b: change the walls to add a bottom passageway
+    wall_height = 30.
     delete!(trace, "wall-1")
     intervene!(trace, "wall-1", Wall(Point(20., 40.), 1, 15., 2., wall_height))
     delete!(trace, "is-tree-10")
@@ -521,6 +522,7 @@ function generate_scene_b()
     trace = generate_scene_a()
 
     # change the walls to add a bottom passageway
+    wall_height = 30.
     delete!(trace, "wall-1")
     intervene!(trace, "wall-1", Wall(Point(20., 40.), 1, 15., 2., wall_height))
     delete!(trace, "is-tree-10")
@@ -541,8 +543,8 @@ function demo()
 
     function render(trace::Trace, fname::String) 
         frame = PovrayRendering(camera_location, camera_look_at, light_location)
-        frame.quality = 1
-        frame.num_threads = 4
+        frame.quality = 10
+        frame.num_threads = 60
         render_trace(frame, trace)
         finish(frame, fname)
         println(fname)
@@ -550,8 +552,8 @@ function demo()
 
     function render(traces::Array{Trace,1}, fname::String, max_measurement_time::Int)
         frame = PovrayRendering(camera_location, camera_look_at, light_location)
-        frame.quality = 1
-        frame.num_threads = 4
+        frame.quality = 10
+        frame.num_threads = 60
         render_traces(frame, traces, max_measurement_time)
         finish(frame, fname)
         println(fname)
@@ -567,14 +569,14 @@ function demo()
     intervene!(trace, "destination", Point(40., 60.))
     
     # show scene A, start, and goal position
-    render(trace, "frames/frame_$f.png") ; f += 1
+    #render(trace, "frames/frame_$f.png") ; f += 1
 
     # run model and extract observations, render ground truth
     # three times
     for i=1:10
         # TODO replace with waypoint model
         agent_model(trace)
-        render(trace, "frames/frame_$f.png") ; f += 1
+        #render(trace, "frames/frame_$f.png") ; f += 1
     end
     times = value(trace, "times")
 
@@ -586,34 +588,70 @@ function demo()
         delete!(trace, "x$i")
         delete!(trace, "y$i")
     end
-    render(trace, "frames/frame_$f.png") ; f += 1
+    #render(trace, "frames/frame_$f.png") ; f += 1
 
     # add observations (generate the observations synthetically in another trace)
+    # make the synthetic data be a waypoint path (so that inference has an obvious effect)
     synthetic_data_trace = generate_scene_a()
+    intervene!(synthetic_data_trace, "use-waypoint", true)
     intervene!(synthetic_data_trace, "measurement_noise", 1.0)
-    intervene!(synthetic_data_trace, "destination", Point(40., 60.))
+    intervene!(synthetic_data_trace, "waypoint", Point(55.,8.))
+    intervene!(synthetic_data_trace, "destination", Point(70., 90.))
     agent_model(synthetic_data_trace)
-    num_obs = 12
+    num_obs = 15
     measured_xs = map((i) -> value(synthetic_data_trace, "x$i"), 1:num_obs)
     measured_ys = map((i) -> value(synthetic_data_trace, "y$i"), 1:num_obs)
     
     # show observations in the trace with the random goal locaiton
+    intervene!(trace, "times", value(synthetic_data_trace, "times"))
+    for i=1:num_obs
+        constrain!(trace, "x$i", measured_xs[i])
+        constrain!(trace, "y$i", measured_ys[i])
+    end
+    #render(trace, "frames/frame_$f.png") ; f += 1
+   
+    # show some inference happening (just the clouds)
+    num_particles = 60
+
+    traces::Array{Trace, 1} = map((i) -> deepcopy(trace), 1:num_particles) # infer fork
+    #@time traces = pmap((trace) -> mh_inference(trace, 0), traces)
+    #render(traces, "frames/frame_$f.png", num_obs) ; f += 1
+    #@time traces = pmap((trace) -> mh_inference(trace, 1), traces)
+    #render(traces, "frames/frame_$f.png", num_obs) ; f += 1
+    #@time traces = pmap((trace) -> mh_inference(trace, 10), traces)
+    #render(traces, "frames/frame_$f.png", num_obs) ; f += 1
+    #@time traces = pmap((trace) -> mh_inference(trace, 100), traces)
+    #render(traces, "frames/frame_$f.png", num_obs) ; f += 1
+    #@time traces = pmap((trace) -> mh_inference(trace, 1000), traces)
+    #render(traces, "frames/frame_$f.png", num_obs) ; f += 1
+    #@time traces = pmap((trace) -> mh_inference(trace, 10000), traces)
+    #render(traces, "frames/frame_$f.png", num_obs) ; f += 1
+
+    trace = generate_scene_b()
+    render(trace, "frames/frame_$f.png") ; f += 1
+
+    intervene!(trace, "times", value(synthetic_data_trace, "times"))
     for i=1:num_obs
         constrain!(trace, "x$i", measured_xs[i])
         constrain!(trace, "y$i", measured_ys[i])
     end
     render(trace, "frames/frame_$f.png") ; f += 1
-   
-    # show some inference happening (just the clouds)
-    num_particles = 4 # TODO 60
-    max_iter = 20
 
-    traces::Array{Trace, 1} = map((i) -> deepcopy(trace), 1:num_particles) # infer fork
-    for num_iter=0:max_iter
-        println("MH for num_iter=$num_iter")
-        traces = pmap((trace) -> mh_inference(trace, num_iter), traces)
-        render(traces, "frames/frame_$f.png", num_obs) ; f += 1
-    end
+    #render(trace, "frames/frame_$f.png") ; f += 1
+    traces = map((i) -> deepcopy(trace), 1:num_particles) # infer fork
+    @time traces = pmap((trace) -> mh_inference(trace, 0), traces)
+    render(traces, "frames/frame_$f.png", num_obs) ; f += 1
+    @time traces = pmap((trace) -> mh_inference(trace, 1), traces)
+    render(traces, "frames/frame_$f.png", num_obs) ; f += 1
+    @time traces = pmap((trace) -> mh_inference(trace, 10), traces)
+    render(traces, "frames/frame_$f.png", num_obs) ; f += 1
+    @time traces = pmap((trace) -> mh_inference(trace, 100), traces)
+    render(traces, "frames/frame_$f.png", num_obs) ; f += 1
+    @time traces = pmap((trace) -> mh_inference(trace, 1000), traces)
+    render(traces, "frames/frame_$f.png", num_obs) ; f += 1
+    @time traces = pmap((trace) -> mh_inference(trace, 10000), traces)
+    render(traces, "frames/frame_$f.png", num_obs) ; f += 1
+
 
     ## neural network experiments
     #for (scene_name, scene_trace) in [("a", scene_a_trace), ("b", scene_b_trace)]
@@ -643,8 +681,8 @@ function demo()
         #println("making predictions..")
         #num_predictions = 60
         #frame = PovrayRendering(camera_location, camera_look_at, light_location)
-        #frame.quality = 1
-        #frame.num_threads = 4
+        #frame.quality = 10
+        #frame.num_threads = 60
         #render_trace(frame, trace)
         #for j=1:num_predictions
             #destination, _ = neural_network_predict(network_parameters, start, xs, ys)
