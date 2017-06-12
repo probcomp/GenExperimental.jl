@@ -164,6 +164,16 @@ function render_destination(scene::PovrayRendering, location::Point)
         "no_shadow"))
 end
 
+function render_waypoint(scene::PovrayRendering, location::Point)
+    radius = 2.0
+    color_rgbt=[0.0, 1.0, 0.0, 0.1]
+    location = scene.scale * [location.x, location.y, scene.path_height + 1]
+    push!(scene.objects, vapory.Sphere(location, radius * scene.scale,
+        vapory.Texture(vapory.Pigment("color", "rgbt", color_rgbt), vapory.Finish("ambient", 0.6)),
+        "no_shadow"))
+end
+
+
 function render(scene::PovrayRendering, out_fname::String, )
     scene = vapory.Scene(scene.camera, objects=scene.objects, included=scene.included, global_settings=scene.global_settings)
     scene.render(out_fname, width=width, height=height, 
@@ -210,6 +220,13 @@ function add_start(trace::Trace, povray_scene::PovrayRendering)
     if hasvalue(trace, "start")
         start = value(trace, "start")
         render_agent(povray_scene, start, [0, 0, 1])
+    end
+end
+
+function add_waypoint(trace::Trace, povray_scene::PovrayRendering)
+    if hasvalue(trace, "waypoint")
+        dest = value(trace, "waypoint")
+        render_waypoint(povray_scene, dest)
     end
 end
 
@@ -261,6 +278,7 @@ function render_trace(povray_scene::PovrayRendering, trace::Trace)
     add_destination(trace, povray_scene)
     add_optimized_path(trace, povray_scene)
     add_measurements(trace, povray_scene)
+    add_waypoint(trace, povray_scene)
 end
 
 function render_traces(povray_scene::PovrayRendering, traces::Array{Trace}, max_measurement_time::Int)
