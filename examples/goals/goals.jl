@@ -182,5 +182,11 @@ function demo()
 
 end
 
-srand(3)
-demo()
+srand(4)
+#train_use_waypoint_network()
+train_waypoint_network()
+
+#srand(3)
+#demo()
+
+

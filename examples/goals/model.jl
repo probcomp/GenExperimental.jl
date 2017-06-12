@@ -69,6 +69,7 @@ function agent_model(T::Trace)
         if isnull(optimized_path1) || isnull(optimized_path2)
             optimized_path = Nullable{Path}()
         else
+            waypoint_index = length(get(optimized_path1).points) ~ "waypoint-index"
             optimized_path = concatenate(get(optimized_path1), get(optimized_path2))
         end
     else
