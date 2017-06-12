@@ -64,7 +64,7 @@ type PovrayRendering
         end
         global_settings = []
 
-        # set defaults (TODO write setters for thesek, for now just set hte fields)
+        # set defaults
         width = 800
         height = 800
         antialiasing = 0.01
@@ -251,13 +251,9 @@ function add_measurements(trace::Trace, povray_scene::PovrayRendering, max_measu
     end
 end
 
-
-
-
 # design pattern: a given rendering (in this case a scene::PovrayRendering) is opened.
 # then we composite multiple traces onto this rendering, manually controlling which aspects of each trace are renderered
 function render_trace(povray_scene::PovrayRendering, trace::Trace)
-
     add_grass(povray_scene)
     add_trees(trace, povray_scene)
     add_walls(trace, povray_scene)
@@ -265,35 +261,6 @@ function render_trace(povray_scene::PovrayRendering, trace::Trace)
     add_destination(trace, povray_scene)
     add_optimized_path(trace, povray_scene)
     add_measurements(trace, povray_scene)
-
-    # TODO
-    #if hasvalue(trace, "tree")
-        #tree = value(trace, "tree")
-        #render(tree, 1.0)
-    #end
-
-    # TODO render this?
-    #if hasvalue(trace, "path")
-        #path = value(trace, "path")
-        #if !isnull(path)
-            #render(get(path), "orange")
-        #end
-    #end
-
-    # TODO render this?
-    #if hasvalue(trace, "locations")
-        #locations = value(trace, "locations")
-        #if !isnull(loctaions)
-            #measurement_noise = value(trace, "measurement_noise")
-            #for loc in locations
-                #patch = patches.Circle((loc.x, loc.y),
-                                        #radius=measurement_noise, facecolor="green",
-                                        #edgecolor="green", alpha=0.2, clip_on=true, zorder=-1)
-                #ax[:add_artist](patch)
-            #end
-        #end
-    #end
-
 end
 
 function render_traces(povray_scene::PovrayRendering, traces::Array{Trace}, max_measurement_time::Int)
@@ -302,18 +269,17 @@ function render_traces(povray_scene::PovrayRendering, traces::Array{Trace}, max_
 
     # the traces are assumed to share the same scene and measuremnets
     # the traces only differ in the destination and the optimized path
-    # only render the scene and measurements from the first 
-    # render trees
+    # only render the scene and measurements from the first trace
     trace = traces[1]
-    add_grass(povray_scene)
     add_trees(trace, povray_scene)
     add_walls(trace, povray_scene)
     add_start(trace, povray_scene)
     add_measurements(trace, povray_scene, max_measurement_time)
 
+    # add the destinatoin (red dots) from every trace
     for trace in traces
         add_destination(trace, povray_scene)
-        #add_optimized_path(trace, povray_scene)
     end
 
+    # note: we are not showing the optimized path (white line) for any trace
 end
