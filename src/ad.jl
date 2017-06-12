@@ -39,9 +39,25 @@ end
 concrete(x::GenVal) = x.datum
 concrete(x::Real) = x
 
-function show(num::GenScalar)
-    println("GenScalar(datum=$(num.datum), adj=$(num.adj), idx=$(num.tapeIdx))")
+import Base.size
+size(x::GenVector) = size(x.datum)
+size(x::GenMatrix) = size(x.datum)
+
+import Base.length
+length(x::GenVector) = length(x.datum)
+
+import Base.show
+function show(io::IO, num::GenScalar)
+    print(io, "GenScalar(datum=$(num.datum), idx=$(num.tapeIdx))")
 end
+function show(io::IO, num::GenVector)
+    print(io, "GenVector(datum=$(num.datum), idx=$(num.tapeIdx))")
+end
+function show(io::IO, num::GenMatrix)
+    print(io, "GenMatrix(datum=$(num.datum), idx=$(num.tapeIdx))")
+end
+
+
 
 function GenScalar{T <: AbstractOperator}(datum::Float64, tape::Tape, op::T)
     ns = nums(tape)
@@ -66,7 +82,7 @@ end
 
 function check_tapes(a::GenVal, b::GenVal)
     if a.tape != b.tape
-        error("cannot $a and $b use different tapes")
+        error("$a and $b use different tapes")
     end
 end
 
