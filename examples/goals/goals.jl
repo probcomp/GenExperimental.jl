@@ -9,7 +9,7 @@ using PyPlot
 @everywhere include("model.jl")
 @everywhere include("scenes.jl")
 include("povray_rendering.jl")
-include("inference.jl")
+@everywhere include("inference.jl")
 
 function demo()
 

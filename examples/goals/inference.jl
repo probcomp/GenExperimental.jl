@@ -407,8 +407,11 @@ function train_waypoint_network()
     
     # only predict using the first max_t observations
     max_t = 15
-    max_iter = 10^2
-    inference = WaypointNetwork(100, 100, max_iter, max_t, 50)
+    max_iter = 10^4
+    num_hidden = 100
+    minibatch_size = 60
+    num_eval = 60
+    inference = WaypointNetwork(minibatch_size, num_eval, max_iter, max_t, num_hidden)
 
     function model_trace_generator()
         model_trace = generate_scene_a()
@@ -443,8 +446,9 @@ function train_waypoint_network()
         return model_trace
     end
 
-    parameters = load_waypoint_neural_network("waypoint_network_scene_a_100.json")
-    parameters = train(inference, model_trace_generator, parameters)
+    #parameters = load_waypoint_neural_network("waypoint_network_scene_a_100.json")
+    #parameters = train(inference, model_trace_generator, parameters)
+    parameters = train(inference, model_trace_generator)
     write_neural_network(parameters, "waypoint_network_scene_a_$(max_iter).json")
     #render_neural_network(parameters, "waypoint_network_scene_a_$(max_iter).png")
 
@@ -472,7 +476,7 @@ function train_waypoint_network()
         println(waypoint)
         render_waypoint(frame, waypoint)
     end
-    finish(frame, "neural_inference_debugging/waypoint_predictions_$max_iter.png")
+    finish(frame, "neural_inference_debugging/waypoint_predictions_$(num_hidden)_$(max_iter).png")
 end
 
 
