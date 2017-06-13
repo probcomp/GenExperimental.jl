@@ -500,71 +500,28 @@ function mh_inference(trace::Trace, num_iter::Int)
     trace
 end
 
-# TODO needs to be re-written
-function mh_neural_inference(scene_trace::Trace, measured_xs::Array{Float64,1},
-                             measured_ys::Array{Float64,1}, t::Int, num_iter::Int,
-                             network_params::Dict)
-
-    # the input scene_trace is assumed to contain only the scene
-    @assert !hasvalue(scene_trace, "destination")
-    @assert !hasvalue(scene_trace, "optimized_path")
-    @assert hasvalue(scene_trace, "x1")
-    start = value(scene_trace, "start")
-
-    model_score = -Inf
-    trace = deepcopy(scene_trace)
-    tries = 0
-    prev_proposal_score = NaN
-    while isinf(model_score)
-
-        # sample initial destination from proposal (until planning succeeds)
-        ((initial_use_waypoint, initial_waypoint), prev_proposal_score) = neural_network_predict(network_params, start, measured_xs, measured_ys)
+function mh_neural_inference(trace::Trace, num_iter::Int,
+                             inference::WaypointNetwork, network_params::Dict)
+    @assert !hasvalue(trace, "tree")
+    @assert hasvalue(trace, "x1")
+    trace = deepcopy(trace)
+    (waypoint, prev_proposal_score) = neural_network_predict(inference, network_params, trace)
+    constrain!(trace, "waypoint", waypoint)
+    agent_model(trace)
     
-        # sample initial model trace given initial values from neural network
-        if hasvalue(trace, "use-waypoint")
-            delete!(trace, "use-waypoint")
-        end
-        if hasvalue(trace, "waypoint")
-            delete!(trace, "waypoint")
-        end
-        constrain!(trace, "use-waypoint", initial_use_waypoint)
-        if initial_use_waypoint
-            constrain!(trace, "waypoint", initial_waypoint)
-        end
-        reset_score(trace)
-        agent_model(trace)
-        model_score = score(trace)
-        tries += 1
-    end
 
     # MH steps
     for iter=1:num_iter
-
-        prev_model_score = score(trace)
-
-        # sample from proposal
         proposal_trace = deepcopy(trace)
-        reset_score(proposal_trace)
-        ((use_waypoint_proposed, waypoint_proposed), proposal_score) = neural_network_predict(network_params, start, measured_xs, measured_ys)
-        delete!(proposal_trace, "use-waypoint")
         delete!(proposal_trace, "waypoint")
-
-        # sample path given proposal from prior, and evaluate model score
-        constrain!(proposal_trace, "use-waypoint", use_waypoint_proposed) # the prior probability gets counted here
-        if use_waypoint_proposed
-            constrain!(proposal_trace, "waypoint", waypoint_proposed) # the prior probability gets counted here
-        end
+        reset_score(proposal_trace)
+        (waypoint, proposal_score) = neural_network_predict(inference, network_params, trace)
+        constrain!(proposal_trace, "waypoint", waypoint)
         agent_model(proposal_trace)
-
-        proposed_model_score = score(proposal_trace)
-        if log(rand()) < (score(proposal_trace) - proposal_score) - (prev_model_score - prev_proposal_score)
+         if log(rand()) < score(proposal_trace) - score(trace) + prev_proposal_score - proposal_score
             trace = proposal_trace
             prev_proposal_score = proposal_score
         end
     end
-
-    @assert hasvalue(trace, "destination")
-    @assert hasvalue(trace, "optimized_path")
-    @assert hasvalue(trace, "x1")
     trace
 end
