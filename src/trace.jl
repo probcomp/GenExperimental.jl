@@ -237,43 +237,6 @@ function fail(trace::AbstractTrace)
     trace.log_weight = -Inf
 end
 
-macro in(context, code)
-    if typeof(context) == Expr
-        if length(context.args) != 3
-            error("expected @in <model_trace> <= inference_trace begin ... end")
-        end
-        symb = context.args[1]
-        model_trace = context.args[2]
-        inference_trace = context.args[3]
-        if symb != :<=
-            error("expected @in <model_trace> <= inference_trace begin ... end")
-        end
-        return quote
-            $(esc(:T)) = $(esc(model_trace))
-            $(esc(:__T_SEND)) = $(esc(inference_trace))
-            $(esc(code))
-        end
-    else
-        return quote
-            $(esc(:T)) = $(esc(context))
-            $(esc(code))
-        end
-    end
-end
-
-macro constrain(mapping)
-    if mapping.head != :call || length(mapping.args) != 3 || mapping.args[1] != :<=
-        error("invalid input to @constrain, expected: @constrain(<to_name> <= <from_name>)")
-    end
-    to = mapping.args[2]
-    from = mapping.args[3]
-    return quote
-        local val = get($(esc(:__T_SEND)), $(esc(from)))
-        # TODO check that the name was a 'propose' in the other trace
-        constrain($(esc(:T)), $(esc(to))) = val
-    end
-end
-
 # exports
 export Trace
 export DifferentiableTrace
