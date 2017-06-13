@@ -16,7 +16,7 @@ function demo()
     camera_location = [50., -30., 120.]
     camera_look_at = [50., 50., 0.]
     light_location = [50., 50., 150.]
-    render_quality = 1
+    render_quality = 10
     render_num_threads = 4
 
     function render(trace::Trace, fname::String) 
@@ -53,7 +53,7 @@ function demo()
     # three times
     for i=1:10
         agent_model(trace)
-        render(trace, "frames/frame_$f.png") ; f += 1
+        #render(trace, "frames/frame_$f.png") ; f += 1
     end
     times = value(trace, "times")
 
@@ -65,7 +65,7 @@ function demo()
         delete!(trace, "x$i")
         delete!(trace, "y$i")
     end
-    render(trace, "frames/frame_$f.png") ; f += 1
+    #render(trace, "frames/frame_$f.png") ; f += 1
 
     # add observations (generate the observations synthetically in another trace)
     # make the synthetic data be a waypoint path (so that inference has an obvious effect)
@@ -85,10 +85,12 @@ function demo()
         constrain!(trace, "x$i", measured_xs[i])
         constrain!(trace, "y$i", measured_ys[i])
     end
-    render(trace, "frames/frame_$f.png") ; f += 1
+    #render(trace, "frames/frame_$f.png") ; f += 1
    
     # show some inference happening (just showing the cloud of destination particles)
     num_particles = 60
+
+    intervene!(trace, "use-waypoint", true)
 
     traces::Array{Trace, 1} = map((i) -> deepcopy(trace), 1:num_particles) # infer fork
     traces = pmap((trace) -> mh_inference(trace, 0), traces)
@@ -97,8 +99,8 @@ function demo()
     render(traces, "frames/frame_$f.png", num_obs) ; f += 1
     traces = pmap((trace) -> mh_inference(trace, 10), traces)
     render(traces, "frames/frame_$f.png", num_obs) ; f += 1
-    #traces = pmap((trace) -> mh_inference(trace, 100), traces)
-    #render(traces, "frames/frame_$f.png", num_obs) ; f += 1
+    traces = pmap((trace) -> mh_inference(trace, 100), traces)
+    render(traces, "frames/frame_$f.png", num_obs) ; f += 1
     #traces = pmap((trace) -> mh_inference(trace, 1000), traces)
     #render(traces, "frames/frame_$f.png", num_obs) ; f += 1
     #traces = pmap((trace) -> mh_inference(trace, 10000), traces)
@@ -106,23 +108,23 @@ function demo()
 
     # do the same with the sceond scene
     trace = generate_scene_b()
-    render(trace, "frames/frame_$f.png") ; f += 1
+    #render(trace, "frames/frame_$f.png") ; f += 1
 
     intervene!(trace, "times", value(synthetic_data_trace, "times"))
     for i=1:num_obs
         constrain!(trace, "x$i", measured_xs[i])
         constrain!(trace, "y$i", measured_ys[i])
     end
-    render(trace, "frames/frame_$f.png") ; f += 1
+    #render(trace, "frames/frame_$f.png") ; f += 1
 
     #render(trace, "frames/frame_$f.png") ; f += 1
     traces = map((i) -> deepcopy(trace), 1:num_particles) # infer fork
-    traces = pmap((trace) -> mh_inference(trace, 0), traces)
-    render(traces, "frames/frame_$f.png", num_obs) ; f += 1
-    traces = pmap((trace) -> mh_inference(trace, 1), traces)
-    render(traces, "frames/frame_$f.png", num_obs) ; f += 1
-    traces = pmap((trace) -> mh_inference(trace, 10), traces)
-    render(traces, "frames/frame_$f.png", num_obs) ; f += 1
+    #traces = pmap((trace) -> mh_inference(trace, 0), traces)
+    #render(traces, "frames/frame_$f.png", num_obs) ; f += 1
+    #traces = pmap((trace) -> mh_inference(trace, 1), traces)
+    #render(traces, "frames/frame_$f.png", num_obs) ; f += 1
+    #traces = pmap((trace) -> mh_inference(trace, 10), traces)
+    #render(traces, "frames/frame_$f.png", num_obs) ; f += 1
     #traces = pmap((trace) -> mh_inference(trace, 100), traces)
     #render(traces, "frames/frame_$f.png", num_obs) ; f += 1
     #traces = pmap((trace) -> mh_inference(trace, 1000), traces)
@@ -130,7 +132,14 @@ function demo()
     #traces = pmap((trace) -> mh_inference(trace, 10000), traces)
     #render(traces, "frames/frame_$f.png", num_obs) ; f += 1
 
+    println("timing mh")
+    for i=1:10
+        @time mh_inference(trace, 10)
+    end
+
+
     # neural network experiments
+    println("neural network experiments...")
     scene_a_trace = generate_scene_a()
     #scene_b_trace = generate_scene_b()
     for (scene_name, scene_trace) in [("a", scene_a_trace)]#[("a", scene_a_trace), ("b", scene_b_trace)]
@@ -142,10 +151,11 @@ function demo()
 
         # show neural network predictions for both scenes
         # the neural network was trained for a specific number of observations (max_t
-        max_iter = 10^2 # was 4 # TODO
-        parameters = load_neural_network("network_scene_$(scene_name)_$(max_iter).json")
+        max_iter = 10^4 # was 4 # TODO
+        parameters = load_waypoint_neural_network("waypoint_network_scene_$(scene_name)_$(max_iter).json")
         max_t = 15
-        inference = NeuralNetworkInference(neural_network, 100, 100, max_iter, max_t, 50) # TODO should be loaded from JSON alongside parameters
+        # TODO should be loaded from JSON alongside parameters
+        inference = WaypointNetwork(60, 60, max_iter, max_t, 100)
     
         # constrain the prefix of observed data
         xs = measured_xs[1:inference.max_t]
@@ -165,28 +175,33 @@ function demo()
         frame.num_threads = 4
         render_trace(frame, trace)
         for j=1:num_predictions
-            (use_waypoint, waypoint), _ = neural_network_predict(inference, parameters, trace)
-            render_destination(frame, use_waypoint ? waypoint : Point(randn(), randn())) # NOTE: it will be red but it is actually the waypoint
+            (waypoint, _) = neural_network_predict(inference, parameters, trace)
+            render_waypoint(frame, waypoint)
         end
-        finish(frame, "frames/frame_$f.png") ; f += 1
-    
+        #finish(frame, "frames/frame_$f.png") ; f += 1
+
         # use neural network as proposal and show trajectory predictions
-        println("neural MH scene a, max_time: $max_t")
+        println("timing neural mh..")
         @assert length(xs) == max_t
-        for num_iter=0:100
-            println("num_iter: $num_iter")
-            particles::Array{Trace,1} = pmap((i) -> mh_neural_inference(trace, xs, ys, max_t, num_iter, parameters), 1:num_particles)
+        intervene!(trace, "use-waypoint", true)
+        for i=1:10
+            @time mh_neural_inference(trace, 10, inference, parameters)
+        end
+        println("neural MH scene a, max_time: $max_t")
+        for num_iter in [10]
+            println("num_iter: $num_iter, $num_particles")
+            particles::Array{Trace,1} = pmap((i) -> mh_neural_inference(trace, num_iter, inference, parameters), 1:num_particles)
             render(particles, "frames/frame_$f.png", max_t) ; f += 1
         end
     end
 
 end
 
-srand(4)
+#srand(4)
 #train_use_waypoint_network()
-train_waypoint_network()
+#train_waypoint_network()
 
-#srand(3)
-#demo()
+srand(3)
+demo()
 
 
