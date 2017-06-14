@@ -3,7 +3,7 @@ using PyPlot
 
 srand(1)
 
-function logistic_regression(T::AbstractTrace, features::Array{Float64,1})
+@program logistic_regression(features::Array{Float64,1}) begin
     score = (0.0 ~ "bias")
     for i=1:length(features)
         score += features[i] * (0.0 ~ "w$i")
@@ -42,7 +42,7 @@ function render_logistic_regression(features, outputs, bias, weights, fname)
     plt[:savefig](fname)
 end
 
-function mlp(T::AbstractTrace, features::Array{Float64,1}, num_hidden::Int)
+@program mlp(features::Array{Float64,1}, num_hidden::Int) begin
     score = (0.0 ~ "bias")
     for hidden=1:num_hidden
         loading = (0.0 ~ "bias-$hidden")
@@ -55,13 +55,12 @@ function mlp(T::AbstractTrace, features::Array{Float64,1}, num_hidden::Int)
     output = flip(1.0 / (1.0 + exp(-score))) ~ "output"
 end
 
-function neural_network(T::AbstractTrace, features::Array{Float64,1}, num_hidden::Int)
+@program neural_network(features::Array{Float64,1}, num_hidden::Int) begin
     hidden_b = zeros(num_hidden) ~ "hidden-biases"
     hidden_W = zeros(num_hidden, length(features)) ~ "hidden-weights"
     output_b = 0.0 ~ "output-bias"
     output_W = zeros(num_hidden) ~ "output-weights"
-    X = reshape(features, length(features), 1)
-    loadings = hidden_b + hidden_W * X
+    loadings = hidden_b + hidden_W * features
     activations = 1.0 ./ (1.0 + exp(-loadings))
     score = sum(output_b + output_W' * activations)
     output = flip(1.0 / (1.0 + exp(-score))) ~ "output"
@@ -94,7 +93,7 @@ function render_mlp(features, outputs, output_bias, output_weights, hidden_bias,
                 end
             end
             constrain!(trace, "output", true)
-            mlp(trace, [x, y], num_hidden)
+            @generate(trace, mlp([x, y], num_hidden))
             grid[i, j] = exp(score(trace)) # prob true
             delete!(trace, "output")
         end
@@ -193,7 +192,7 @@ for iter=1:max_iter
         parametrize!(trace, "hidden-biases", hidden_biases)
         parametrize!(trace, "hidden-weights", hidden_weights)
         constrain!(trace, "output", outputs[i])
-        neural_network(trace, features[i], num_hidden)
+        @generate(trace, neural_network(features[i], num_hidden))
         backprop(trace)
         log_probability += score(trace)
 
