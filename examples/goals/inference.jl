@@ -73,8 +73,7 @@ immutable WaypointNetwork <: AmortizedInference
     num_hidden::Int
 end
 
-function inference_program(T::AbstractTrace, features::Array{Float64,1},
-                           inference::WaypointNetwork)
+@program inference_program(features::Array{Float64,1}, inference::WaypointNetwork) begin
     num_hidden = inference.num_hidden
     W_hidden = zeros(num_hidden, length(features)) ~ "W-hidden"
     b_hidden = zeros(num_hidden) ~ "b-hidden"
@@ -140,7 +139,7 @@ function neural_network_predict(inference::WaypointNetwork, parameters::Dict, mo
     end
     propose!(trace, "output-x")
     propose!(trace, "output-y")
-    inference_program(trace, features, inference)
+    @generate(trace, inference_program(features, inference))
     output_x = unscale_coordinate(value(trace, "output-x"))
     output_y = unscale_coordinate(value(trace, "output-y"))
     (Point(output_x, output_y), score(trace))
@@ -351,8 +350,8 @@ function train(inference::AmortizedInference, model_trace_generator::Function, t
         @assert value(model_trace, "start").x == 90.
         constrain_inference_program!(inference, inference_trace, model_trace)
         input = construct_inference_input(inference, model_trace)
-        reset_score(inference_trace)
-        inference_program(inference_trace, input, inference)
+        #reset_score(inference_trace) # NOT NEC
+        @generate(inference_trace, inference_program(input, inference))
         return score(inference_trace)
 
     end
@@ -388,8 +387,8 @@ function train_use_waypoint_network()
         @assert value(model_trace, "start").x == 90.
         @assert value(model_trace, "start").y == 10.
         while true
-            reset_score(model_trace)
-            agent_model(model_trace)
+            #reset_score(model_trace) # NOTE: not necessary any more
+            @generate(model_trace, agent_model())
             # reject until path planning succeeded
             !isinf(score(model_trace)) && break
         end
@@ -420,8 +419,8 @@ function train_waypoint_network()
         @assert value(model_trace, "start").x == 90.
         @assert value(model_trace, "start").y == 10.
         while true
-            reset_score(model_trace)
-            agent_model(model_trace)
+            #reset_score(model_trace) NOTE: not necessray any more
+            @generate(model_trace, agent_model())
             # reject until path planning succeeded and use-waypoint = true
             !isinf(score(model_trace)) && value(model_trace, "use-waypoint") && break
         end
@@ -458,7 +457,7 @@ function train_waypoint_network()
     intervene!(synthetic_data_trace, "measurement_noise", 1.0)
     intervene!(synthetic_data_trace, "waypoint", Point(55.,8.))
     intervene!(synthetic_data_trace, "destination", Point(70., 90.))
-    agent_model(synthetic_data_trace)
+    @generate(synthetic_data_trace, agent_model())
     num_predictions = 60
     camera_location = [50., -30., 120.]
     camera_look_at = [50., 50., 0.]
@@ -486,13 +485,13 @@ function mh_inference(trace::Trace, num_iter::Int)
     @assert !hasvalue(trace, "tree") # don't want to copy this huge data structure
     @assert hasvalue(trace, "x1")
     trace = deepcopy(trace)
-    agent_model(trace)
+    @generate(trace, agent_model())
 
     # MH steps
     for iter=1:num_iter
         proposal_trace = deepcopy(trace)
-        reset_score(proposal_trace)
-        agent_model(proposal_trace)
+        #reset_score(proposal_trace) not nec any more
+        @generate(proposal_trace, agent_model())
         if log(rand()) < score(proposal_trace) - score(trace)
             trace = proposal_trace
         end
@@ -507,17 +506,16 @@ function mh_neural_inference(trace::Trace, num_iter::Int,
     trace = deepcopy(trace)
     (waypoint, prev_proposal_score) = neural_network_predict(inference, network_params, trace)
     constrain!(trace, "waypoint", waypoint)
-    agent_model(trace)
-    
+    @generate(trace, agent_model())
 
     # MH steps
     for iter=1:num_iter
         proposal_trace = deepcopy(trace)
         delete!(proposal_trace, "waypoint")
-        reset_score(proposal_trace)
+        #reset_score(proposal_trace) NOT NEC ANY MORE
         (waypoint, proposal_score) = neural_network_predict(inference, network_params, trace)
         constrain!(proposal_trace, "waypoint", waypoint)
-        agent_model(proposal_trace)
+        @generate(proposal_trace, agent_model())
          if log(rand()) < score(proposal_trace) - score(trace) + prev_proposal_score - proposal_score
             trace = proposal_trace
             prev_proposal_score = proposal_score
