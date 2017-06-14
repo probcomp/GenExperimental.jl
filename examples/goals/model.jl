@@ -16,7 +16,7 @@ end
 uniform_2d = (args...) -> (uniform_2d_simulate)(args...)[1]
 export uniform_2d
 
-function agent_model(T::Trace)
+@program agent_model() begin
 
     xmin = 0
     xmax = 100
@@ -76,17 +76,21 @@ function agent_model(T::Trace)
         tree, path, optimized_path = plan_path(start, destination, scene, planner_params)
     end
 
+    num_time_steps = 30
+    times = collect(linspace(0.0, 15.0, num_time_steps)) ~ "times"
+    measurement_noise = 8.0 ~ "measurement_noise"
     if isnull(optimized_path)
         # no path found
-        fail(T)
+        for i=1:num_time_steps
+            nil() ~ "x$i"
+            nil() ~ "y$i"
+        end
     else
         # walk the path at a constant speed, and record locations at times
         speed = 10. ~ "speed"
-        times = collect(linspace(0.0, 15.0, 30)) ~ "times"
         locations = walk_path(get(optimized_path), speed, times) ~ "locations"
 
         # add measurement noise to the true locations
-        measurement_noise = 8.0 ~ "measurement_noise"
         measurements = Array{Point,1}(length(times))
         for (i, loc) in enumerate(locations)
             measurements[i] = Point(normal(loc.x, measurement_noise) ~ "x$i", 

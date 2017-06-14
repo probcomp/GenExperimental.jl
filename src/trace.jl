@@ -273,10 +273,6 @@ macro ~(expr, name)
     end
 end
 
-function fail(trace::AbstractTrace)
-    trace.log_weight = -Inf
-end
-
 macro program(args, body)
     err() = error("invalid @program definition")
     new_args = [:(T::AbstractTrace)]
@@ -361,9 +357,7 @@ export parametrize!
 export derivative
 export propose!
 export hasvalue
-export fail
 export value 
 export backprop
 export score
-#export reset_score # no longer exposed! (this is done automatically inside @generate now)
 export hasconstraint

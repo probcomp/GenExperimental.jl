@@ -51,6 +51,16 @@ function uniform_simulate(lower::Real, upper::Real)
 end
 @register_module(:uniform, uniform_simulate, uniform_regenerate)
 
+# Impossible (which only genreates a token 'impossible')
+type Nil
+end
+function nil_regenerate{T}(x::T)
+    x == Nil() ? 0.0 : -Inf
+end
+function nil_simulate()
+    Nil(), 0.0
+end
+@register_module(:nil, nil_simulate, nil_regenerate)
 
 
 # Bernoulli

@@ -47,7 +47,7 @@ function demo()
     intervene!(trace, "destination", Point(40., 60.))
     
     # show scene A, start, and goal position
-    render(trace, "frames/frame_$f.png") ; f += 1
+    #render(trace, "frames/frame_$f.png") ; f += 1
 
     # run model and extract observations, render ground truth
     # three times
@@ -93,14 +93,14 @@ function demo()
     intervene!(trace, "use-waypoint", true)
 
     traces::Array{Trace, 1} = map((i) -> deepcopy(trace), 1:num_particles) # infer fork
-    traces = pmap((trace) -> mh_inference(trace, 0), traces)
-    render(traces, "frames/frame_$f.png", num_obs) ; f += 1
+    traces = map((trace) -> mh_inference(trace, 0), traces)
+    #render(traces, "frames/frame_$f.png", num_obs) ; f += 1
     traces = pmap((trace) -> mh_inference(trace, 1), traces)
-    render(traces, "frames/frame_$f.png", num_obs) ; f += 1
+    #render(traces, "frames/frame_$f.png", num_obs) ; f += 1
     traces = pmap((trace) -> mh_inference(trace, 10), traces)
-    render(traces, "frames/frame_$f.png", num_obs) ; f += 1
-    traces = pmap((trace) -> mh_inference(trace, 100), traces)
-    render(traces, "frames/frame_$f.png", num_obs) ; f += 1
+    #render(traces, "frames/frame_$f.png", num_obs) ; f += 1
+    #traces = pmap((trace) -> mh_inference(trace, 100), traces)
+    #render(traces, "frames/frame_$f.png", num_obs) ; f += 1
     #traces = pmap((trace) -> mh_inference(trace, 1000), traces)
     #render(traces, "frames/frame_$f.png", num_obs) ; f += 1
     #traces = pmap((trace) -> mh_inference(trace, 10000), traces)
@@ -119,11 +119,11 @@ function demo()
 
     #render(trace, "frames/frame_$f.png") ; f += 1
     traces = map((i) -> deepcopy(trace), 1:num_particles) # infer fork
-    #traces = pmap((trace) -> mh_inference(trace, 0), traces)
+    traces = pmap((trace) -> mh_inference(trace, 0), traces)
     #render(traces, "frames/frame_$f.png", num_obs) ; f += 1
-    #traces = pmap((trace) -> mh_inference(trace, 1), traces)
+    traces = pmap((trace) -> mh_inference(trace, 1), traces)
     #render(traces, "frames/frame_$f.png", num_obs) ; f += 1
-    #traces = pmap((trace) -> mh_inference(trace, 10), traces)
+    traces = pmap((trace) -> mh_inference(trace, 10), traces)
     #render(traces, "frames/frame_$f.png", num_obs) ; f += 1
     #traces = pmap((trace) -> mh_inference(trace, 100), traces)
     #render(traces, "frames/frame_$f.png", num_obs) ; f += 1
@@ -136,7 +136,6 @@ function demo()
     for i=1:10
         @time mh_inference(trace, 10)
     end
-
 
     # neural network experiments
     println("neural network experiments...")
@@ -191,7 +190,7 @@ function demo()
         for num_iter in [10]
             println("num_iter: $num_iter, $num_particles")
             particles::Array{Trace,1} = pmap((i) -> mh_neural_inference(trace, num_iter, inference, parameters), 1:num_particles)
-            render(particles, "frames/frame_$f.png", max_t) ; f += 1
+            #render(particles, "frames/frame_$f.png", max_t) ; f += 1
         end
     end
 
