@@ -222,10 +222,12 @@ end
 macro ~(expr, name)
     # WARNING: T is a reserved symbol for 'trace'. It is an error if T occurs in the program.
     # TODO: how to do this in a hygenic way?
+    println(expr)
     is_module_call = (typeof(expr) == Expr) &&
                      (expr.head == :call) && 
                      length(expr.args) >= 1 && 
                      haskey(modules, expr.args[1])
+    println(is_module_call)
     if is_module_call
         expand_module(expr, name)
     else
@@ -237,10 +239,68 @@ function fail(trace::AbstractTrace)
     trace.log_weight = -Inf
 end
 
+macro program(args, body)
+    err() = error("invalid @program definition")
+    new_args = [:(T::AbstractTrace)]
+    local name::Nullable{Symbol}
+    if args.head == :call
+        name = args.args[1]
+        for arg in args.args[2:end]
+            push!(new_args, arg)
+        end
+    elseif args.head == :(::)
+        # single argument
+        push!(new_args, args)
+        name = Nullable{Symbol}()
+    elseif args.head == :tuple
+        # multiple arguments
+        for arg in args.args
+            push!(new_args, arg)
+        end
+        name = Nullable{Symbol}()
+    else
+        err()
+    end
+    arg_tuple = Expr(:tuple, new_args...)
+    if isnull(name)
+        Expr(:function, arg_tuple, body)
+    else
+        function_name = get(name)
+        Main.eval(Expr(:function,
+                Expr(:call, function_name, new_args...),
+                body))
+        #eval(Expr(:export, function_name))
+    end
+end
+
+macro generate(trace, program)
+    err(msg) = error("invalid @generate call: $msg")
+    if program.head != :call
+        err("program.head != :call")
+    end
+    function_name = program.args[1]
+    Expr(:block, Expr(:call, :reset_score, esc(trace)),
+                 Expr(:call, esc(function_name), esc(trace),
+                      map((a) -> esc(a), program.args[2:end])...))
+end
+
+macro generate(program)
+    err(msg) = error("invalid @generate call: $msg")
+    if program.head != :call
+        err("program.head != :call")
+    end
+    function_name = program.args[1]
+    Expr(:call, esc(function_name), esc(:T),
+         map((a) -> esc(a), program.args[2:end])...)
+end
+
+
 # exports
 export Trace
 export DifferentiableTrace
 export AbstractTrace
+export @program
+export @generate
 export @~
 export constrain!
 export intervene!
