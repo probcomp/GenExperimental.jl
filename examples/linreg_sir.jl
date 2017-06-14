@@ -2,8 +2,8 @@ using Gen
 import Distributions
 using PyPlot
 
-function linear_regression(T::Trace, prior_mu::Float64, prior_std::Float64, 
-                           xs::Array{Float64,1})
+@program linear_regression(prior_mu::Float64, prior_std::Float64, 
+                           xs::Array{Float64,1}) begin
     inlier_noise = gamma(1., 1.) ~ "inlier_noise"
     outlier_noise = 10.0
     prob_outlier = 0.1
@@ -30,7 +30,7 @@ function linreg_infer(num_samples::Int, xs::Array{Float64,1}, ys::Array{Float64,
         for (i, y) in enumerate(ys)
             constrain!(trace, "y$i", y)
         end
-        linear_regression(trace, 0.0, 2.0, xs)
+        @generate(trace, linear_regression(0.0, 2.0, xs))
         traces[sample] = trace
         log_weights[sample] = score(trace)
     end
