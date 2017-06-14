@@ -9,13 +9,15 @@ type Trace <: AbstractTrace
     interventions::OrderedDict{String,Any}
     proposals::OrderedSet{String}
     recorded::OrderedDict{String,Any}
+    visited::OrderedSet{String}
     log_weight::Float64
     function Trace()
         constraints = OrderedDict{String,Any}()
         interventions = OrderedDict{String,Any}()
         proposals = OrderedSet{String}()
         recorded = OrderedDict{String,Any}()
-        new(constraints, interventions, proposals, recorded, 0.0)
+        visited = OrderedSet{String}()
+        new(constraints, interventions, proposals, recorded, visited, 0.0)
     end
 end
 
@@ -24,6 +26,7 @@ type DifferentiableTrace <: AbstractTrace
     interventions::OrderedDict{String,Any}
     proposals::OrderedSet{String}
     recorded::OrderedDict{String,Any}
+    visited::OrderedSet{String}
     log_weight::GenScalar # becomes type GenFloat (which can be automatically converted from a Float64)
     tape::Tape
     function DifferentiableTrace()
@@ -32,7 +35,8 @@ type DifferentiableTrace <: AbstractTrace
         interventions = OrderedDict{String,Any}()
         proposals = OrderedSet{String}()
         recorded = OrderedDict{String,Any}()
-        new(constraints, interventions, proposals, recorded, GenScalar(0.0, tape), tape)
+        visited = OrderedSet{String}()
+        new(constraints, interventions, proposals, recorded, visited, GenScalar(0.0, tape), tape)
     end
 end
 
@@ -113,14 +117,48 @@ function score(trace::AbstractTrace)
     concrete(trace.log_weight)
 end
 
-function reset_score(trace::Trace)
+# should call these 'prepare'
+function prepare(trace::Trace)
+    trace.visited = OrderedSet{String}()
     trace.log_weight = 0.0
 end
 
-function reset_score(trace::DifferentiableTrace)
-    trace.tape = Tape()
+# automatically do reset of tape when finishing the @generate?
+# this way, future parameterizations aren't on the same tape
+# as the just-produced trace.. it's like cutting the tape off.
+function prepare(trace::DifferentiableTrace)
+    trace.visited = OrderedSet{String}()
     trace.log_weight= GenScalar(0.0, trace.tape)
 end
+
+function check_visited(trace::AbstractTrace)
+    for name in keys(trace.constraints)
+        if !(name in trace.visited)
+            error("constraint $name not visited")
+        end
+    end
+    for name in keys(trace.interventions)
+        if !(name in trace.visited)
+            error("intervention $name not visited")
+        end
+    end
+    for name in trace.proposals
+        if !(name in trace.visited)
+            error("proposal $name not visited")
+        end
+    end
+end
+
+# should call these 'finalize'
+function finalize(trace::Trace)
+    check_visited(trace)
+end
+
+function finalize(trace::DifferentiableTrace)
+    check_visited(trace)
+    trace.tape = Tape()
+end
+
 
 function derivative(trace::DifferentiableTrace, name::String)
     partial(value(trace, name))
@@ -194,6 +232,7 @@ function expand_module(expr, name)
                 $(esc(:T)).log_weight += log_weight 
             end
         end
+        push!($(esc(:T)).visited, name)
         val
     end
 end
@@ -215,6 +254,7 @@ function expand_non_module(expr, name)
             val = $(esc(expr))
             $(esc(:T)).recorded[name] = val
         end
+        push!($(esc(:T)).visited, name)
         val
     end
 end
@@ -222,12 +262,10 @@ end
 macro ~(expr, name)
     # WARNING: T is a reserved symbol for 'trace'. It is an error if T occurs in the program.
     # TODO: how to do this in a hygenic way?
-    println(expr)
     is_module_call = (typeof(expr) == Expr) &&
                      (expr.head == :call) && 
                      length(expr.args) >= 1 && 
                      haskey(modules, expr.args[1])
-    println(is_module_call)
     if is_module_call
         expand_module(expr, name)
     else
@@ -279,11 +317,26 @@ macro generate(trace, program)
         err("program.head != :call")
     end
     function_name = program.args[1]
-    Expr(:block, Expr(:call, :reset_score, esc(trace)),
-                 Expr(:call, esc(function_name), esc(trace),
-                      map((a) -> esc(a), program.args[2:end])...))
+    quote
+        # reset the score to zero, and the visited set to empty
+        prepare($(esc(trace)))
+
+        # run the program, passing in the trace as the first arg.
+        local value = $(esc(function_name))($(esc(trace)), $(map((a) -> esc(a), program.args[2:end])...))
+
+        # reset the tape (the old tape is preserved through
+        # the reference of the log-weight)
+        # this is so the old log-weight can still be referenced
+        # (and gradients for it can be taken) while new parameters
+        # can be meanwhile parameterize!-d 
+        finalize($(esc(trace)))
+        value
+    end
 end
 
+# TODO: this is substnatially different from the two-arguemnt form of
+# @generate in its semantics. perhaps it should be given a 
+# different name
 macro generate(program)
     err(msg) = error("invalid @generate call: $msg")
     if program.head != :call
@@ -312,5 +365,5 @@ export fail
 export value 
 export backprop
 export score
-export reset_score
+#export reset_score # no longer exposed! (this is done automatically inside @generate now)
 export hasconstraint

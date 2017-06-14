@@ -3,7 +3,7 @@ using PyPlot
 
 # a generative model for linear regression,
 # written as a Gen probabilistic program
-function linear_regression(T::Trace, xs::Array{Float64,1})
+@program linear_regression(xs::Array{Float64,1}) begin
     slope = normal(0.0, 1.0) ~ "slope"
     intercept = normal(0.0, 1.0) ~ "intercept"
     ys = Array{Float64, 1}(length(xs))
@@ -15,7 +15,7 @@ end
 
 # a variational approxiation to the posterior,
 # written as a Gen probabilistic program
-function approximation(T::AbstractTrace)
+@program approximation() begin
     slope_mu = 0.0  ~ "slope_mu"
     log_slope_std = 0.0 ~ "log_slope_std"
     intercept_mu = 0.0 ~ "intercept_mu"
@@ -65,7 +65,7 @@ function linear_regression_variational_inference(xs::Array{Float64,1},
             parametrize!(inference_trace, "log_intercept_std", log_intercept_std)
             propose!(inference_trace, "slope")
             propose!(inference_trace, "intercept")
-            approximation(inference_trace)
+            @generate(inference_trace, approximation())
 
             # add constraints to model trace so the model score can be computed
             # (using experimental syntactic sugars)
@@ -77,7 +77,7 @@ function linear_regression_variational_inference(xs::Array{Float64,1},
             constrain!(model_trace, "intercept", value(inference_trace, "intercept"))
          
             # run model program on the constrained trace
-            linear_regression(model_trace, xs)
+            @generate(model_trace, linear_regression(xs))
 
             # differentiate the inference score with respect to the variational
             # parameters
