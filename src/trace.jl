@@ -40,6 +40,10 @@ type DifferentiableTrace <: AbstractTrace
     end
 end
 
+function choices(trace::AbstractTrace)
+    keys(trace.recorded)
+end
+
 function Base.print(trace::AbstractTrace)
     println("-- Constraints --")
     for k in keys(trace.constraints)
@@ -361,3 +365,4 @@ export value
 export backprop
 export score
 export hasconstraint
+export choices
