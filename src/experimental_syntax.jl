@@ -8,10 +8,10 @@ end
 
 macro program(args, body)
     err() = error("invalid @program definition")
-    println("args: $args")
-    println("args.head: $(args.head)")
-    println("args.args: $(args.args)")
-    println("body: $body")
+    #println("args: $args")
+    #println("args.head: $(args.head)")
+    #println("args.args: $(args.args)")
+    #println("body: $body")
     new_args = [:(T::Trace)]
     local name::Nullable{Symbol}
     if args.head == :call
@@ -33,23 +33,32 @@ macro program(args, body)
         err()
     end
     arg_tuple = Expr(:tuple, new_args...)
-    extended_body = quote
-        if !T.fresh
-            error("Trace is not fresh!")
-        end
-        local value = $body
-        T.fresh = false
-        value
-    end
     if isnull(name)
-        Expr(:function, arg_tuple, extended_body)
+        Expr(:function, arg_tuple, body)
     else
         function_name = get(name)
-        println("defining function $function_name")
         eval(Expr(:function,
                 Expr(:call, function_name, new_args...),
-                extended_body))
+                body))
     end
+end
+
+macro trace(trace, program)
+    err(msg) = error("invalid @trace call: $msg")
+    if program.head != :call
+        err("program.head != :call")
+    end
+    function_name = program.args[1]
+    ex = quote
+        if !$trace.fresh
+            error("Trace is not fresh!")
+        end
+        local value = $(Expr(:call, function_name, trace, program.args[2:end]...))
+        $trace.fresh = false
+        value
+    end
+    println(ex)
+    ex
 end
 
 foo = @program (x::Int, y::Float64) begin
@@ -60,7 +69,6 @@ end
     x + y
 end
 
-println(methods(foo2))
 # for now, just introduce another macro
 # @exposed 
 
@@ -68,10 +76,13 @@ println(methods(foo2))
     #trace = Trace()
     #@trace(trace, foo(1, 3.5)) # trace it in a separate trace [[ using the trace macro ]]
     #@trace(foo(1, 3.5)) # traces in the ambient trace
-    #foo(trace, 1, 3.5) # trace it in a separate trace { NO }
 #end
 
 # TODO add an @curtrace() macro which returns the current trace, for debugging purposes..
+
+t = Trace()
+t.fresh = false
+@trace(t, foo2(1, 2.0))
 
 t = Trace()
 println(t)
