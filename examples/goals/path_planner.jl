@@ -82,7 +82,8 @@ function optimize_path(scene::Scene, original::Path, refine_iters::Int, refine_s
     refined
 end
 
-function plan_path(start::Point, goal::Point, scene::Scene, params::PlannerParams)
+function plan_path(start::Point, goal::Point, scene::Scene,
+                   params::PlannerParams=PlannerParams(2000, 3.0, 10000, 1.))
     scheme = HolonomicPointRRTScheme(scene)
     tree = rrt(scheme, start, params.rrt_iters, params.rrt_dt)
 
@@ -170,33 +171,33 @@ function walk_path(path::Path, speed::Float64, times::Array{Float64,1})
     locations
 end
 
-function render(path::Path, line_color)
-    for i=1:length(path.points) - 1
-        a = path.points[i]
-        b = path.points[i + 1]
-        plt[:plot]([a.x, b.x], [a.y, b.y], color=line_color, lw=3, alpha=0.5)
-    end
-end
-
-function planner_demo()
-    # plot them
-    obstacles = []
-    push!(obstacles, Polygon([Point(30, 30), Point(80, 30), Point(80, 35), Point(30, 35)]))
-    push!(obstacles, Polygon([Point(30, 30), Point(30, 80), Point(35, 80), Point(35, 30)]))
-    push!(obstacles, Polygon([Point(60, 30), Point(60, 80), Point(65, 80), Point(65, 30)]))
-    scene = Scene(0, 100, 0, 100, obstacles)
-    start = Point(50, 50)
-    goal = Point(50, 10)
-    @time tree, path, optimized_path = plan_path(start, goal, scene, PlannerParams(1000, 5.0, 1000, 1.0))
-    locations = walk_path(get(optimized_path), 5.0, collect(linspace(0.0, 40.0, 10)))
-    plt[:figure](figsize=(10, 10))
-    render(scene)
-    render(tree, 1.0)
-    if !isnull(path)
-        render(get(path), "black")
-        render(get(optimized_path), "purple")
-    end
-    plt[:scatter](map((p) -> p.x, locations), map((p) -> p.y, locations), s=200)
-    plt[:savefig]("planner.png")
-end
+#function render(path::Path, line_color)
+    #for i=1:length(path.points) - 1
+        #a = path.points[i]
+        #b = path.points[i + 1]
+        #plt[:plot]([a.x, b.x], [a.y, b.y], color=line_color, lw=3, alpha=0.5)
+    #end
+#end
+#
+#function planner_demo()
+    ## plot them
+    #obstacles = []
+    #push!(obstacles, Polygon([Point(30, 30), Point(80, 30), Point(80, 35), Point(30, 35)]))
+    #push!(obstacles, Polygon([Point(30, 30), Point(30, 80), Point(35, 80), Point(35, 30)]))
+    #push!(obstacles, Polygon([Point(60, 30), Point(60, 80), Point(65, 80), Point(65, 30)]))
+    #scene = Scene(0, 100, 0, 100, obstacles)
+    #start = Point(50, 50)
+    #goal = Point(50, 10)
+    #@time tree, path, optimized_path = plan_path(start, goal, scene, PlannerParams(1000, 5.0, 1000, 1.0))
+    #locations = walk_path(get(optimized_path), 5.0, collect(linspace(0.0, 40.0, 10)))
+    #plt[:figure](figsize=(10, 10))
+    #render(scene)
+    #render(tree, 1.0)
+    #if !isnull(path)
+        #render(get(path), "black")
+        #render(get(optimized_path), "purple")
+    #end
+    #plt[:scatter](map((p) -> p.x, locations), map((p) -> p.y, locations), s=200)
+    #plt[:savefig]("planner.png")
+#end
 #planner_demo()
