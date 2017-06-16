@@ -11,6 +11,10 @@ type JupyterInlineRenderer
     end
 end
 
+function attach(renderer::JupyterInlineRenderer, dom_element_id::String)
+    renderer.dom_element_id = dom_element_id
+end
+
 function inline(renderer::JupyterInlineRenderer) # TODO add pixels as args
     renderer.dom_element_id = "id_$(randstring(20))"
     HTML("<svg id=$(get(renderer.dom_element_id))></svg>") # TODO use div instead?
@@ -65,7 +69,6 @@ HTML("""
 			svg.setAttribute("height", tile_height);
 			svg.setAttribute("viewBox", "0 0 100 100");
 			parent_svg.appendChild(svg);
-			console.log(row +" " + col + " " + id);
 		}
 	}
 </script>
@@ -92,4 +95,5 @@ export TiledJupyterInlineRenderer
 export TiledJupyterInlineRenderer
 export inline
 export render
+export attach
 export @javascript_str
