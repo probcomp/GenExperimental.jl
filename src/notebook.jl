@@ -1,16 +1,5 @@
 import IJulia
 
-function enable_inline()
-	fname = joinpath(dirname(@__FILE__), "notebook.js")
-	open(fname, "r") do f
-		content = readstring(f)
-		HTML("""
-			<script>
-				$content
-			</script>""")
-	end
-end
-
 type JupyterInlineRenderer
     name::String # The target name for Javascript
     dom_element_id::Nullable{String} # The DOM element where the JS code should render to

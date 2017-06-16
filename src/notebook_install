@@ -1,0 +1,6 @@
+jupyter nbextension install gen_notebook_extension/ --user
+jupyter nbextension enable gen_notebook_extension/main --user
+
+mkdir /home/marcoct/.local/share/jupyter/nbextensions/snap
+cp snap.svg-min.js /home/marcoct/.local/share/jupyter/nbextensions/snap
+jupyter nbextension enable snap/snap.svg-min --user

@@ -1,6 +1,11 @@
-Gen = {
+define(['require'], function(require) {
 
-    find_choice: function(trace, name) {
+    function load_ipython_extension(){
+        console.info('this is my first extension');
+    }
+
+    function find_choice(trace, name) {
+        console.log("inside find_choice!");
         if (name in trace.recorded) {
             //console.log(name + " found in interventions");
             return { value: trace.recorded[name], where: "recorded" }
@@ -13,10 +18,10 @@ Gen = {
         } else {
             return null
         }
-    },
+    }
 
-    register_jupyter_renderer: function(name, render_function) {
-        
+    function register_jupyter_renderer(name, render_function) {
+        console.log("inside register jupyter renderer!");
         Jupyter.notebook.kernel.comm_manager.unregister_target(name);
         Jupyter.notebook.kernel.comm_manager.register_target(name, function(comm, msg) {
             comm.on_msg(function(msg) {
@@ -27,4 +32,11 @@ Gen = {
         });
         
     }
-};
+
+
+    return {
+        load_ipython_extension: load_ipython_extension,
+        find_choice: find_choice,
+        register_jupyter_renderer: register_jupyter_renderer
+    };
+});
