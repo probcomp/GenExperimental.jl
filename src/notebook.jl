@@ -91,7 +91,6 @@ function render(renderer::TiledJupyterInlineRenderer, traces::Vector{Trace})
 		row = div((i - 1), renderer.num_cols)
 		col = (i - 1) % renderer.num_cols
 		dom_element_id = "$(get(renderer.dom_element_id))_$(row)_$(col)"
-		println("render trying to write to $dom_element_id")
         IJulia.send_comm(renderer.comm, Dict("trace" => trace, "dom_element_id" => dom_element_id))
     end
 end
