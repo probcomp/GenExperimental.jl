@@ -15,9 +15,15 @@ function attach(renderer::JupyterInlineRenderer, dom_element_id::String)
     renderer.dom_element_id = dom_element_id
 end
 
-function inline(renderer::JupyterInlineRenderer) # TODO add pixels as args
+function viewport(renderer::JupyterInlineRenderer, height::Int=200)
     renderer.dom_element_id = "id_$(randstring(20))"
-    HTML("<svg id=$(get(renderer.dom_element_id))></svg>") # TODO use div instead?
+    HTML("""
+<div style="border-style: solid; border-radius: 25px; text-align: center;">
+Trace Rendering ($(renderer.name))
+<div id="$(get(renderer.dom_element_id))" style="height: $(height)px; resize: vertical; position: relative; overflow: hidden; text-align: center;">
+</div>
+</div>
+    """)
 end
 
 function render(renderer::JupyterInlineRenderer, trace::Trace) # TODO handle DifferentiableTrace
@@ -93,7 +99,8 @@ export enable_inline
 export JupyterInlineRenderer
 export TiledJupyterInlineRenderer
 export TiledJupyterInlineRenderer
-export inline
+#export inline
+export viewport
 export render
 export attach
 export @javascript_str

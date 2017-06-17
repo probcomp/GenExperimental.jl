@@ -32,6 +32,9 @@ define(['require'], function(require) {
     return {
         load_ipython_extension: load_ipython_extension,
         find_choice: find_choice,
-        register_jupyter_renderer: register_jupyter_renderer
+        register_jupyter_renderer: register_jupyter_renderer,
+        recorded: "recorded",
+        interventions: "interventions",
+        constraints: "constraints"
     };
 });
