@@ -4,57 +4,98 @@ global active_viewport = "undefined"
 
 function get_active_viewport()
     global active_viewport
-    return active_viewport
+    return "$(active_viewport)_frame"
 end
 
 function random_viewport_name()
     "id_$(replace(string(Base.Random.uuid4()), "-", ""))"
 end
 
-# TODO: add a global variable that is the 'current viewport' (like current axis in matplotlib)
-# then, there should be a version of here that doesn't require a name, and without explicitly calling attach
-# on the renderer, the renderer should automatically rneder to the current viewport
-# TODO: can this genrealize to other cases?
-# NOTE: the default behavior for a renderer for which attach() has not been called is to render to the active viewport
-# NOTE: the default behavior of here() for which an id has not been given is to generate a rnadom id and set it to the current active viewport.
-# every call to here sets the current active viewport.
-# sub-viewports within viewports are identified by <viewport-id>-i where i ranges from 1 to num_cols * num_rows
-# NOTE: it is also possible to write custom HTML and Javascript that defines
-# custom layouts (the trace rendering just renders a trace to an identified DOM
-# element)
-function here(id::String=random_viewport_name(); num_cols::Int=1, num_rows::Int=1,
-                  width::Int=200, height::Int=200, 
-                  trace_xmin::Real=0.0, trace_ymin::Real=0.0,
-                  trace_width::Real=1.0, trace_height::Real=1.0)
-    global active_viewport = id
-    println("Setting active viewport to $id")
-    HTML("""
-<svg id="$(id)" width=$(width) height=$(height)></svg>
-<script>
-	var root = document.getElementById("$(id)");
-	var tile_width = $(float(width) / num_cols);
-	var tile_height = $(float(height) / num_rows);
-    var i = 1;
-	for (var row=0; row < $(num_rows); row++) {
-		for (var col=0; col < $(num_cols); col++) {
-			var id = "$(id)_" + i;
-			var x = tile_width * col;
-			var y = tile_height * row;
-			var svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-			svg.setAttribute("id", id);
-			svg.setAttribute("x", x);
-			svg.setAttribute("y", y);
-			svg.setAttribute("width", tile_width);
-			svg.setAttribute("height", tile_height);
-			svg.setAttribute("viewBox", "$(trace_xmin) $(trace_ymin) $(trace_width) $(trace_height)");
-			root.appendChild(svg);
-            i += 1;
-		}
-	}
+type Figure
+    id::String
+    num_cols::Int
+    num_rows::Int
+    width::Int
+    height::Int
+    trace_xmin::Real
+    trace_ymin::Real
+    trace_width::Real
+    trace_height::Real
+    margin_top::Real
+    margin_bottom::Real
+    margin_left::Real
+    margin_right::Real
+    titles::Array{String,1}
+    function Figure(;id::String=random_viewport_name(), num_cols::Int=1, num_rows::Int=1,
+                    width::Int=200, height::Int=200, 
+                    trace_xmin::Real=0.0, trace_ymin::Real=0.0,
+                    trace_width::Real=1.0, trace_height::Real=1.0,
+                    margin_top::Real=0.0, margin_bottom::Real=0.0,
+                    margin_left::Real=0.0, margin_right::Real=0.0, titles=Array{String,1}())
+        new(id, num_cols, num_rows, width, height,
+            trace_xmin, trace_ymin, trace_width, trace_height,
+            margin_top, margin_bottom, margin_left, margin_right, titles)
+    end
 
-</script>
-    """)
 end
+    
+function here(figure::Figure)
+    setup = """
+    <div id="$(figure.id)"></div>
+    <script>
+        var d3 = require("nbextensions/d3/d3.min");
+    
+        var svg = d3.select("#$(figure.id)").append("svg")
+            .attr("width", $(figure.width))
+            .attr("height", $(figure.height));
+    
+        // TODO delete me
+        svg.append("rect")
+            .attr("x", 0)
+            .attr("y", 0)
+            .attr("width", "100%")
+            .attr("height", "100%")
+            .style("stroke", "white")
+            .style("fill", "white");
+    
+        var tile_width = $(figure.width) / $(figure.num_cols);
+        var tile_height = $(figure.height) / $(figure.num_rows);
+        var i = 1;
+        for (var row=0; row<$(figure.num_rows); row++) {
+            for (var col=0; col<$(figure.num_cols); col++) {
+                var sub_svg = svg.append("svg")
+                    .classed("subfigure", true)
+			        .attr("id", "$(figure.id)_parent" + i)
+                    .attr("x", col * tile_width)
+                    .attr("y", row * tile_height)
+                    .attr("width", tile_width)
+                    .attr("height", tile_height);
+                var inner_svg = sub_svg.append("svg")
+                    .attr("x", $(figure.margin_left))
+                    .attr("y", $(figure.margin_top))
+                    .attr("width", tile_width - $(figure.margin_left) - $(figure.margin_right))
+                    .attr("height", tile_height - $(figure.margin_top) - $(figure.margin_bottom));
+                var frame = inner_svg.append("svg")
+			        .attr("id", "$(figure.id)_frame" + i)
+                    //.attr("preserveAspectRatio", "none")
+                    .attr("viewBox", "$(figure.trace_xmin) $(figure.trace_ymin) $(figure.trace_width) $(figure.trace_height)");
+                i += 1;
+            }
+        }
+    """
+
+    set_titles = map((i) -> """
+        var parent = d3.select("#$(figure.id)_parent" + $i)
+        parent.append("text")
+                    .attr("x", tile_width / 2)
+                    .attr("y", 16)
+                    .attr("text-anchor", "middle")
+                    .text("$(figure.titles[i])")
+                    .style("font-size", 16);""", 1:length(figure.titles))
+    javascript = join(vcat([setup], set_titles), "\n")
+    HTML(javascript)
+end
+
 
 type JupyterInlineRenderer
     name::String # The target name for Javascript
@@ -68,8 +109,27 @@ type JupyterInlineRenderer
     end
 end
 
+# 
+#
+#
+#
+#
+#
+#
+#
+#
+#
+
 function attach(renderer::JupyterInlineRenderer, dom_element_id::String)
     renderer.dom_element_id = dom_element_id
+end
+
+function attach(renderer::JupyterInlineRenderer, figure::Figure)
+    renderer.dom_element_id = "$(figure.id)_frame1"
+end
+
+function attach(renderer::JupyterInlineRenderer, subfigure::Pair{Figure,Int})
+    renderer.dom_element_id = "$(subfigure.first.id)_frame$(subfigure.second)"
 end
 
 function render(renderer::JupyterInlineRenderer, trace::Trace) # TODO handle DifferentiableTrace
@@ -80,7 +140,7 @@ function render(renderer::JupyterInlineRenderer, trace::Trace) # TODO handle Dif
             error("No viewport has been defined")
         end
         # use global active viewport
-        id = active_viewport
+        id = active_viewport + "_frame1"
     else
         # use explicitly attached viewport
         id = get(renderer.dom_element_id)
@@ -102,5 +162,7 @@ export viewport
 export render
 export attach
 
+export Figure
 export here
 export get_active_viewport
+export set_title!
