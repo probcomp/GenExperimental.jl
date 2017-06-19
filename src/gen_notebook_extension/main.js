@@ -22,7 +22,8 @@ define(['require'], function(require) {
             comm.on_msg(function(msg) {
                 var id = msg.content.data.dom_element_id;
                 var trace = msg.content.data.trace;
-                render_function(id, trace);
+                var conf = msg.content.data.conf;
+                render_function(id, trace, conf);
             })
         });
         

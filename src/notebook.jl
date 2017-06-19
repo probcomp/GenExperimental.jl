@@ -1,13 +1,57 @@
 import IJulia
 
+type Tile
+    id::String
+    num_cols::Int
+    num_rows::Int
+    width::Int
+    height::Int
+    trace_xmin::Float64
+    trace_ymin::Float64
+    trace_width::Float64
+    trace_height::Float64
+end
+# TODO setters
+
+function here(tile::Tile)
+    HTML("""
+<div id="$(tile.id)"></id>
+<script>
+	var root = document.getElementById("$(tile.id)");
+	var tile_width = $(float(tile.width) / tile.num_cols);
+	var tile_height = $(float(tile.height) / tile.num_rows);
+    var i = 1;
+	for (var row=0; row < $(tile.num_rows); row++) {
+		for (var col=0; col < $(tile.num_cols); col++) {
+			var id = "$(tile.id)_" + i;
+			var x = tile_width * col;
+			var y = tile_height * row;
+			var svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+			svg.setAttribute("id", id);
+			svg.setAttribute("x", x);
+			svg.setAttribute("y", y);
+			svg.setAttribute("width", tile_width);
+			svg.setAttribute("height", tile_height);
+			svg.setAttribute("viewBox", "$(tile.trace_xmin) $(tile.trace_ymin) $(tile.trace_width) $(tile.trace_height)");
+			root.appendChild(svg);
+            i += 1;
+		}
+	}
+
+</script>
+    """)
+
+end
+
 type JupyterInlineRenderer
     name::String # The target name for Javascript
     dom_element_id::Nullable{String} # The DOM element where the JS code should render to
     comm::IJulia.Comm # communication object to Javascript
+    configuration::Dict # gets sent to the JS renderer alongside the trace (the JS renderer is currently stateless)
     
-    function JupyterInlineRenderer(name::String)
+    function JupyterInlineRenderer(name::String, configuration::Dict)
         comm = IJulia.Comm(name, data=Dict())
-        new(name, Nullable{String}(), comm)
+        new(name, Nullable{String}(), comm, configuration)
     end
 end
 
@@ -31,70 +75,13 @@ function render(renderer::JupyterInlineRenderer, trace::Trace) # TODO handle Dif
         error("No dom element has been defined")
     end
     IJulia.send_comm(renderer.comm, Dict("trace" => trace,
-										 "dom_element_id" => renderer.dom_element_id))
-end
-
-
-type TiledJupyterInlineRenderer
-    name::String # The target name for Javascript
-    dom_element_id::Nullable{String} # The DOM element where the JS code should render to
-    comm::IJulia.Comm # communication object to Javascript
-	num_rows::Int
-	num_cols::Int
-	width::Int
-	height::Int
-    function TiledJupyterInlineRenderer(name::String,
-										num_cols::Int, num_rows::Int,
-										width::Int, height::Int)
-        comm = IJulia.Comm(name, data=Dict())
-        new(name, Nullable{String}(), comm, num_rows, num_cols, width, height)
-    end
-end
-
-function inline(renderer::TiledJupyterInlineRenderer) # TODO add pixels as args
-    # create an array of boxes, and when render gets called, iterate throgugh them..
-    id = "id_$(randstring(20))"
-	renderer.dom_element_id = id
-HTML("""
-<svg id=$(id) width=$(renderer.width) height=$(renderer.height) xmlns="http://www.w3.org/2000/svg">
-</svg>
-<script>
-	var parent_svg = document.getElementById("$(id)");
-	var tile_width = $(float(renderer.width) / renderer.num_cols);
-	var tile_height = $(float(renderer.height) / renderer.num_rows);
-	for (var row=0; row < $(renderer.num_rows); row++) {
-		for (var col=0; col < $(renderer.num_cols); col++) {
-			var id = "$(id)_" + row + "_" + col;
-			var x = tile_width * col;
-			var y = tile_height * row;
-			var svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-			svg.setAttribute("id", id);
-			svg.setAttribute("x", x);
-			svg.setAttribute("y", y);
-			svg.setAttribute("width", tile_width);
-			svg.setAttribute("height", tile_height);
-			svg.setAttribute("viewBox", "0 0 100 100");
-			parent_svg.appendChild(svg);
-		}
-	}
-</script>
-""")
-end
-
-function render(renderer::TiledJupyterInlineRenderer, traces::Vector{Trace})
-    if (isnull(renderer.dom_element_id))
-        error("No target has been defined")
-    end
-    for (i, trace) in enumerate(traces)
-		row = div((i - 1), renderer.num_cols)
-		col = (i - 1) % renderer.num_cols
-		dom_element_id = "$(get(renderer.dom_element_id))_$(row)_$(col)"
-        IJulia.send_comm(renderer.comm, Dict("trace" => trace, "dom_element_id" => dom_element_id))
-    end
+										 "dom_element_id" => renderer.dom_element_id,
+                                         "conf" => renderer.configuration))
 end
 
 macro javascript_str(s) display("text/javascript", s); end
 
+export @javascript_str
 export enable_inline
 export JupyterInlineRenderer
 export TiledJupyterInlineRenderer
@@ -103,4 +90,6 @@ export TiledJupyterInlineRenderer
 export viewport
 export render
 export attach
-export @javascript_str
+
+export Tile
+export here
