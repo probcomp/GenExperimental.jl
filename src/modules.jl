@@ -1,6 +1,10 @@
 import Distributions
 
-# T is the return type of the module
+# Gen.Module{T} is a probabilistic module of return type T
+# Each subtype of Module{T} must have two methods:
+# 1. simulate(args...)::Tuple{T,N} where N is a number type
+# 2. regenerate(::T, args...)::N where N is a number type
+# See https://arxiv.org/abs/1612.04759 for the mathematical module specification
 abstract Module{T}
 
 modules = Dict{Symbol, Module}()
