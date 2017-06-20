@@ -1,29 +1,5 @@
 import Distributions
 
-# Gen.Module{T} is a probabilistic module of return type T
-# Each subtype of Module{T} must have two methods:
-# 1. simulate(args...)::Tuple{T,N} where N is a number type
-# 2. regenerate(::T, args...)::N where N is a number type
-# See https://arxiv.org/abs/1612.04759 for the mathematical module specification
-abstract Module{T}
-
-modules = Dict{Symbol, Module}()
-
-function register_module(name::Symbol, mod::Module)
-    modules[name] = mod
-end
-
-export Module
-export simulate
-export regenerate
-
-# users can register their own modules
-export register_module
-
-
-# built-in modules
-
-
 # flip ---------------------------------------------------
 
 immutable Flip <: Gen.Module{Bool} end
