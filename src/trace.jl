@@ -226,9 +226,9 @@ function expand_module(expr, name)
             val = $(esc(:T)).interventions[name]
         elseif haskey($(esc(:T)).constraints, name)
             val = $(esc(:T)).constraints[name]
-            $(esc(:T)).log_weight += $(Expr(:call, esc(:regenerate), mod, :val, args...))
+            $(esc(:T)).log_weight += regenerate($(mod), val, $(args...))
         else
-            val, log_weight = $(Expr(:call, esc(:simulate), mod, args...))
+            (val, log_weight) = simulate($(mod), $(args...))
             # NOTE: will overwrite the previous value if it was already recorded
             $(esc(:T)).recorded[name] = val
             if name in $(esc(:T)).proposals

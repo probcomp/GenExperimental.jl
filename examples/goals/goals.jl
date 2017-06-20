@@ -8,7 +8,7 @@ using PyPlot
 @everywhere include("path_planner.jl")
 @everywhere include("model.jl")
 @everywhere include("scenes.jl")
-include("povray_rendering.jl")
+#include("povray_rendering.jl")
 @everywhere include("inference.jl")
 
 function demo()
