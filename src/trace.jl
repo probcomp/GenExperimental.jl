@@ -1,6 +1,34 @@
-using Distributions
 using PyPlot
 using DataStructures
+import Distributions
+
+# Probabilistic modules ----------------------------------
+#
+# Gen.Module{T} is a probabilistic module of return type T
+# Each subtype of Module{T} must have two methods:
+# 1. simulate(args...)::Tuple{T,N} where N is a number type
+# 2. regenerate(::T, args...)::N where N is a number type
+# See https://arxiv.org/abs/1612.04759 for the mathematical
+# probabilistic module specification
+
+abstract Module{T}
+
+modules = Dict{Symbol, Module}()
+
+function register_module(name::Symbol, mod::Module)
+    modules[name] = mod
+end
+
+export Module
+export simulate
+export regenerate
+
+# users can register their own modules
+export register_module
+
+
+# Probabilistic programs and traces ----------------------
+
 
 abstract AbstractTrace
 
@@ -121,15 +149,11 @@ function score(trace::AbstractTrace)
     concrete(trace.log_weight)
 end
 
-# should call these 'prepare'
 function prepare(trace::Trace)
     trace.visited = OrderedSet{String}()
     trace.log_weight = 0.0
 end
 
-# automatically do reset of tape when finishing the @generate?
-# this way, future parameterizations aren't on the same tape
-# as the just-produced trace.. it's like cutting the tape off.
 function prepare(trace::DifferentiableTrace)
     trace.visited = OrderedSet{String}()
     trace.log_weight= GenScalar(0.0, trace.tape)
@@ -153,7 +177,6 @@ function check_visited(trace::AbstractTrace)
     end
 end
 
-# should call these 'finalize'
 function finalize(trace::Trace)
     check_visited(trace)
 end
@@ -263,7 +286,8 @@ function expand_non_module(expr, name)
 end
 
 macro ~(expr, name)
-    # WARNING: T is a reserved symbol for 'trace'. It is an error if T occurs in the program.
+    # WARNING: T is a reserved symbol for 'trace'. It is an error if T occurs
+    # in the program.
     # TODO: how to do this in a hygenic way?
     is_module_call = (typeof(expr) == Expr) &&
                      (expr.head == :call) && 
@@ -321,7 +345,9 @@ macro generate(trace, program)
         prepare($(esc(trace)))
 
         # run the program, passing in the trace as the first arg.
-        local value = $(esc(function_name))($(esc(trace)), $(map((a) -> esc(a), program.args[2:end])...))
+        local value = $(esc(function_name))(
+            $(esc(trace)),
+            $(map((a) -> esc(a), program.args[2:end])...))
 
         # reset the tape (the old tape is preserved through
         # the reference of the log-weight)
@@ -346,8 +372,6 @@ macro generate(program)
          map((a) -> esc(a), program.args[2:end])...)
 end
 
-
-# exports
 export Trace
 export DifferentiableTrace
 export AbstractTrace
