@@ -278,7 +278,7 @@ function render_trace(povray_scene::PovrayRendering, trace::Trace)
     add_destination(trace, povray_scene)
     add_optimized_path(trace, povray_scene)
     add_measurements(trace, povray_scene)
-    add_waypoint(trace, povray_scene)
+    #add_waypoint(trace, povray_scene)
 end
 
 function render_traces(povray_scene::PovrayRendering, traces::Array{Trace}, max_measurement_time::Int)
