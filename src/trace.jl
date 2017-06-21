@@ -1,4 +1,3 @@
-using PyPlot
 using DataStructures
 import Distributions
 

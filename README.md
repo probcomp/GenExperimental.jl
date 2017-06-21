@@ -8,7 +8,7 @@ compositional inference programming library
 First, install the Julia packages that Gen depends on:
 ```
 julia> Pkg.add("Distributions")
-julia> Pkg.add("PyPlot")
+julia> Pkg.add("DataStructures")
 julia> Pkg.add("IJulia")
 ```
 
