@@ -3,21 +3,22 @@
 Gen is a featherweight embedded probabilistic programming language and
 compositional inference programming library
 
+
 ## Installing
 
 First, install the Julia packages that Gen depends on:
 ```
 julia> Pkg.add("Distributions")
 julia> Pkg.add("DataStructures")
-julia> Pkg.add("IJulia")
 ```
 
 To make Gen available for import with `using Gen`, add the following to your
 `~/.juliarc.jl` file:
 ```
-push!(LOAD_PATH, "absolute-path-to-parent-directory-of-Gen.jl")
-
+push!(LOAD_PATH, "<path>")
 ```
+where `<path>` is the absolute path to the parent directory of the Gen.jl directory.
+
 
 ## Run tests
 
@@ -27,6 +28,20 @@ using Gen
 julia> include("test/runtests.jl")
 
 ```
+
+## Installing support for IJulia notebooks
+
+Most of the tutorials take the form of [IJulia](https://github.com/JuliaLang/IJulia.jl) notebooks.
+Before running these tutorials you will need to install IJulia and its
+dependencies.
+
+You will also need to install a few extra dependencies of the Gen tutorial notebooks:
+
+```
+cd examples/
+./install_notebook_extensions.sh
+```
+
 
 ## Getting started
 
