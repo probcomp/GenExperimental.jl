@@ -24,37 +24,21 @@ where `<path>` is the absolute path to the parent directory of the Gen.jl direct
 
 
 ```
-using Gen
-julia> include("test/runtests.jl")
+julia test/runtests.jl
 
 ```
 
 ## Installing support for IJulia notebooks
 
-Most of the tutorials take the form of [IJulia](https://github.com/JuliaLang/IJulia.jl) notebooks.
-Before running these tutorials you will need to install IJulia and its
-dependencies.
-
-You will also need to install a few extra dependencies of the Gen tutorial notebooks:
+To install the Gen.jl notebook extension for Jupyter notebooks, which provides
+a simple API for Javascript-based trace renderings in Jupyter noteoboks, use:
 
 ```
-cd examples/
+cd jupyter/
 ./install_notebook_extensions.sh
 ```
 
 
 ## Getting started
 
-To launch a tutorial IJulia notebook that introduces you to Gen, open a Julia console:
-
-```
-julia
-using IJulia
-notebook()
-```
-This should open a browser window with a Jupyter directory navigator. Navigate
-and open the tutorial notebook at `examples/tutorial.ipynb`.
-
-Note that Gen is a regular Julia package. You can use Gen through an IJulia
-notebook, or from the command-line and Julia console. The other examples in
-`examples/` are written as regular Julia programs.
+Examples can be found in the [gen-examples repository](https://github.com/probcomp/gen-examples).
