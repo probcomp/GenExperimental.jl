@@ -3,3 +3,4 @@
 *.out
 *.pdf
 *.png
+.ipynb_checkpoints
