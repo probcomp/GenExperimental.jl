@@ -38,6 +38,10 @@ type Figure
     end
 
 end
+
+id(figure::Figure) = figure.id
+
+id(subfigure::Pair{Figure,Int}) = "$(id(subfigure.first))_frame$(subfigure.second)"
     
 function here(figure::Figure)
     setup = """
@@ -124,13 +128,13 @@ function attach(renderer::JupyterInlineRenderer, dom_element_id::String)
     renderer.dom_element_id = dom_element_id
 end
 
-function attach(renderer::JupyterInlineRenderer, figure::Figure)
-    renderer.dom_element_id = "$(figure.id)_frame1"
-end
-
-function attach(renderer::JupyterInlineRenderer, subfigure::Pair{Figure,Int})
-    renderer.dom_element_id = "$(subfigure.first.id)_frame$(subfigure.second)"
-end
+#function attach(renderer::JupyterInlineRenderer, figure::Figure)
+    #renderer.dom_element_id = "$(figure.id)_frame1"
+#end
+#
+#function attach(renderer::JupyterInlineRenderer, subfigure::Pair{Figure,Int})
+    #renderer.dom_element_id = "$(subfigure.first.id)_frame$(subfigure.second)"
+#end
 
 function render(renderer::JupyterInlineRenderer, trace::Trace) # TODO handle DifferentiableTrace
     local id::String
@@ -152,7 +156,11 @@ end
 
 macro javascript_str(s) display("text/javascript", s); end
 
+CSS(str::String) = HTML("<style>$(str)</style>")
+
+export CSS
 export @javascript_str
+
 export enable_inline
 export JupyterInlineRenderer
 export TiledJupyterInlineRenderer
@@ -164,5 +172,5 @@ export attach
 
 export Figure
 export here
+export id
 export get_active_viewport
-export set_title!
