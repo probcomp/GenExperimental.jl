@@ -106,7 +106,7 @@ end
 
 # union type
 
-GenValue = Union{GenScalar, GenVector}
+GenValue = Union{GenScalar, GenVector, GenMatrix}
 
 
 # indexing into a vector gives a scalar

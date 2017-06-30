@@ -52,43 +52,70 @@ end
 
 @testset "automatic differentiation" begin
 
+    a_scalar = 1.300181
+    b_scalar = 1.45245
+    a_vector = [1.4123, 4.3452]
+    b_vector = [8.3453, 0.9913]
+    a_matrix = [1.4123 4.3452 40.1; 10.123 0.9314 0.11] # 2 rows, 3 columns
+    b_matrix = [4.13 33.123 5.32431; 4.314 5.1341 8.09] # 2 rows, 3 columns
+
 
     @testset "elementwise-divide" begin
 
         # scalar / scalar
-        adtest(/, 1.300181, 4.131234)
+        adtest(/, a_scalar, b_scalar)
 
         # scalar ./ vector
-        adtest((a, b) -> (a ./ b)[1], 1.300181, [1.4123, 4.3452])
-        adtest((a, b) -> (a ./ b)[2], 1.300181, [1.4123, 4.3452])
+        for i=1:2
+            adtest((a, b) -> (a ./ b)[i], a_scalar, a_vector)
+        end
 
         # vector / scalar
-        adtest((a, b) -> (a ./ b)[1], [1.4123, 4.3452], 1.300181)
-        adtest((a, b) -> (a ./ b)[2], [1.4123, 4.3452], 1.300181)
+        for i=1:2
+            adtest((a, b) -> (a ./ b)[i], a_vector, a_scalar)
+        end
 
         # vector ./ vector
-        adtest((a, b) -> (a ./ b)[1], [1.4123, 4.3452], [5.245, 0.4924])
-        adtest((a, b) -> (a ./ b)[2], [1.4123, 4.3452], [5.245, 0.4924])
+        for i=1:2
+            adtest((a, b) -> (a ./ b)[i], a_vector, b_vector)
+        end
 
     end
 
     @testset "elementwise-multiply" begin
 
         # scalar * scalar
-        adtest(*, 1.300181, 4.131234)
+        adtest(*, a_scalar, b_scalar)
 
         # scalar * vector
-        adtest((a, b) -> (a * b)[1], 1.300181, [1.4123, 4.3452])
-        adtest((a, b) -> (a * b)[2], 1.300181, [1.4123, 4.3452])
+        for i=1:2
+            adtest((a, b) -> (a * b)[i], a_scalar, a_vector)
+        end
 
         # vector * scalar
-        adtest((a, b) -> (a * b)[1], [1.4123, 4.3452], 1.300181)
-        adtest((a, b) -> (a * b)[2], [1.4123, 4.3452], 1.300181)
+        for i=1:2
+            adtest((a, b) -> (a * b)[i], a_vector, a_scalar)
+        end
 
         # vector .* vector
-        adtest((a, b) -> (a .* b)[1], [1.4123, 4.3452], [5.245, 0.4924])
-        adtest((a, b) -> (a .* b)[2], [1.4123, 4.3452], [5.245, 0.4924])
+        for i=1:2
+            adtest((a, b) -> (a .* b)[i], a_vector, b_vector)
+        end
 
+        # scalar * matrix
+        for i=1:6
+            adtest((a, b) -> (a * b)[i], a_scalar, a_matrix)
+        end
+
+        # matrix * scalar
+        for i=1:6
+            adtest((a, b) -> (a * b)[i], a_matrix, a_scalar)
+        end
+
+        # matrix .* matrix
+        for i=1:6
+            adtest((a, b) -> (a .* b)[i], a_matrix, b_matrix)
+        end
     end
 
 
