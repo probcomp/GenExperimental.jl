@@ -24,9 +24,9 @@ end
 
 makeGenValue(datum::Real, tape::Tape) = GenScalar(datum, tape, Input())
 makeGenValue(datum::Real, tape::Tape, op::AbstractOperator) = GenScalar(datum, tape, op)
-makeGenValue(datum::Vector{U}, tape::Tape) where U <: Real = GenVector(datum, tape, Input())
-makeGenValue(datum::Vector{U}, tape::Tape, op::AbstractOperator) where U <: Real = GenVector(datum, tape, op)
-makeGenValue(datum::Vector{U}, tape::Tape, op::AbstractOperator) where U <: Real = GenVector(datum, tape, op)
+makeGenValue(datum::Vector{W}, tape::Tape) where W<:Real = GenVector(datum, tape, Input())
+makeGenValue(datum::Vector{W}, tape::Tape, op::AbstractOperator) where W<:Real = GenVector(datum, tape, op)
+makeGenValue(datum::Vector{W}, tape::Tape, op::AbstractOperator) where W<:Real = GenVector(datum, tape, op)
 
 
 
@@ -49,7 +49,7 @@ function (/)(l::GenScalar, rdatum::Real)
     makeGenValue((/)(datum(l), rdatum), l.tape, ElementwiseDivide(l, r))
 end
 
-function propagate{T<:GenScalar,U<:GenScalar}(op::ElementwiseDivide{T,U}, datum::Real, adj::Float64)
+function propagate(op::ElementwiseDivide{T,U}, datum::Real, adj::Float64) where {T<:GenScalar, U<:GenScalar}
     op.left.adj += adj / op.right.datum
     op.right.adj += adj * (-op.left.datum / (op.right.datum * op.right.datum))
 end
@@ -64,13 +64,12 @@ function broadcast(::typeof(/), ldatum::Real, r::GenVector)
     makeGenValue(ldatum ./ datum(r), l.tape, ElementwiseDivide(l, r))
 end
 
-function broadcast(::typeof(/), l::GenScalar, rdatum::Vector{Real})
+function broadcast(::typeof(/), l::GenScalar, rdatum::Vector{W}) where W<:Real
     r = makeGenValue(rdatum, l.tape)
     makeGenValue(datum(l) ./ rdatum, l.tape, ElementwiseDivide(l, r))
 end
 
-function propagate{T<:GenScalar,U<:GenVector,W<:Real}(op::ElementwiseDivide{T,U}, datum::Vector{W},
-                                                      adj::Vector{Float64})
+function propagate(op::ElementwiseDivide{T,U}, datum::Vector{W}, adj::Vector{Float64}) where {T<:GenScalar, U<:GenVector, W<:Real}
     op.left.adj += sum(adj ./ op.right.datum)
     op.right.adj += adj .* (-op.left.datum ./ (op.right.datum .* op.right.datum))
 end
@@ -80,7 +79,7 @@ function (/)(l::GenVector, r::GenScalar)
     makeGenValue((/)(datum(l), datum(r)), l.tape, ElementwiseDivide(l, r))
 end
 
-function (/)(ldatum::Vector{Real}, r::GenScalar)
+function (/)(ldatum::Vector{W}, r::GenScalar) where W<:Real
     l = makeGenValue(ldatum, r.tape)
     makeGenValue((/)(ldatum, datum(r)), l.tape, ElementwiseDivide(l, r))
 end
@@ -90,8 +89,7 @@ function (/)(l::GenVector, rdatum::Real)
     makeGenValue((/)(datum(l), rdatum), l.tape, ElementwiseDivide(l, r))
 end
 
-function propagate{T<:GenVector,U<:GenScalar,W<:Real}(op::ElementwiseDivide{T,U}, datum::Vector{W}, 
-                                                      adj::Vector{Float64})
+function propagate(op::ElementwiseDivide{T,U}, datum::Vector{W}, adj::Vector{Float64}) where {T<:GenVector, U<:GenScalar, W<:Real}
     op.left.adj += adj / op.right.datum
     op.right.adj += sum(adj .* (-op.left.datum / (op.right.datum * op.right.datum)))
 end
@@ -101,24 +99,108 @@ function broadcast(::typeof(/), l::GenVector, r::GenVector)
     makeGenValue(datum(l) ./ datum(r), l.tape, ElementwiseDivide(l, r))
 end
 
-function broadcast(::typeof(/), ldatum::Vector{Real}, r::GenVector)
+function broadcast(::typeof(/), ldatum::Vector{W}, r::GenVector) where W <: Real
     l = makeGenValue(ldatum, r.tape)
     makeGenValue(ldatum ./ datum(r), l.tape, ElementwiseDivide(l, r))
 end
 
-function broadcast(::typeof(/), l::GenVector, rdatum::Vector{Real})
+function broadcast(::typeof(/), l::GenVector, rdatum::Vector{W}) where W <: Real
     r = makeGenValue(rdatum, l.tape)
     makeGenValue(datum(l) ./ rdatum, l.tape, ElementwiseDivide(l, r))
 end
 
-function propagate{T<:GenVector,U<:GenVector,W<:Real}(op::ElementwiseDivide{T,U}, datum::Vector{W},
-                                                      adj::Vector{Float64})
+function propagate(op::ElementwiseDivide{T,U}, datum::Vector{W}, adj::Vector{Float64}) where {T<:GenVector, U<:GenVector, W<:Real}
     op.left.adj += adj ./ op.right.datum
     op.right.adj += adj .* (-op.left.datum ./ (op.right.datum .* op.right.datum))
 end
 
 
 # ---- element-wise multiplication ----
+
+@generate_binary_operator_type(ElementwiseMultiply)
+
+# scalar * scalar
+function (*)(l::GenScalar, r::GenScalar)
+    makeGenValue((*)(datum(l), datum(r)), l.tape, ElementwiseMultiply(l, r))
+end
+
+function (*)(ldatum::Real, r::GenScalar)
+    l = makeGenValue(ldatum, r.tape)
+    makeGenValue((*)(ldatum, datum(r)), l.tape, ElementwiseMultiply(l, r))
+end
+
+function (*)(l::GenScalar, rdatum::Real)
+    r = makeGenValue(rdatum, l.tape)
+    makeGenValue((*)(datum(l), rdatum), l.tape, ElementwiseMultiply(l, r))
+end
+
+function propagate(op::ElementwiseMultiply{T,U}, datum::Real, adj::Float64) where {T<:GenScalar, U<:GenScalar}
+    op.left.adj += adj * op.right.datum
+    op.right.adj += adj * op.left.datum
+end
+
+# scalar * vector
+function (*)(l::GenScalar, r::GenVector)
+    makeGenValue((*)(datum(l), datum(r)), l.tape, ElementwiseMultiply(l, r))
+end
+
+function (*)(ldatum::Real, r::GenVector)
+    l = makeGenValue(ldatum, r.tape)
+    makeGenValue((*)(ldatum, datum(r)), l.tape, ElementwiseMultiply(l, r))
+end
+
+function (*)(l::GenScalar, rdatum::Vector{W}) where W<:Real
+    r = makeGenValue(rdatum, l.tape)
+    makeGenValue((*)(datum(l), rdatum), l.tape, ElementwiseMultiply(l, r))
+end
+
+function propagate(op::ElementwiseMultiply{T,U}, datum::Vector{W}, adj::Vector{Float64}) where {T<:GenScalar, U<:GenVector, W<:Real}
+    op.left.adj += sum(adj .* op.right.datum)
+    op.right.adj += adj * op.left.datum
+end
+
+
+# vector * scalar
+function (*)(l::GenVector, r::GenScalar)
+    makeGenValue((*)(datum(l), datum(r)), l.tape, ElementwiseMultiply(l, r))
+end
+
+function (*)(ldatum::Vector{W}, r::GenScalar) where W<:Real
+    l = makeGenValue(ldatum, r.tape)
+    makeGenValue((*)(ldatum, datum(r)), l.tape, ElementwiseMultiply(l, r))
+end
+
+function (*)(l::GenVector, rdatum::Real)
+    r = makeGenValue(rdatum, l.tape)
+    makeGenValue((*)(datum(l), rdatum), l.tape, ElementwiseMultiply(l, r))
+end
+
+function propagate(op::ElementwiseMultiply{T,U}, datum::Vector{W}, adj::Vector{W}) where {T<:GenVector, U<:GenScalar, W<:Real}
+    op.left.adj += adj * op.right.datum
+    op.right.adj += sum(adj .* op.left.datum)
+end
+
+# vector .* vector
+function broadcast(::typeof(*), l::GenVector, r::GenVector)
+    makeGenValue(datum(l) .* datum(r), l.tape, ElementwiseMultiply(l, r))
+end
+
+function broadcast(::typeof(*), ldatum::Vector{W}, r::GenVector) where W <: Real
+    l = makeGenValue(ldatum, r.tape)
+    makeGenValue(ldatum .* datum(r), l.tape, ElementwiseMultiply(l, r))
+end
+
+function broadcast(::typeof(*), l::GenVector, rdatum::Vector{W}) where W <: Real
+    r = makeGenValue(rdatum, l.tape)
+    makeGenValue(datum(l) .* rdatum, l.tape, ElementwiseMultiply(l, r))
+end
+
+function propagate(op::ElementwiseMultiply{T,U}, datum::Vector{W}, adj::Vector{Float64}) where {T<:GenVector, U<:GenVector, W<:Real}
+    op.left.adj += adj .* op.right.datum
+    op.right.adj += adj .* op.left.datum
+end
+
+
 
 # ---- matrix-matrix multiplication ----
 
