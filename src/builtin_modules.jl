@@ -2,7 +2,7 @@ import Distributions
 
 # flip ---------------------------------------------------
 
-immutable Flip <: Gen.Module{Bool} end
+struct Flip <: Gen.Module{Bool} end
 
 function regenerate{T}(::Flip, x::Bool, p::T)
     x ? log(p) : log(1.0 - p)
@@ -21,7 +21,7 @@ export flip
 
 # uniform -------------------------------------------------
 
-immutable Uniform <: Gen.Module{Float64} end
+struct Uniform <: Gen.Module{Float64} end
 
 function regenerate(::Uniform, x::Float64, lower::Real, upper::Real)
     x < lower || x > upper ? -Inf : -log(upper - lower)
@@ -40,7 +40,7 @@ export uniform
 
 # impossible ---------------------------------------------
 
-immutable Nil <: Gen.Module{Float64} end
+struct Nil <: Gen.Module{Float64} end
 
 function regenerate{T}(::Nil, x::T)
     x == Nil() ? 0.0 : -Inf
@@ -58,7 +58,7 @@ export nil
 
 # normal -------------------------------------------------
 
-immutable Normal <: Gen.Module{Float64} end
+struct Normal <: Gen.Module{Float64} end
 
 function regenerate{M,N,O}(::Normal, x::M, mu::N, std::O)
     var = std * std
@@ -80,13 +80,13 @@ export normal
 # gamma --------------------------------------------------
 # k = shape, s = scale
 
-immutable Gamma <: Gen.Module{Float64} end
+struct Gamma <: Gen.Module{Float64} end
 
 function regenerate{M,N,O}(::Gamma, x::M, k::N, s::O)
     (k - 1.0) * log(x) - (x / s) - k * log(s) - lgamma(k)
 end
 
-function simulate{M,N}(gamma::Gamma, k::M, s::N) 
+function simulate{M,N}(gamma::Gamma, k::M, s::N)
     x = rand(Distributions.Gamma(k, s))
     (x, regenerate(gamma, x, k, s))
 end

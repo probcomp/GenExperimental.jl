@@ -10,7 +10,7 @@ import Distributions
 # See https://arxiv.org/abs/1612.04759 for the mathematical
 # probabilistic module specification
 
-abstract Module{T}
+abstract type Module{T} end
 
 modules = Dict{Symbol, Module}()
 
@@ -29,9 +29,9 @@ export register_module
 # Probabilistic programs and traces ----------------------
 
 
-abstract AbstractTrace
+abstract type AbstractTrace end
 
-type Trace <: AbstractTrace
+mutable struct Trace <: AbstractTrace
     constraints::OrderedDict{String,Any}
     interventions::OrderedDict{String,Any}
     proposals::OrderedSet{String}
@@ -48,7 +48,7 @@ type Trace <: AbstractTrace
     end
 end
 
-type DifferentiableTrace <: AbstractTrace
+mutable struct DifferentiableTrace <: AbstractTrace
     constraints::OrderedDict{String,Any}
     interventions::OrderedDict{String,Any}
     proposals::OrderedSet{String}
