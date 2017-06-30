@@ -152,3 +152,24 @@ function check_tapes(a::GenValue, b::GenValue)
         error("$a and $b use different tapes")
     end
 end
+
+# backward pass
+
+function backprop(a::GenValue)
+    a.adj = 1.0 # this is the root node
+    ns = nums(a.tape)
+    for i=a.tapeIdx:-1:1
+        propagate(ns[i].op, ns[i].datum, ns[i].adj)
+    end
+end
+
+partial{T <: GenValue}(a::T) = a.adj # partial derivative
+
+# exports
+export Tape
+export GenScalar
+export GenVector
+export GenMatrix
+export datum
+export backprop
+export partial
