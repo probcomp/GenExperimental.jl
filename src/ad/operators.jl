@@ -3,9 +3,6 @@ import Base.+
 import Base.-
 import Base./
 import Base.*
-import Base.log
-import Base.exp
-import Base.lgamma
 
 
 macro generate_binary_operator_type(opType)
@@ -589,6 +586,7 @@ end
 
 
 # ---- exp ----
+import Base.exp
 @generate_unary_operator_type(Exp)
 
 # exp(scalar)
@@ -612,6 +610,7 @@ end
 
 
 # ---- log ----
+import Base.log
 @generate_unary_operator_type(Log)
 
 # log(scalar)
@@ -659,3 +658,34 @@ end
 function propagate(op::LogGamma, datum::T, adj::U) where {T,U}
     op.arg.adj += adj .* digamma.(op.arg.datum)
 end
+
+
+# ---- sum ----
+import Base.sum
+@generate_unary_operator_type(Sum)
+
+# sum(scalar)
+function sum(l::GenScalar)
+    makeGenValue(sum(datum(l)), l.tape, Sum(l))
+end
+
+# sum(vector)
+function sum(l::GenVector)
+    makeGenValue(sum(datum(l)), l.tape, Sum(l))
+end
+
+# sum(matrix)
+function sum(l::GenMatrix)
+    makeGenValue(sum(datum(l)), l.tape, Sum(l))
+end
+
+function propagate(op::Sum, datum::T, adj::U) where {T,U}
+    op.arg.adj += adj
+end
+
+
+# ---- transpose ----
+import Base.transpose
+
+
+# TODO handle slice indexing
