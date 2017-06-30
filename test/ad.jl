@@ -99,10 +99,7 @@ end
         for i=1:length(a_matrix)
             adtest((x) -> (-x)[i], a_matrix)
         end
-
     end
-
-
 
     @testset "add" begin
 
@@ -138,7 +135,6 @@ end
 
         # matrix + matrix
         # TODO not implemented yet
-
     end
 
     @testset "subtract" begin
@@ -175,9 +171,7 @@ end
 
         # matrix - matrix
         # TODO not implemented yet
-
     end
-
 
     @testset "divide" begin
 
@@ -210,7 +204,6 @@ end
 
         # vector ./ matrix (broadcast)
         # TODO not implemented yet
-
     end
 
     @testset "elementwise-multiply" begin
@@ -274,7 +267,6 @@ end
 
         # vector .* matrix (broadcast)
         # TODO not implemented yet
-
     end
 
     @testset "matrix-multiply" begin
@@ -326,6 +318,25 @@ end
         # log(matrix)
         for i=1:length(a_matrix)
             adtest((x) -> log.(x)[i], a_matrix)
+        end
+    end
+
+    @testset "lgamma" begin
+
+        import SpecialFunctions.lgamma
+        import SpecialFunctions.digamma
+        
+        # lgamma(scalar)
+        adtest(lgamma, a_scalar)
+
+        # lgamma(vector)
+        for i=1:length(a_vector)
+            adtest((x) -> lgamma.(x)[i], a_vector)
+        end
+
+        # lgamma(matrix)
+        for i=1:length(a_matrix)
+            adtest((x) -> lgamma.(x)[i], a_matrix)
         end
     end
 

@@ -630,11 +630,32 @@ function broadcast(::typeof(log), l::GenMatrix)
 end
 
 function propagate(op::Log, datum::T, adj::U) where {T,U}
-    println(op.arg.tapeIdx)
     op.arg.adj += adj ./ op.arg.datum
 end
 
 
 
 # ---- lgamma ----
-@generate_unary_operator_type(LogGamme)
+import SpecialFunctions.lgamma
+import SpecialFunctions.digamma
+
+@generate_unary_operator_type(LogGamma)
+
+# lgamma(scalar)
+function lgamma(l::GenScalar)
+    makeGenValue(lgamma(datum(l)), l.tape, LogGamma(l))
+end
+
+# lgamma(vector)
+function broadcast(::typeof(lgamma), l::GenVector)
+    makeGenValue(lgamma.(datum(l)), l.tape, LogGamma(l))
+end
+
+# lgamma(matrix)
+function broadcast(::typeof(lgamma), l::GenMatrix)
+    makeGenValue(lgamma.(datum(l)), l.tape, LogGamma(l))
+end
+
+function propagate(op::LogGamma, datum::T, adj::U) where {T,U}
+    op.arg.adj += adj .* digamma.(op.arg.datum)
+end
