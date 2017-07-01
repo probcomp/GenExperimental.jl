@@ -4,7 +4,9 @@ import Base.-
 import Base./
 import Base.*
 
-macro generate_node_type(node_type)
+# code generation for binary operators
+
+macro generate_binary_node_type(node_type)
     eval(quote
            struct $(node_type){T,U} <: AbstractOperator
                 left::T
@@ -65,14 +67,34 @@ macro generate_concrete_gen_binary_broadcast(op, node_type, a_type, b_type)
         end)
 end
 
+# code generation for unary operators
 
-#macro generate_unary_operator_type(node_type)
-    #eval(quote
-            #struct $(node_type){T} <: AbstractOperator
-                #arg::T
-            #end
-        #end)
-#end
+macro generate_unary_node_type(node_type)
+    eval(quote
+           struct $(node_type){T} <: AbstractOperator
+                arg::T
+            end
+        end)
+end
+
+macro generate_gen_unary_operator(op, node_type, a_type)
+    eval(quote
+            function ($op)(l::$a_type)
+                makeGenValue(($op)(datum(l)), l.tape, ($node_type)(l))
+            end
+        end)
+end
+
+macro generate_gen_unary_broadcast(op, node_type, a_type)
+    eval(quote
+            function broadcast(::typeof($op), l::$a_type)
+                makeGenValue(broadcast($op, datum(l)), l.tape, ($node_type)(l))
+            end
+        end)
+end
+
+
+# create Gen value from a concrete value
 
 makeGenValue(datum::Real, tape::Tape) = GenScalar(datum, tape, Input())
 makeGenValue(datum::Real, tape::Tape, op::AbstractOperator) = GenScalar(datum, tape, op)
@@ -95,7 +117,7 @@ makeGenValue(datum::Matrix{W}, tape::Tape, op::AbstractOperator) where W<:Real =
 
 ## ---- addition ----
 #
-#@generate_node_type(Add)
+#@generate_binary_node_type(Add)
 #@generate_binary_operators(+, Add)
 #@generate_binary_broadcasts(+, Add)
 #
@@ -152,7 +174,7 @@ makeGenValue(datum::Matrix{W}, tape::Tape, op::AbstractOperator) where W<:Real =
 #
 #
 ## ---- subtraction ----
-#@generate_node_type(Subtract)
+#@generate_binary_node_type(Subtract)
 #@generate_binary_operators(-, Subtract)
 #@generate_binary_broadcasts(-, Subtract)
 #
@@ -209,7 +231,7 @@ makeGenValue(datum::Matrix{W}, tape::Tape, op::AbstractOperator) where W<:Real =
 #
 #
 ## ---- division ----
-#@generate_node_type(Divide)
+#@generate_binary_node_type(Divide)
 #@generate_binary_operators(-, Divide)
 #@generate_binary_broadcasts(-, Divide)
 #
@@ -264,13 +286,16 @@ makeGenValue(datum::Matrix{W}, tape::Tape, op::AbstractOperator) where W<:Real =
 
 # ---- element-wise multiplication ----
 
-@generate_node_type(ElementwiseMultiply)
+@generate_binary_node_type(ElementwiseMultiply)
 
 # scalar * scalar
 
 @generate_gen_binary_operator(*, ElementwiseMultiply, GenScalar, GenScalar)
 @generate_gen_concrete_binary_operator(*, ElementwiseMultiply, GenScalar, Real)
 @generate_concrete_gen_binary_operator(*, ElementwiseMultiply, Real, GenScalar)
+@generate_gen_binary_broadcast(*, ElementwiseMultiply, GenScalar, GenScalar)
+@generate_gen_concrete_binary_broadcast(*, ElementwiseMultiply, GenScalar, Real)
+@generate_concrete_gen_binary_broadcast(*, ElementwiseMultiply, Real, GenScalar)
 
 function propagate(op::ElementwiseMultiply{T,U}, datum::Real, adj::Float64) where {T<:GenScalar, U<:GenScalar}
     op.left.adj += adj * op.right.datum
@@ -282,6 +307,9 @@ end
 @generate_gen_binary_operator(*, ElementwiseMultiply, GenScalar, GenColumnVector)
 @generate_gen_concrete_binary_operator(*, ElementwiseMultiply, GenScalar, Vector{W} where W<:Real)
 @generate_concrete_gen_binary_operator(*, ElementwiseMultiply, Real, GenColumnVector)
+@generate_gen_binary_broadcast(*, ElementwiseMultiply, GenScalar, GenColumnVector)
+@generate_gen_concrete_binary_broadcast(*, ElementwiseMultiply, GenScalar, Vector{W} where W<:Real)
+@generate_concrete_gen_binary_broadcast(*, ElementwiseMultiply, Real, GenColumnVector)
 
 function propagate(op::ElementwiseMultiply{T,U}, datum::Vector{W}, adj::Vector{Float64}) where {T<:GenScalar, U<:GenColumnVector, W<:Real}
     op.left.adj += sum(adj .* op.right.datum)
@@ -293,6 +321,9 @@ end
 @generate_gen_binary_operator(*, ElementwiseMultiply, GenScalar, GenRowVector)
 @generate_gen_concrete_binary_operator(*, ElementwiseMultiply, GenScalar, RowVector{W,Vector{W}} where W<:Real)
 @generate_concrete_gen_binary_operator(*, ElementwiseMultiply, Real, GenRowVector)
+@generate_gen_binary_broadcast(*, ElementwiseMultiply, GenScalar, GenRowVector)
+@generate_gen_concrete_binary_broadcast(*, ElementwiseMultiply, GenScalar, RowVector{W,Vector{W}} where W<:Real)
+@generate_concrete_gen_binary_broadcast(*, ElementwiseMultiply, Real, GenRowVector)
 
 function propagate(op::ElementwiseMultiply{T,U}, datum::RowVector{W,Vector{W}}, adj::RowVector{Float64,Vector{Float64}}) where {T<:GenScalar, U<:GenRowVector, W<:Real}
     op.left.adj += sum(adj .* op.right.datum)
@@ -304,6 +335,9 @@ end
 @generate_gen_binary_operator(*, ElementwiseMultiply, GenColumnVector, GenScalar)
 @generate_gen_concrete_binary_operator(*, ElementwiseMultiply, GenColumnVector, Real)
 @generate_concrete_gen_binary_operator(*, ElementwiseMultiply, Vector{W} where W<:Real, GenScalar)
+@generate_gen_binary_broadcast(*, ElementwiseMultiply, GenColumnVector, GenScalar)
+@generate_gen_concrete_binary_broadcast(*, ElementwiseMultiply, GenColumnVector, Real)
+@generate_concrete_gen_binary_broadcast(*, ElementwiseMultiply, Vector{W} where W<:Real, GenScalar)
 
 function propagate(op::ElementwiseMultiply{T,U}, datum::Vector{W}, adj::Vector{Float64}) where {T<:GenColumnVector, U<:GenScalar, W<:Real}
     op.left.adj += adj * op.right.datum
@@ -315,6 +349,9 @@ end
 @generate_gen_binary_operator(*, ElementwiseMultiply, GenRowVector, GenScalar)
 @generate_gen_concrete_binary_operator(*, ElementwiseMultiply, GenRowVector, Real)
 @generate_concrete_gen_binary_operator(*, ElementwiseMultiply, RowVector{W, Vector{W}} where W<:Real, GenScalar)
+@generate_gen_binary_broadcast(*, ElementwiseMultiply, GenRowVector, GenScalar)
+@generate_gen_concrete_binary_broadcast(*, ElementwiseMultiply, GenRowVector, Real)
+@generate_concrete_gen_binary_broadcast(*, ElementwiseMultiply, RowVector{W, Vector{W}} where W<:Real, GenScalar)
 
 function propagate(op::ElementwiseMultiply{T,U}, datum::RowVector{W,Vector{W}}, adj::RowVector{Float64,Vector{Float64}}) where {T<:GenRowVector, U<:GenScalar, W<:Real}
     op.left.adj += adj * op.right.datum
@@ -344,6 +381,7 @@ function propagate(op::ElementwiseMultiply{T,U}, datum::RowVector{W,Vector{W}}, 
 end
 
 # column vector .* row vector
+
 @generate_gen_binary_broadcast(*, ElementwiseMultiply, GenColumnVector, GenRowVector)
 @generate_gen_concrete_binary_broadcast(*, ElementwiseMultiply, GenColumnVector, RowVector{W,Vector{W}} where W<:Real)
 @generate_concrete_gen_binary_broadcast(*, ElementwiseMultiply, Vector{W} where W<:Real, GenRowVector)
@@ -354,6 +392,7 @@ function propagate(op::ElementwiseMultiply{T,U}, datum::Matrix{W}, adj::Matrix{F
 end
 
 # row vector .* column vector
+
 @generate_gen_binary_broadcast(*, ElementwiseMultiply, GenRowVector, GenColumnVector)
 @generate_gen_concrete_binary_broadcast(*, ElementwiseMultiply, GenRowVector, Vector{W} where W<: Real)
 @generate_concrete_gen_binary_broadcast(*, ElementwiseMultiply, RowVector{W,Vector{W}} where W<:Real, GenColumnVector)
@@ -379,6 +418,9 @@ end
 @generate_gen_binary_operator(*, ElementwiseMultiply, GenMatrix, GenScalar)
 @generate_gen_concrete_binary_operator(*, ElementwiseMultiply, GenMatrix, Real)
 @generate_concrete_gen_binary_operator(*, ElementwiseMultiply, Matrix{W} where W<:Real, GenScalar)
+@generate_gen_binary_broadcast(*, ElementwiseMultiply, GenMatrix, GenScalar)
+@generate_gen_concrete_binary_broadcast(*, ElementwiseMultiply, GenMatrix, Real)
+@generate_concrete_gen_binary_broadcast(*, ElementwiseMultiply, Matrix{W} where W<:Real, GenScalar)
 
 function propagate(op::ElementwiseMultiply{T,U}, datum::Matrix{W}, adj::Matrix{Float64}) where {T<:GenMatrix, U<:GenScalar, W<:Real}
     op.left.adj += adj * op.right.datum
@@ -402,10 +444,9 @@ end
 # TODO not implemented yet
 
 
-
 # ---- matrix multiply ----
 
-@generate_node_type(MatrixMultiply)
+@generate_binary_node_type(MatrixMultiply)
 
 # matrix * matrix
 
@@ -418,22 +459,33 @@ function propagate(op::MatrixMultiply{T,U}, datum::Matrix{W}, adj::Matrix{Float6
     op.right.adj += op.left.datum' * adj
 end
 
-# matrix * vector
+# matrix * column vector = column vector
 
-@generate_gen_binary_operator(*, MatrixMultiply, GenMatrix, GenVector)
+@generate_gen_binary_operator(*, MatrixMultiply, GenMatrix, GenColumnVector)
 @generate_gen_concrete_binary_operator(*, MatrixMultiply, GenMatrix, Vector{W} where W<:Real)
-@generate_concrete_gen_binary_operator(*, MatrixMultiply, Matrix{W} where W<:Real, GenVector)
+@generate_concrete_gen_binary_operator(*, MatrixMultiply, Matrix{W} where W<:Real, GenColumnVector)
 
 function propagate(op::MatrixMultiply{T,U}, datum::Vector{W}, adj::Vector{Float64}) where {T<:GenMatrix, U<:GenColumnVector, W<:Real}
-    op.left.adj += adj * op.right.datum' # TODO ?
+    op.left.adj += adj * op.right.datum'
     op.right.adj += op.left.datum' * adj
 end
 
-# matrix .* vector (broadcast)
-# TODO not implemented yet
+# row vector * matrix = row_vector
 
-# vector .* matrix (broadcast)
-# TODO not implemented yet
+@generate_gen_binary_operator(*, MatrixMultiply, GenRowVector, GenMatrix)
+@generate_gen_concrete_binary_operator(*, MatrixMultiply, GenRowVector, Matrix{W} where W<:Real)
+@generate_concrete_gen_binary_operator(*, MatrixMultiply, RowVector{W,Vector{W}} where W <: Real, GenMatrix)
+
+function propagate(op::MatrixMultiply{T,U}, datum::RowVector{W,Vector{W}}, adj::RowVector{Float64,Vector{Float64}}) where {T<:GenRowVector, U<:GenMatrix, W<:Real}
+    # TODO
+end
+
+# column vector * row vector (= column vector .* row vector)
+# TODO
+
+# row vector * column_vector 
+# TODO
+
 
 
 ## ---- unary plus ----
@@ -460,82 +512,49 @@ end
 #function propagate(op::UnaryMinus, datum::T, adj::U) where {T,U}
     #op.arg.adj -= adj
 #end
-#
-#
-## ---- exp ----
-#import Base.exp
-#@generate_unary_operator_type(Exp)
-#
-## exp(scalar)
-#function exp(l::GenScalar)
-    #makeGenValue(exp(datum(l)), l.tape, Exp(l))
-#end
-#
-## exp(vector)
-#function broadcast(::typeof(exp), l::GenColumnVector)
-    #makeGenValue(exp.(datum(l)), l.tape, Exp(l))
-#end
-#
-## exp(matrix)
-#function broadcast(::typeof(exp), l::GenMatrix)
-    #makeGenValue(exp.(datum(l)), l.tape, Exp(l))
-#end
-#
-#function propagate(op::Exp, datum::T, adj::U) where {T,U}
-    #op.arg.adj += adj .* datum
-#end
-#
-#
-## ---- log ----
-#import Base.log
-#@generate_unary_operator_type(Log)
-#
-## log(scalar)
-#function log(l::GenScalar)
-    #makeGenValue(log(datum(l)), l.tape, Log(l))
-#end
-#
-## log(vector)
-#function broadcast(::typeof(log), l::GenColumnVector)
-    #makeGenValue(log.(datum(l)), l.tape, Log(l))
-#end
-#
-## log(matrix)
-#function broadcast(::typeof(log), l::GenMatrix)
-    #makeGenValue(log.(datum(l)), l.tape, Log(l))
-#end
-#
-#function propagate(op::Log, datum::T, adj::U) where {T,U}
-    #op.arg.adj += adj ./ op.arg.datum
-#end
-#
-#
-#
-## ---- lgamma ----
-#import SpecialFunctions.lgamma
-#import SpecialFunctions.digamma
-#
-#@generate_unary_operator_type(LogGamma)
-#
-## lgamma(scalar)
-#function lgamma(l::GenScalar)
-    #makeGenValue(lgamma(datum(l)), l.tape, LogGamma(l))
-#end
-#
-## lgamma(vector)
-#function broadcast(::typeof(lgamma), l::GenColumnVector)
-    #makeGenValue(lgamma.(datum(l)), l.tape, LogGamma(l))
-#end
-#
-## lgamma(matrix)
-#function broadcast(::typeof(lgamma), l::GenMatrix)
-    #makeGenValue(lgamma.(datum(l)), l.tape, LogGamma(l))
-#end
-#
-#function propagate(op::LogGamma, datum::T, adj::U) where {T,U}
-    #op.arg.adj += adj .* digamma.(op.arg.datum)
-#end
-#
+
+
+# ---- exp ----
+
+import Base.exp
+@generate_unary_node_type(Exp)
+
+@generate_gen_unary_operator(exp, Exp, GenScalar)
+@generate_gen_unary_broadcast(exp, Exp, GenVector)
+@generate_gen_unary_broadcast(exp, Exp, GenMatrix)
+
+function propagate(op::Exp, datum::T, adj::U) where {T,U}
+    op.arg.adj += adj .* datum
+end
+
+# ---- log ----
+
+import Base.log
+@generate_unary_node_type(Log)
+
+@generate_gen_unary_operator(log, Log, GenScalar)
+@generate_gen_unary_broadcast(log, Log, GenVector)
+@generate_gen_unary_broadcast(log, Log, GenMatrix)
+
+function propagate(op::Log, datum::T, adj::U) where {T,U}
+    op.arg.adj += adj ./ op.arg.datum
+end
+
+# ---- lgamma ----
+
+import SpecialFunctions.lgamma
+import SpecialFunctions.digamma
+@generate_unary_node_type(LogGamma)
+
+@generate_gen_unary_operator(lgamma, LogGamma, GenScalar)
+@generate_gen_unary_broadcast(lgamma, LogGamma, GenVector)
+@generate_gen_unary_broadcast(lgamma, LogGamma, GenMatrix)
+
+function propagate(op::LogGamma, datum::T, adj::U) where {T,U}
+    op.arg.adj += adj .* digamma.(op.arg.datum)
+end
+
+
 #
 ## ---- sum ----
 #import Base.sum
@@ -559,30 +578,49 @@ end
 #function propagate(op::Sum, datum::T, adj::U) where {T,U}
     #op.arg.adj += adj
 #end
-#
-#
-## ---- transpose ----
-#import Base.transpose
-#@generate_unary_operator_type(Transpose)
-#
-## transpose(scalar)
-#function transpose(l::GenScalar)
-    #makeGenValue(transpose(datum(l)), l.tape, Sum(l))
-#end
-#
-## transposej(vector)
-#function sum(l::GenColumnVector)
-    #makeGenValue(sum(datum(l)), l.tape, Sum(l))
-#end
-#
-## transpose(matrix)
-#function sum(l::GenMatrix)
-    #makeGenValue(sum(datum(l)), l.tape, Sum(l))
-#end
-#
-#function propagate(op::Sum, datum::T, adj::U) where {T,U}
-    #op.arg.adj += adj
-#end
-#
+
+
+# ---- transpose ----
+
+import Base.transpose
+import Base.ctranspose
+@generate_unary_node_type(Transpose)
+
+# transpose scalar
+
+@generate_gen_unary_operator(transpose, Transpose, GenScalar)
+@generate_gen_unary_operator(ctranspose, Transpose, GenScalar)
+
+function propagate(op::Transpose{U}, datum::W, adj::Float64) where {U<:GenScalar, W<:Real}
+    op.arg.adj += adj'
+end
+
+# transpose matrix
+
+@generate_gen_unary_operator(transpose, Transpose, GenMatrix)
+@generate_gen_unary_operator(ctranspose, Transpose, GenMatrix)
+
+function propagate(op::Transpose{U}, datum::Matrix{W}, adj::Matrix{Float64}) where {U<:GenMatrix, W<:Real}
+    op.arg.adj += adj'
+end
+
+# transpose column vector (becomes row vector)
+
+@generate_gen_unary_operator(transpose, Transpose, GenColumnVector)
+@generate_gen_unary_operator(ctranspose, Transpose, GenColumnVector)
+
+function propagate(op::Transpose{U}, datum::RowVector{W,Vector{W}}, adj::RowVector{Float64,Vector{Float64}}) where {U<:GenColumnVector,W<:Real}
+    op.arg.adj += adj'
+end
+
+# transpose row vector (becomes column vector)
+
+@generate_gen_unary_operator(transpose, Transpose, GenRowVector)
+@generate_gen_unary_operator(ctranspose, Transpose, GenRowVector)
+
+function propagate(op::Transpose{U}, datum::Vector{W}, adj::Vector{Float64}) where {U<:GenRowVector,W<:Real}
+    op.arg.adj += adj'
+end
+
 
 # TODO handle slice indexing

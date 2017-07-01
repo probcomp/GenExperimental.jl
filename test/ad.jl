@@ -41,40 +41,48 @@ end
 
 
 function adtest(f, a_val, b_val)
+
+    # test that the operator behavior matches the operator on the built-in types
     tape = Tape()
     a = makeGenValue(a_val, tape)
     b = makeGenValue(b_val, tape)
-    c = f(a, b)
-    backprop(c)
-    @test isapprox(partial(a), finite_difference((x) -> f(x, b_val), a_val))
-    @test isapprox(partial(b), finite_difference((x) -> f(a_val, x), b_val))
-    @test f(a_val, b_val) == datum(f(a, b))
+    result = f(a, b)
+    @test f(a_val, b_val) == datum(result)
+
+    # test backpropagation
+    # this works for scalars, vectors, and matrix results.
+    # note that scalars have scalar[1] = scalar
+    for i=1:length(result)
+        tape = Tape()
+        a = makeGenValue(a_val, tape)
+        b = makeGenValue(b_val, tape)
+        f_i = (x, y) -> f(x, y)[i]
+        result_i = f_i(a, b)
+        backprop(result_i)
+        @test isapprox(partial(a), finite_difference((x) -> f_i(x, b_val), a_val))
+        @test isapprox(partial(b), finite_difference((x) -> f_i(a_val, x), b_val))
+    end
 end
 
 function adtest(f, a_val)
+    # test that the operator behavior matches the operator on the built-in types
     tape = Tape()
     a = makeGenValue(a_val, tape)
-    c = f(a)
-    backprop(c)
-    @test isapprox(partial(a), finite_difference(f, a_val))
-    @test f(a_val) == datum(f(a))
-end
+    result = f(a)
+    @test f(a_val) == datum(result)
 
-function resulttest(f, a_val, b_val)
-    tape = Tape()
-    a = makeGenValue(a_val, tape)
-    b = makeGenValue(b_val, tape)
-    c = f(a, b)
-    @test f(a_val, b_val) == datum(f(a, b))
+    # test backpropagation
+    # this works for scalars, vectors, and matrix results.
+    # note that scalars have scalar[1] = scalar
+    for i=1:length(result)
+        tape = Tape()
+        a = makeGenValue(a_val, tape)
+        f_i = (x) -> f(x)[i]
+        result_i = f_i(a)
+        backprop(result_i)
+        @test isapprox(partial(a), finite_difference(f_i, a_val))
+    end
 end
-
-function resulttest(f, a_val)
-    tape = Tape()
-    a = makeGenValue(a_val, tape)
-    c = f(a)
-    @test f(a_val) == datum(f(a))
-end
-
 
 @testset "automatic differentiation" begin
 
@@ -380,153 +388,144 @@ end
         # scalar * scalar
         adtest(*, a_scalar, b_scalar)
 
-        # scalar * vector
-        for i=1:length(a_vector)
-            adtest((a, b) -> (a * b)[i], a_scalar, a_vector)
-        end
+        # scalar .* scalar
+        adtest((a, b) -> a .* b, a_scalar, b_scalar)
 
-        # vector * scalar
-        for i=1:length(a_vector)
-            adtest((a, b) -> (a * b)[i], a_vector, a_scalar)
-        end
+        # scalar * column vector
+        adtest((a, b) -> (a * b), a_scalar, a_vector)
 
-        # vector .* vector
-        for i=1:length(a_vector)
-            adtest((a, b) -> (a .* b)[i], a_vector, b_vector)
-        end
+        # scalar * row vector
+        adtest((a, b) -> (a * b), a_scalar, a_row_vector)
+
+        # scalar .* column vector
+        adtest((a, b) -> (a .* b), a_scalar, a_vector)
+
+        # scalar .* row vector
+        adtest((a, b) -> (a .* b), a_scalar, a_row_vector)
+
+        # column vector * scalar
+        adtest((a, b) -> (a * b), a_vector, a_scalar)
+
+        # row vector * scalar
+        adtest((a, b) -> (a * b), a_row_vector, a_scalar)
+
+        # column vector .* scalar
+        adtest((a, b) -> (a .* b), a_vector, a_scalar)
+
+        # row vector .* scalar
+        adtest((a, b) -> (a .* b), a_row_vector, a_scalar)
+
+        # column vector .* column vector
+        adtest((a, b) -> (a .* b), a_vector, b_vector)
 
         # row vector .* row vector
-        for i=1:length(a_row_vector)
-            adtest((a, b) -> (a .* b)[i], a_row_vector, b_row_vector)
-        end
+        adtest((a, b) -> (a .* b), a_row_vector, b_row_vector)
 
         # column vector .* row vector
-        for row=1:size(a_vector)[1]
-            for col=1:size(b_row_vector)[2]
-                adtest((a, b) -> (a .* b)[row, col], a_vector, b_row_vector)
-            end
-        end
+        adtest((a, b) -> (a .* b), a_vector, b_row_vector)
 
         # row vector .* column vector
-        for row=1:size(a_vector)[1]
-            for col=1:size(b_row_vector)[2]
-                adtest((a, b) -> (a .* b)[row, col], a_row_vector, b_vector)
-            end
-        end
+        adtest((a, b) -> (a .* b), a_row_vector, b_vector)
 
         # scalar * matrix
-        for i=1:length(a_matrix)
-            adtest((a, b) -> (a * b)[i], a_scalar, a_matrix)
-        end
+        adtest((a, b) -> (a * b), a_scalar, a_matrix)
 
-        # scalar * matrix, cartesian index into result matrix
-        for row=1:size(a_matrix)[1]
-            for col=1:size(a_matrix)[2]
-                adtest((a, b) -> (a * b)[row, col], a_scalar, a_matrix)
-            end
-        end
+        # matrix * scalar
+        adtest((a, b) -> (a * b), a_matrix, a_scalar)
 
-        # matrix * scalar, linear index into result matrix
-        for i=1:length(a_matrix)
-            adtest((a, b) -> (a * b)[i], a_matrix, a_scalar)
-        end
-
-        # matrix * scalar, cartesian index into result matrix
-        for row=1:size(a_matrix)[1]
-            for col=1:size(a_matrix)[2]
-                adtest((a, b) -> (a * b)[row, col], a_matrix, a_scalar)
-            end
-        end
-
-        # matrix .* matrix, linear index into result matrix
-        for i=1:length(a_matrix)
-            adtest((a, b) -> (a .* b)[i], a_matrix, b_matrix)
-        end
-
-        # matrix .* matrix, cartesian index into result matrix
-        for row=1:size(a_matrix)[1]
-            for col=1:size(a_matrix)[2]
-                adtest((a, b) -> (a .* b)[row, col], a_matrix, b_matrix)
-            end
-        end
+        # matrix .* matrix
+        adtest((a, b) -> (a .* b), a_matrix, a_scalar)
 
         # matrix .* vector (broadcast)
         # TODO not implemented yet
 
         # vector .* matrix (broadcast)
         # TODO not implemented yet
+
+        # TODO test cartesian indexing into a matrix
     end
 
     @testset "matrix-multiply" begin
 
         # matrix * matrix, linear index into result matrix 
-        for i=1:length(a_matrix)
-            adtest((a, b) -> (a * b)[i], a_matrix', a_matrix)
-        end
+        adtest((a, b) -> (a * b), a_matrix', a_matrix)
 
-        # matrix * matrix, cartesian index into result matrix
-        for row=1:size(a_matrix)[1]
-            for col=1:size(a_matrix)[2]
-                adtest((a, b) -> (a * b)[row, col], a_matrix', a_matrix)
-            end
-        end
+        # matrix * column vector 
+        adtest((a, b) -> (a * b), a_matrix', a_vector)
 
-        # matrix * vector 
-        for i=1:length(a_matrix' * a_vector)
-            adtest((a, b) -> (a * b)[i], a_matrix', a_vector)
-        end
+        # row vector * matrix
+        # TODO
+
+        # column vector * row vector (= column vector .* row vector)
+        # TODO
+
+        # row vector * column_vector 
+        # TODO
+
+
     end
 
-    #@testset "exp" begin
-        #
-        ## exp(scalar)
-        #adtest(exp, a_scalar)
-#
-        ## exp(vector)
-        #for i=1:length(a_vector)
-            #adtest((x) -> exp.(x)[i], a_vector)
-        #end
-#
-        ## exp(matrix)
-        #for i=1:length(a_matrix)
-            #adtest((x) -> exp.(x)[i], a_matrix)
-        #end
-    #end
-#
-    #@testset "log" begin
-        #
-        ## log(scalar)
-        #adtest(log, a_scalar)
-#
-        ## log(vector)
-        #for i=1:length(a_vector)
-            #adtest((x) -> log.(x)[i], a_vector)
-        #end
-#
-        ## log(matrix)
-        #for i=1:length(a_matrix)
-            #adtest((x) -> log.(x)[i], a_matrix)
-        #end
-    #end
-#
-    #@testset "lgamma" begin
-#
-        #import SpecialFunctions.lgamma
-        #import SpecialFunctions.digamma
-        #
-        ## lgamma(scalar)
-        #adtest(lgamma, a_scalar)
-#
-        ## lgamma(vector)
-        #for i=1:length(a_vector)
-            #adtest((x) -> lgamma.(x)[i], a_vector)
-        #end
-#
-        ## lgamma(matrix)
-        #for i=1:length(a_matrix)
-            #adtest((x) -> lgamma.(x)[i], a_matrix)
-        #end
-    #end
+    @testset "transpose" begin
+
+        # transpose scalar 
+        adtest((a) -> a', a_scalar)
+
+        # transpose matrix
+        adtest((a) -> a', a_matrix)
+
+        # transpose column vector 
+        adtest((a) -> a', a_vector)
+
+        # transpose row vector 
+        adtest((a) -> a', a_row_vector)
+    end
+
+    @testset "exp" begin
+        
+        # exp(scalar)
+        adtest(exp, a_scalar)
+
+        # exp,(column vector)
+        adtest((a) -> exp.(a), a_vector)
+
+        # exp.(row vector)
+        adtest((a) -> exp.(a), a_row_vector)
+
+        # exp.(matrix)
+        adtest((a) -> exp.(a), a_matrix)
+    end
+
+    @testset "log" begin
+        
+        # log(scalar)
+        adtest(log, a_scalar)
+
+        # log.(column vector)
+        adtest((a) -> log.(a), a_vector)
+
+        # log.(row vector)
+        adtest((a) -> log.(a), a_row_vector)
+
+        # log.(matrix)
+        adtest((a) -> log.(a), a_matrix)
+    end
+
+    @testset "lgamma" begin
+        
+        # lgamma(scalar)
+        adtest(lgamma, a_scalar)
+
+        # lgamma.(column vector)
+        adtest((a) -> lgamma.(a), a_vector)
+
+        # lgamma.(row vector)
+        adtest((a) -> lgamma.(a), a_row_vector)
+
+        # lgamma.(matrix)
+        adtest((a) -> lgamma.(a), a_matrix)
+    end
+
+
 #
     #@testset "sum" begin
         ## sum(scalar)

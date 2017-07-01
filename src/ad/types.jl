@@ -37,6 +37,9 @@ function GenScalar{S<:Real, T<:AbstractOperator}(datum::S, tape::Tape, op::T)
 end
 
 GenScalar{S}(datum::S, tape::Tape) = GenScalar(datum, tape, Input())
+Base.size(v::GenScalar) = size(v.datum)
+Base.length(v::GenScalar) = length(v.datum)
+Base.getindex(v::GenScalar, i::Int) =  i == 1 ? v : error("Invalid index $i into scalar")
 
 
 # column vector numeric type
