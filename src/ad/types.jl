@@ -39,9 +39,9 @@ end
 GenScalar{S}(datum::S, tape::Tape) = GenScalar(datum, tape, Input())
 
 
-# vector numeric type
+# column vector numeric type
 
-mutable struct GenVector{S<:Real, T<:AbstractOperator} <: AbstractArray{GenScalar{S}, 1}
+mutable struct GenColumnVector{S<:Real, T<:AbstractOperator} <: AbstractArray{GenScalar{S}, 1}
     # NOTE: the datum is immutable (there is no setindex! operator)
     datum::Vector{S}
     adj::Vector{Float64}
@@ -50,17 +50,41 @@ mutable struct GenVector{S<:Real, T<:AbstractOperator} <: AbstractArray{GenScala
     op::T
 end
 
-function GenVector{S<:Real, T<:AbstractOperator}(datum::Vector{S}, tape::Tape, op::T)
+function GenColumnVector{S<:Real, T<:AbstractOperator}(datum::Vector{S}, tape::Tape, op::T)
     ns = nums(tape)
-    num = GenVector{S,T}(datum, zeros(Float64, size(datum)), tape, length(ns) + 1, op)
+    num = GenColumnVector{S,T}(datum, zeros(Float64, size(datum)), tape, length(ns) + 1, op)
     push!(ns, num)
     num
 end
 
-GenVector{S<:Real}(datum::Vector{S}, tape::Tape) = GenVector(datum, tape, Input())
+GenColumnVector{S<:Real}(datum::Vector{S}, tape::Tape) = GenColumnVector(datum, tape, Input())
 
-Base.size(v::GenVector) = size(v.datum)
-Base.IndexStyle(v::GenVector) = IndexLinear()
+Base.size(v::GenColumnVector) = size(v.datum)
+Base.IndexStyle(v::GenColumnVector) = IndexLinear()
+
+
+# row vector numeric type
+
+mutable struct GenRowVector{S<:Real, T<:AbstractOperator} <: AbstractArray{GenScalar{S}, 1}
+    # NOTE: the datum is immutable (there is no setindex! operator)
+    datum::RowVector{S,Vector{S}}
+    adj::RowVector{Float64, Vector{Float64}}
+    tape::Tape
+    tapeIdx::Int
+    op::T
+end
+
+function GenRowVector{S<:Real, T<:AbstractOperator}(datum::RowVector{S,Vector{S}}, tape::Tape, op::T)
+    ns = nums(tape)
+    num = GenRowVector{S,T}(datum, transpose(zeros(Float64, length(datum))), tape, length(ns) + 1, op)
+    push!(ns, num)
+    num
+end
+
+GenRowVector{S<:Real}(datum::Vector{S}, tape::Tape) = GenRowVector(datum, tape, Input())
+
+Base.size(v::GenRowVector) = size(v.datum)
+Base.IndexStyle(v::GenRowVector) = IndexLinear()
 
 
 # matrix numeric type
@@ -95,8 +119,8 @@ function show(io::IO, num::GenScalar)
     print(io, "GenScalar(datum=$(num.datum), idx=$(num.tapeIdx))")
 end
 
-function show(io::IO, num::GenVector)
-    print(io, "GenVector(datum=$(num.datum), idx=$(num.tapeIdx))")
+function show(io::IO, num::GenColumnVector)
+    print(io, "GenColumnVector(datum=$(num.datum), idx=$(num.tapeIdx))")
 end
 
 function show(io::IO, num::GenMatrix)
@@ -104,9 +128,19 @@ function show(io::IO, num::GenMatrix)
 end
 
 
-# union type
+# other types
 
-GenValue = Union{GenScalar, GenVector, GenMatrix}
+GenValue = Union{GenScalar, GenColumnVector, GenRowVector, GenMatrix}
+GenVector = Union{GenColumnVector, GenRowVector}
+ColumnOrRowVector{W} = Union{Vector{W}, RowVector{W, Vector{W}}}
+
+ConcreteValue = Union{
+    Real,
+    Vector{W} where W<:Real,
+    RowVector{W,Vector{W}} where W<:Real,
+    Matrix{W} where W<:Real
+}
+
 
 
 # indexing into a vector gives a scalar
@@ -141,7 +175,8 @@ end
 # getting concrete values from the numeric struct
 
 datum(x::Real) = x
-datum(x::Vector{Real}) = x
+datum(x::ColumnOrRowVector{W}) where W<:Real = x
+datum(x::Matrix{W}) where W<:Real = x
 datum(x::GenValue) = x.datum
 
 
@@ -168,7 +203,8 @@ partial{T <: GenValue}(a::T) = a.adj # partial derivative
 # exports
 export Tape
 export GenScalar
-export GenVector
+export GenColumnVector
+export GenRowVector
 export GenMatrix
 export datum
 export backprop
