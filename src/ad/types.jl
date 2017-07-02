@@ -118,13 +118,25 @@ Base.IndexStyle(v::GenMatrix) = IndexLinear()
 
 GenValue = Union{GenScalar, GenColumnVector, GenRowVector, GenMatrix}
 GenVector = Union{GenColumnVector, GenRowVector}
-ColumnOrRowVector{W} = Union{Vector{W}, RowVector{W, Vector{W}}}
+ColumnOrRowVector = Union{Vector{W}, RowVector{W, Vector{W}}} where W<:Real
+
+ConcreteScalar = Real
+ConcreteColumnVector = Vector{W} where W<:Real
+ConcreteRowVector = RowVector{W, Vector{W}} where W<:Real
+ConcreteMatrix = Matrix{W} where W<:Real
+
+# adjoints always use Float64
+
+ScalarAdjoint = Float64
+ColumnVectorAdjoint = ConcreteColumnVector{Float64}
+RowVectorAdjoint = ConcreteRowVector{Float64}
+MatrixAdjoint = ConcreteMatrix{Float64}
 
 ConcreteValue = Union{
-    Real,
-    Vector{W} where W<:Real,
-    RowVector{W,Vector{W}} where W<:Real,
-    Matrix{W} where W<:Real
+    ConcreteScalar,
+    ConcreteColumnVector,
+    ConcreteRowVector,
+    ConcreteMatrix
 }
 
 # show

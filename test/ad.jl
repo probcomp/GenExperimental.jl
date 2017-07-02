@@ -496,16 +496,19 @@ end
         adtest((a) -> lgamma.(a), a_matrix)
     end
 
-#
-    #@testset "sum" begin
-        ## sum(scalar)
-        #adtest(sum, a_scalar)
-#
-        ## sum(vector)
-        #adtest(sum, a_vector)
-#
-        ## sum(matrix)
-        #adtest(sum, a_matrix)
-    #end
+    @testset "sum" begin
+        
+        # sum(scalar)
+        adtest(sum, a_scalar)
+
+        # sum(column vector)
+        adtest(sum, a_vector)
+
+        # sum(row vector)
+        adtest(sum, a_row_vector)
+
+        # sum(matrix)
+        adtest(sum, a_matrix)
+    end
 
 end
