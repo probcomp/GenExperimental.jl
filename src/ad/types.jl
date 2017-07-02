@@ -176,10 +176,10 @@ end
 
 # getting concrete values from the numeric struct
 
-datum(x::Real) = x
-datum(x::ColumnOrRowVector{W}) where W<:Real = x
-datum(x::Matrix{W}) where W<:Real = x
-datum(x::GenValue) = x.datum
+concrete(x::Real) = x
+concrete(x::ColumnOrRowVector{W}) where W<:Real = x
+concrete(x::Matrix{W}) where W<:Real = x
+concrete(x::GenValue) = x.datum
 
 
 # check that two numeric structs are located on the same tape

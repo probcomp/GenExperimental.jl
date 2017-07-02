@@ -47,7 +47,7 @@ function adtest(f, a_val, b_val)
     a = makeGenValue(a_val, tape)
     b = makeGenValue(b_val, tape)
     result = f(a, b)
-    @test f(a_val, b_val) == datum(result)
+    @test f(a_val, b_val) == concrete(result)
 
     # test backpropagation
     # this works for scalars, vectors, and matrix results.
@@ -69,7 +69,7 @@ function adtest(f, a_val)
     tape = Tape()
     a = makeGenValue(a_val, tape)
     result = f(a)
-    @test f(a_val) == datum(result)
+    @test f(a_val) == concrete(result)
 
     # test backpropagation
     # this works for scalars, vectors, and matrix results.
