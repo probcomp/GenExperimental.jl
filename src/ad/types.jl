@@ -114,23 +114,6 @@ Base.size(v::GenMatrix) = size(v.datum)
 Base.IndexStyle(v::GenMatrix) = IndexLinear()
 
 
-# show
-
-import Base.show
-
-function show(io::IO, num::GenScalar)
-    print(io, "GenScalar(datum=$(num.datum), idx=$(num.tapeIdx))")
-end
-
-function show(io::IO, num::GenColumnVector)
-    print(io, "GenColumnVector(datum=$(num.datum), idx=$(num.tapeIdx))")
-end
-
-function show(io::IO, num::GenMatrix)
-    print(io, "GenMatrix(datum=$(num.datum), idx=$(num.tapeIdx))")
-end
-
-
 # other types
 
 GenValue = Union{GenScalar, GenColumnVector, GenRowVector, GenMatrix}
@@ -143,6 +126,10 @@ ConcreteValue = Union{
     RowVector{W,Vector{W}} where W<:Real,
     Matrix{W} where W<:Real
 }
+
+# show
+import Base.show
+show(io::IO, num::GenValue) = show(io, num.datum)
 
 
 

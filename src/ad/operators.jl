@@ -115,180 +115,395 @@ makeGenValue(datum::Matrix{W}, tape::Tape, op::AbstractOperator) where W<:Real =
 # datum and a GenValue, and then define one backpropagation method
 
 
-## ---- addition ----
-#
-#@generate_binary_node_type(Add)
-#@generate_binary_operators(+, Add)
-#@generate_binary_broadcasts(+, Add)
-#
-## scalar + scalar
-#function propagate(op::Add{T,U}, datum::Real, adj::Float64) where {T<:GenScalar, U<:GenScalar}
-    #op.left.adj += adj
-    #op.right.adj += adj
-#end
-#
-## scalar + vector
-#function propagate(op::Add{T,U}, datum::ColumnOrRowVector{W}, adj::ColumnOrRowVector{Float64}) where {T<:GenScalar, U<:GenVector, W<:Real}
-    #op.left.adj += sum(adj)
-    #op.right.adj += adj
-#end
-#
-## vector + scalar
-#function propagate(op::Add{T,U}, datum::ColumnOrRowVector{W}, adj::ColumnOrRowVector{Float64}) where {T<:GenVector, U<:GenScalar, W<:Real}
-    #op.left.adj += adj
-    #op.right.adj += sum(adj)
-#end
-#
-## column vector + column vector
-#function propagate(op::Add{T,U}, datum::Vector{W}, adj::Vector{Float64}) where {T<:GenColumnVector, U<:GenColumnVector, W<:Real}
-    #op.left.adj += adj
-    #op.right.adj += adj
-#end
-#
-## row vector + row vector
-#function propagate(op::Add{T,U}, datum::RowVector{W,Vector{W}}, adj::RowVector{Float64,Vector{Float64}}) where {T<:GenRowVector, U<:GenRowVector, W<:Real}
-    #op.left.adj += adj
-    #op.right.adj += adj
-#end
-#
-## row vector .+ column vector
-## TODO not implemented yet
-#
-## column vector .+ row vector
-## TODO not implemented yet
-#
-## scalar + matrix
-## TODO not implemented yet
-#
-## matrix + scalar
-## TODO not implemented yet
-#
-## matrix .+ vector (broadcast)
-## TODO not implemented yet
-#
-## vector .+ matrix (broadcast)
-## TODO not implemented yet
-#
-## matrix + matrix
-## TODO not implemented yet
-#
-#
-## ---- subtraction ----
-#@generate_binary_node_type(Subtract)
-#@generate_binary_operators(-, Subtract)
-#@generate_binary_broadcasts(-, Subtract)
-#
-## scalar - scalar
-#function propagate(op::Subtract{T,U}, datum::Real, adj::Float64) where {T<:GenScalar, U<:GenScalar}
-    #op.left.adj += adj
-    #op.right.adj -= adj
-#end
-#
-## scalar - vector
-#function propagate(op::Subtract{T,U}, datum::ColumnOrRowVector{W}, adj::ColumnOrRowVector{Float64}) where {T<:GenScalar, U<:GenVector, W<:Real}
-    #op.left.adj += sum(adj)
-    #op.right.adj -= adj
-#end
-#
-## vector - scalar
-#function propagate(op::Subtract{T,U}, datum::ColumnOrRowVector{W}, adj::ColumnOrRowVector{Float64}) where {T<:GenVector, U<:GenScalar, W<:Real}
-    #op.left.adj += adj
-    #op.right.adj -= sum(adj)
-#end
-#
-## column vector - column vector
-#function propagate(op::Subtract{T,U}, datum::Vector{W}, adj::Vector{Float64}) where {T<:GenColumnVector, U<:GenColumnVector, W<:Real}
-    #op.left.adj += adj
-    #op.right.adj -= adj
-#end
-#
-## row vector - row vector
-#function propagate(op::Subtract{T,U}, datum::RowVector{W,Vector{W}}, adj::RowVector{Float64,Vector{Float64}}) where {T<:GenRowVector, U<:GenRowVector, W<:Real}
-    #op.left.adj += adj
-    #op.right.adj -= adj
-#end
-#
-## row vector .- column vector
-## TODO not implemented yet
-#
-## column vector .- row vector
-## TODO not implemented yet
-#
-## scalar - matrix
-## TODO not implemented yet
-#
-## matrix - scalar
-## TODO not implemented yet
-#
-## matrix .- vector (broadcast)
-## TODO not implemented yet
-#
-## vector .- matrix (broadcast)
-## TODO not implemented yet
-#
-## matrix - matrix
-## TODO not implemented yet
-#
-#
-## ---- division ----
-#@generate_binary_node_type(Divide)
-#@generate_binary_operators(-, Divide)
-#@generate_binary_broadcasts(-, Divide)
-#
-## scalar / scalar
-#function propagate(op::Divide{T,U}, datum::Real, adj::Float64) where {T<:GenScalar, U<:GenScalar}
-    #op.left.adj += adj / op.right.datum
-    #op.right.adj += adj * (-op.left.datum / (op.right.datum * op.right.datum))
-#end
-#
-## scalar ./ vector
-#function propagate(op::Divide{T,U}, datum::ColumnOrRowVector{W}, adj::ColumnOrRowVector{Float64}) where {T<:GenScalar, U<:GenVector, W<:Real}
-    #op.left.adj += sum(adj ./ op.right.datum)
-    #op.right.adj += adj .* (-op.left.datum ./ (op.right.datum .* op.right.datum))
-#end
-#
-## vector / scalar
-#function propagate(op::Divide{T,U}, datum::ColumnOrRowVector{W}, adj::ColumnOrRowVector{Float64}) where {T<:GenVector, U<:GenScalar, W<:Real}
-    #op.left.adj += adj / op.right.datum
-    #op.right.adj += sum(adj .* (-op.left.datum / (op.right.datum * op.right.datum)))
-#end
-#
-## column vector ./ column vector
-#function propagate(op::Divide{T,U}, datum::Vector{W}, adj::Vector{Float64}) where {T<:GenColumnVector, U<:GenColumnVector, W<:Real}
-    #op.left.adj += adj ./ op.right.datum
-    #op.right.adj += adj .* (-op.left.datum ./ (op.right.datum .* op.right.datum))
-#end
-#
-## row vector ./ row vector
-#function propagate(op::Divide{T,U}, datum::RowVector{W,Vector{W}}, adj::RowVector{Float64,Vector{Float64}}) where {T<:GenRowVector, U<:GenRowVector, W<:Real}
-    #op.left.adj += adj ./ op.right.datum
-    #op.right.adj += adj .* (-op.left.datum ./ (op.right.datum .* op.right.datum))
-#end
-        #
-## row vector ./ column vector (broadcast)
-## TODO not implemented yet
-#
-## column vector ./ row vector (broadcast)
-## TODO not implemented yet
-#
-## scalar ./ matrix
-## TODO not implemented yet
-#
-## matrix / scalar
-## TODO not implemented yet
-#
-## matrix ./ vector (broadcast)
-## TODO not implemented yet
-#
-## vector ./ matrix (broadcast)
-## TODO not implemented yet
-#
+# ---- addition ----
+
+@generate_binary_node_type(Add)
+
+# scalar + scalar, scalar .+ scalar
+
+@generate_gen_binary_operator(+, Add, GenScalar, GenScalar)
+@generate_gen_concrete_binary_operator(+, Add, GenScalar, Real)
+@generate_concrete_gen_binary_operator(+, Add, Real, GenScalar)
+@generate_gen_binary_broadcast(+, Add, GenScalar, GenScalar)
+@generate_gen_concrete_binary_broadcast(+, Add, GenScalar, Real)
+@generate_concrete_gen_binary_broadcast(+, Add, Real, GenScalar)
+
+function propagate(op::Add{T,U}, datum::Real, adj::Float64) where {T<:GenScalar, U<:GenScalar}
+    op.left.adj += adj
+    op.right.adj += adj
+end
+
+# scalar + column vector, scalar .+ column vector
+
+@generate_gen_binary_operator(+, Add, GenScalar, GenColumnVector)
+@generate_gen_concrete_binary_operator(+, Add, GenScalar, Vector{W} where W<:Real)
+@generate_concrete_gen_binary_operator(+, Add, Real, GenColumnVector)
+@generate_gen_binary_broadcast(+, Add, GenScalar, GenColumnVector)
+@generate_gen_concrete_binary_broadcast(+, Add, GenScalar, Vector{W} where W<:Real)
+@generate_concrete_gen_binary_broadcast(+, Add, Real, GenColumnVector)
+
+function propagate(op::Add{T,U}, datum::Vector{W}, adj::Vector{Float64}) where {T<:GenScalar, U<:GenColumnVector, W<:Real}
+    op.left.adj += sum(adj)
+    op.right.adj += adj
+end
+
+# scalar + row vector, scalar .+ row vector
+
+@generate_gen_binary_operator(+, Add, GenScalar, GenRowVector)
+@generate_gen_concrete_binary_operator(+, Add, GenScalar, RowVector{W,Vector{W}} where W<:Real)
+@generate_concrete_gen_binary_operator(+, Add, Real, GenRowVector)
+@generate_gen_binary_broadcast(+, Add, GenScalar, GenRowVector)
+@generate_gen_concrete_binary_broadcast(+, Add, GenScalar, RowVector{W,Vector{W}} where W<:Real)
+@generate_concrete_gen_binary_broadcast(+, Add, Real, GenRowVector)
+
+function propagate(op::Add{T,U}, datum::RowVector{W,Vector{W}}, adj::RowVector{Float64,Vector{Float64}}) where {T<:GenScalar, U<:GenRowVector, W<:Real}
+    op.left.adj += sum(adj)
+    op.right.adj += adj
+end
+
+# column vector + scalar, column vector .+ scalar
+
+@generate_gen_binary_operator(+, Add, GenColumnVector, GenScalar)
+@generate_gen_concrete_binary_operator(+, Add, GenColumnVector, Real)
+@generate_concrete_gen_binary_operator(+, Add, Vector{W} where W<:Real, GenScalar)
+@generate_gen_binary_broadcast(+, Add, GenColumnVector, GenScalar)
+@generate_gen_concrete_binary_broadcast(+, Add, GenColumnVector, Real)
+@generate_concrete_gen_binary_broadcast(+, Add, Vector{W} where W<:Real, GenScalar)
+
+function propagate(op::Add{T,U}, datum::Vector{W}, adj::Vector{Float64}) where {T<:GenColumnVector, U<:GenScalar, W<:Real}
+    op.left.adj += adj
+    op.right.adj += sum(adj)
+end
+
+# row vector + scalar, row vector .+ scalar
+
+@generate_gen_binary_operator(+, Add, GenRowVector, GenScalar)
+@generate_gen_concrete_binary_operator(+, Add, GenRowVector, Real)
+@generate_concrete_gen_binary_operator(+, Add, RowVector{W, Vector{W}} where W<:Real, GenScalar)
+@generate_gen_binary_broadcast(+, Add, GenRowVector, GenScalar)
+@generate_gen_concrete_binary_broadcast(+, Add, GenRowVector, Real)
+@generate_concrete_gen_binary_broadcast(+, Add, RowVector{W, Vector{W}} where W<:Real, GenScalar)
+
+function propagate(op::Add{T,U}, datum::RowVector{W,Vector{W}}, adj::RowVector{Float64,Vector{Float64}}) where {T<:GenRowVector, U<:GenScalar, W<:Real}
+    op.left.adj += adj
+    op.right.adj += sum(adj)
+end
+
+# column vector + column vector, column vector .+ column vector
+
+@generate_gen_binary_operator(+, Add, GenColumnVector, GenColumnVector)
+@generate_gen_concrete_binary_operator(+, Add, GenColumnVector, Vector{W} where W<:Real)
+@generate_concrete_gen_binary_operator(+, Add, Vector{W} where W<:Real, GenColumnVector)
+@generate_gen_binary_broadcast(+, Add, GenColumnVector, GenColumnVector)
+@generate_gen_concrete_binary_broadcast(+, Add, GenColumnVector, Vector{W} where W<:Real)
+@generate_concrete_gen_binary_broadcast(+, Add, Vector{W} where W<:Real, GenColumnVector)
+
+function propagate(op::Add{T,U}, datum::Vector{W}, adj::Vector{Float64}) where {T<:GenColumnVector, U<:GenColumnVector, W<:Real}
+    op.left.adj += adj
+    op.right.adj += adj
+end
+
+# row vector + row vector, row vector .+ row vector
+@generate_gen_binary_operator(+, Add, GenRowVector, GenRowVector)
+@generate_gen_concrete_binary_operator(+, Add, GenRowVector, RowVector{W,Vector{W}} where W<:Real)
+@generate_concrete_gen_binary_operator(+, Add, RowVector{W,Vector{W}} where W<:Real, GenRowVector)
+@generate_gen_binary_broadcast(+, Add, GenRowVector, GenRowVector)
+@generate_gen_concrete_binary_broadcast(+, Add, GenRowVector, RowVector{W,Vector{W}} where W<:Real)
+@generate_concrete_gen_binary_broadcast(+, Add, RowVector{W,Vector{W}} where W<:Real, GenRowVector)
+
+function propagate(op::Add{T,U}, datum::RowVector{W,Vector{W}}, adj::RowVector{Float64,Vector{Float64}}) where {T<:GenRowVector, U<:GenRowVector, W<:Real}
+    op.left.adj += adj
+    op.right.adj += adj
+end
+
+# column vector .+ row vector
+# TODO not implemented yet
+
+# row vector .+ column vector
+# TODO not implemented yet
+
+# scalar + matrix, scalar .+ matrix
+
+# matrix + scalar, matrix .+ scalar
+# TODO not implemented yet
+
+# matrix + matrix, matrix .+ matrix
+# TODO not implemented yet
+
+# matrix .+ vector (broadcast)
+# TODO not implemented yet
+
+# vector .+ matrix (broadcast)
+# TODO not implemented yet
+
+
+# ---- subtraction ----
+
+@generate_binary_node_type(Subtract)
+
+# scalar - scalar, scalar .- scalar
+
+@generate_gen_binary_operator(-, Subtract, GenScalar, GenScalar)
+@generate_gen_concrete_binary_operator(-, Subtract, GenScalar, Real)
+@generate_concrete_gen_binary_operator(-, Subtract, Real, GenScalar)
+@generate_gen_binary_broadcast(-, Subtract, GenScalar, GenScalar)
+@generate_gen_concrete_binary_broadcast(-, Subtract, GenScalar, Real)
+@generate_concrete_gen_binary_broadcast(-, Subtract, Real, GenScalar)
+
+function propagate(op::Subtract{T,U}, datum::Real, adj::Float64) where {T<:GenScalar, U<:GenScalar}
+    op.left.adj += adj
+    op.right.adj -= adj
+end
+
+# scalar - column vector, scalar .- column vector
+
+@generate_gen_binary_operator(-, Subtract, GenScalar, GenColumnVector)
+@generate_gen_concrete_binary_operator(-, Subtract, GenScalar, Vector{W} where W<:Real)
+@generate_concrete_gen_binary_operator(-, Subtract, Real, GenColumnVector)
+@generate_gen_binary_broadcast(-, Subtract, GenScalar, GenColumnVector)
+@generate_gen_concrete_binary_broadcast(-, Subtract, GenScalar, Vector{W} where W<:Real)
+@generate_concrete_gen_binary_broadcast(-, Subtract, Real, GenColumnVector)
+
+function propagate(op::Subtract{T,U}, datum::Vector{W}, adj::Vector{Float64}) where {T<:GenScalar, U<:GenColumnVector, W<:Real}
+    op.left.adj += sum(adj)
+    op.right.adj -= adj
+end
+
+# scalar - row vector, scalar .- row vector
+
+@generate_gen_binary_operator(-, Subtract, GenScalar, GenRowVector)
+@generate_gen_concrete_binary_operator(-, Subtract, GenScalar, RowVector{W,Vector{W}} where W<:Real)
+@generate_concrete_gen_binary_operator(-, Subtract, Real, GenRowVector)
+@generate_gen_binary_broadcast(-, Subtract, GenScalar, GenRowVector)
+@generate_gen_concrete_binary_broadcast(-, Subtract, GenScalar, RowVector{W,Vector{W}} where W<:Real)
+@generate_concrete_gen_binary_broadcast(-, Subtract, Real, GenRowVector)
+
+function propagate(op::Subtract{T,U}, datum::RowVector{W,Vector{W}}, adj::RowVector{Float64,Vector{Float64}}) where {T<:GenScalar, U<:GenRowVector, W<:Real}
+    op.left.adj += sum(adj)
+    op.right.adj -= adj
+end
+
+# column vector - scalar, column vector .- scalar
+
+@generate_gen_binary_operator(-, Subtract, GenColumnVector, GenScalar)
+@generate_gen_concrete_binary_operator(-, Subtract, GenColumnVector, Real)
+@generate_concrete_gen_binary_operator(-, Subtract, Vector{W} where W<:Real, GenScalar)
+@generate_gen_binary_broadcast(-, Subtract, GenColumnVector, GenScalar)
+@generate_gen_concrete_binary_broadcast(-, Subtract, GenColumnVector, Real)
+@generate_concrete_gen_binary_broadcast(-, Subtract, Vector{W} where W<:Real, GenScalar)
+
+function propagate(op::Subtract{T,U}, datum::Vector{W}, adj::Vector{Float64}) where {T<:GenColumnVector, U<:GenScalar, W<:Real}
+    op.left.adj += adj
+    op.right.adj -= sum(adj)
+end
+
+# row vector - scalar, row vector .- scalar
+
+@generate_gen_binary_operator(-, Subtract, GenRowVector, GenScalar)
+@generate_gen_concrete_binary_operator(-, Subtract, GenRowVector, Real)
+@generate_concrete_gen_binary_operator(-, Subtract, RowVector{W, Vector{W}} where W<:Real, GenScalar)
+@generate_gen_binary_broadcast(-, Subtract, GenRowVector, GenScalar)
+@generate_gen_concrete_binary_broadcast(-, Subtract, GenRowVector, Real)
+@generate_concrete_gen_binary_broadcast(-, Subtract, RowVector{W, Vector{W}} where W<:Real, GenScalar)
+
+function propagate(op::Subtract{T,U}, datum::RowVector{W,Vector{W}}, adj::RowVector{Float64,Vector{Float64}}) where {T<:GenRowVector, U<:GenScalar, W<:Real}
+    op.left.adj += adj
+    op.right.adj -= sum(adj)
+end
+
+# column vector - column vector, column vector .- column vector
+
+@generate_gen_binary_operator(-, Subtract, GenColumnVector, GenColumnVector)
+@generate_gen_concrete_binary_operator(-, Subtract, GenColumnVector, Vector{W} where W<:Real)
+@generate_concrete_gen_binary_operator(-, Subtract, Vector{W} where W<:Real, GenColumnVector)
+@generate_gen_binary_broadcast(-, Subtract, GenColumnVector, GenColumnVector)
+@generate_gen_concrete_binary_broadcast(-, Subtract, GenColumnVector, Vector{W} where W<:Real)
+@generate_concrete_gen_binary_broadcast(-, Subtract, Vector{W} where W<:Real, GenColumnVector)
+
+function propagate(op::Subtract{T,U}, datum::Vector{W}, adj::Vector{Float64}) where {T<:GenColumnVector, U<:GenColumnVector, W<:Real}
+    op.left.adj += adj
+    op.right.adj -= adj
+end
+
+# row vector - row vector, row vector .- row vector
+@generate_gen_binary_operator(-, Subtract, GenRowVector, GenRowVector)
+@generate_gen_concrete_binary_operator(-, Subtract, GenRowVector, RowVector{W,Vector{W}} where W<:Real)
+@generate_concrete_gen_binary_operator(-, Subtract, RowVector{W,Vector{W}} where W<:Real, GenRowVector)
+@generate_gen_binary_broadcast(-, Subtract, GenRowVector, GenRowVector)
+@generate_gen_concrete_binary_broadcast(-, Subtract, GenRowVector, RowVector{W,Vector{W}} where W<:Real)
+@generate_concrete_gen_binary_broadcast(-, Subtract, RowVector{W,Vector{W}} where W<:Real, GenRowVector)
+
+function propagate(op::Subtract{T,U}, datum::RowVector{W,Vector{W}}, adj::RowVector{Float64,Vector{Float64}}) where {T<:GenRowVector, U<:GenRowVector, W<:Real}
+    op.left.adj += adj
+    op.right.adj -= adj
+end
+
+# column vector .- row vector
+# TODO not implemented yet
+
+# row vector .- column vector
+# TODO not implemented yet
+
+# scalar - matrix, scalar .- matrix
+
+# matrix - scalar, matrix .- scalar
+# TODO not implemented yet
+
+# matrix - matrix, matrix .- matrix
+# TODO not implemented yet
+
+# matrix .- vector (broadcast)
+# TODO not implemented yet
+
+# vector .- matrix (broadcast)
+# TODO not implemented yet
+
+
+
+# ---- division ----
+
+@generate_binary_node_type(Divide)
+
+# scalar / scalar, scalar ./ scalar
+
+@generate_gen_binary_operator(/, Divide, GenScalar, GenScalar)
+@generate_gen_concrete_binary_operator(/, Divide, GenScalar, Real)
+@generate_concrete_gen_binary_operator(/, Divide, Real, GenScalar)
+@generate_gen_binary_broadcast(/, Divide, GenScalar, GenScalar)
+@generate_gen_concrete_binary_broadcast(/, Divide, GenScalar, Real)
+@generate_concrete_gen_binary_broadcast(/, Divide, Real, GenScalar)
+
+function propagate(op::Divide{T,U}, datum::Real, adj::Float64) where {T<:GenScalar, U<:GenScalar}
+    op.left.adj += adj / op.right.datum
+    op.right.adj += adj * (-op.left.datum / (op.right.datum * op.right.datum))
+end
+
+# scalar ./ column vector
+
+@generate_gen_binary_broadcast(/, Divide, GenScalar, GenColumnVector)
+@generate_gen_concrete_binary_broadcast(/, Divide, GenScalar, Vector{W} where W<:Real)
+@generate_concrete_gen_binary_broadcast(/, Divide, Real, GenColumnVector)
+
+function propagate(op::Divide{T,U}, datum::Vector{W}, adj::Vector{Float64}) where {T<:GenScalar, U<:GenColumnVector, W<:Real}
+    op.left.adj += sum(adj ./ op.right.datum)
+    op.right.adj += adj .* (-op.left.datum ./ (op.right.datum .* op.right.datum))
+end
+
+# scalar ./ row vector
+
+@generate_gen_binary_broadcast(/, Divide, GenScalar, GenRowVector)
+@generate_gen_concrete_binary_broadcast(/, Divide, GenScalar, RowVector{W,Vector{W}} where W<:Real)
+@generate_concrete_gen_binary_broadcast(/, Divide, Real, GenRowVector)
+
+function propagate(op::Divide{T,U}, datum::RowVector{W,Vector{W}}, adj::RowVector{Float64,Vector{Float64}}) where {T<:GenScalar, U<:GenRowVector, W<:Real}
+    op.left.adj += sum(adj ./ op.right.datum)
+    op.right.adj += adj .* (-op.left.datum ./ (op.right.datum .* op.right.datum))
+end
+
+# column vector / scalar, column vector ./ scalar
+
+@generate_gen_binary_operator(/, Divide, GenColumnVector, GenScalar)
+@generate_gen_concrete_binary_operator(/, Divide, GenColumnVector, Real)
+@generate_concrete_gen_binary_operator(/, Divide, Vector{W} where W<:Real, GenScalar)
+@generate_gen_binary_broadcast(/, Divide, GenColumnVector, GenScalar)
+@generate_gen_concrete_binary_broadcast(/, Divide, GenColumnVector, Real)
+@generate_concrete_gen_binary_broadcast(/, Divide, Vector{W} where W<:Real, GenScalar)
+
+function propagate(op::Divide{T,U}, datum::Vector{W}, adj::Vector{Float64}) where {T<:GenColumnVector, U<:GenScalar, W<:Real}
+    op.left.adj += adj / op.right.datum
+    op.right.adj += sum(adj .* (-op.left.datum / (op.right.datum * op.right.datum)))
+end
+
+# row vector / scalar, row vector ./ scalar
+
+@generate_gen_binary_operator(/, Divide, GenRowVector, GenScalar)
+@generate_gen_concrete_binary_operator(/, Divide, GenRowVector, Real)
+@generate_concrete_gen_binary_operator(/, Divide, RowVector{W, Vector{W}} where W<:Real, GenScalar)
+@generate_gen_binary_broadcast(/, Divide, GenRowVector, GenScalar)
+@generate_gen_concrete_binary_broadcast(/, Divide, GenRowVector, Real)
+@generate_concrete_gen_binary_broadcast(/, Divide, RowVector{W, Vector{W}} where W<:Real, GenScalar)
+
+function propagate(op::Divide{T,U}, datum::RowVector{W,Vector{W}}, adj::RowVector{Float64,Vector{Float64}}) where {T<:GenRowVector, U<:GenScalar, W<:Real}
+    op.left.adj += adj / op.right.datum
+    op.right.adj += sum(adj .* (-op.left.datum / (op.right.datum * op.right.datum)))
+end
+
+# column vector ./ column vector
+
+@generate_gen_binary_broadcast(/, Divide, GenColumnVector, GenColumnVector)
+@generate_gen_concrete_binary_broadcast(/, Divide, GenColumnVector, Vector{W} where W<:Real)
+@generate_concrete_gen_binary_broadcast(/, Divide, Vector{W} where W<:Real, GenColumnVector)
+
+function propagate(op::Divide{T,U}, datum::Vector{W}, adj::Vector{Float64}) where {T<:GenColumnVector, U<:GenColumnVector, W<:Real}
+    op.left.adj += adj ./ op.right.datum
+    op.right.adj += adj .* (-op.left.datum ./ (op.right.datum .* op.right.datum))
+end
+
+# row vector ./ row vector
+
+@generate_gen_binary_broadcast(/, Divide, GenRowVector, GenRowVector)
+@generate_gen_concrete_binary_broadcast(/, Divide, GenRowVector, RowVector{W,Vector{W}} where W<:Real)
+@generate_concrete_gen_binary_broadcast(/, Divide, RowVector{W,Vector{W}} where W<:Real, GenRowVector)
+
+function propagate(op::Divide{T,U}, datum::RowVector{W,Vector{W}}, adj::RowVector{Float64,Vector{Float64}}) where {T<:GenRowVector, U<:GenRowVector, W<:Real}
+    op.left.adj += adj ./ op.right.datum
+    op.right.adj += adj .* (-op.left.datum ./ (op.right.datum .* op.right.datum))
+end
+
+# column vector ./ row vector
+# TODO not implemented yet
+
+# row vector ./ column vector
+# TODO not implemented yet
+
+# scalar ./ matrix
+
+@generate_gen_binary_broadcast(/, Divide, GenScalar, GenMatrix)
+@generate_gen_concrete_binary_broadcast(/, Divide, GenScalar, Matrix{W} where W<:Real)
+@generate_concrete_gen_binary_broadcast(/, Divide, Real, GenMatrix)
+
+function propagate(op::Divide{T,U}, datum::Matrix{W}, adj::Matrix{Float64}) where {T<:GenScalar, U<:GenMatrix, W<:Real}
+    op.left.adj += sum(adj ./ op.right.datum)
+    op.right.adj += adj .* (-op.left.datum ./ (op.right.datum .* op.right.datum))
+end
+
+# matrix / scalar, matrix ./ scalar
+
+@generate_gen_binary_operator(/, Divide, GenMatrix, GenScalar)
+@generate_gen_concrete_binary_operator(/, Divide, GenMatrix, Real)
+@generate_concrete_gen_binary_operator(/, Divide, Matrix{W} where W<:Real, GenScalar)
+@generate_gen_binary_broadcast(/, Divide, GenMatrix, GenScalar)
+@generate_gen_concrete_binary_broadcast(/, Divide, GenMatrix, Real)
+@generate_concrete_gen_binary_broadcast(/, Divide, Matrix{W} where W<:Real, GenScalar)
+
+function propagate(op::Divide{T,U}, datum::Matrix{W}, adj::Matrix{Float64}) where {T<:GenMatrix, U<:GenScalar, W<:Real}
+    op.left.adj += adj / op.right.datum
+    op.right.adj += sum(adj .* (-op.left.datum / (op.right.datum * op.right.datum)))
+end
+
+# matrix ./ matrix
+@generate_gen_binary_broadcast(/, Divide, GenMatrix, GenMatrix)
+@generate_gen_concrete_binary_broadcast(/, Divide, GenMatrix, Matrix{W} where W<:Real)
+@generate_concrete_gen_binary_broadcast(/, Divide, Matrix{W} where W<:Real, GenMatrix)
+
+function propagate(op::Divide{T,U}, datum::Matrix{W}, adj::Matrix{Float64}) where {T<:GenMatrix, U<:GenMatrix, W<:Real}
+    op.left.adj += adj ./ op.right.datum
+    op.right.adj += adj .* (-op.left.datum ./ (op.right.datum .* op.right.datum))
+end
+
+# matrix ./ vector (broadcast)
+# TODO not implemented yet
+
+# vector ./ matrix (broadcast)
+# TODO not implemented yet
+
+
 
 # ---- element-wise multiplication ----
 
 @generate_binary_node_type(ElementwiseMultiply)
 
-# scalar * scalar
+# scalar * scalar, scalar .* scalar
 
 @generate_gen_binary_operator(*, ElementwiseMultiply, GenScalar, GenScalar)
 @generate_gen_concrete_binary_operator(*, ElementwiseMultiply, GenScalar, Real)
@@ -302,7 +517,7 @@ function propagate(op::ElementwiseMultiply{T,U}, datum::Real, adj::Float64) wher
     op.right.adj += adj * op.left.datum
 end
 
-# scalar * column vector
+# scalar * column vector, scalar .* column vector
 
 @generate_gen_binary_operator(*, ElementwiseMultiply, GenScalar, GenColumnVector)
 @generate_gen_concrete_binary_operator(*, ElementwiseMultiply, GenScalar, Vector{W} where W<:Real)
@@ -316,7 +531,7 @@ function propagate(op::ElementwiseMultiply{T,U}, datum::Vector{W}, adj::Vector{F
     op.right.adj += adj * op.left.datum
 end
 
-# scalar * row vector
+# scalar * row vector, scalar .* row vector
 
 @generate_gen_binary_operator(*, ElementwiseMultiply, GenScalar, GenRowVector)
 @generate_gen_concrete_binary_operator(*, ElementwiseMultiply, GenScalar, RowVector{W,Vector{W}} where W<:Real)
@@ -330,7 +545,7 @@ function propagate(op::ElementwiseMultiply{T,U}, datum::RowVector{W,Vector{W}}, 
     op.right.adj += adj * op.left.datum
 end
 
-# column vector * scalar
+# column vector * scalar, column vector .* scalar
 
 @generate_gen_binary_operator(*, ElementwiseMultiply, GenColumnVector, GenScalar)
 @generate_gen_concrete_binary_operator(*, ElementwiseMultiply, GenColumnVector, Real)
@@ -344,7 +559,7 @@ function propagate(op::ElementwiseMultiply{T,U}, datum::Vector{W}, adj::Vector{F
     op.right.adj += sum(adj .* op.left.datum)
 end
 
-# row vector * scalar
+# row vector * scalar, row vector .* scalar
 
 @generate_gen_binary_operator(*, ElementwiseMultiply, GenRowVector, GenScalar)
 @generate_gen_concrete_binary_operator(*, ElementwiseMultiply, GenRowVector, Real)
@@ -413,7 +628,7 @@ function propagate(op::ElementwiseMultiply{T,U}, datum::Matrix{W}, adj::Matrix{F
     op.right.adj += adj * op.left.datum
 end
 
-# matrix * scalar
+# matrix * scalar, matrix .* scalar
 
 @generate_gen_binary_operator(*, ElementwiseMultiply, GenMatrix, GenScalar)
 @generate_gen_concrete_binary_operator(*, ElementwiseMultiply, GenMatrix, Real)
@@ -480,39 +695,45 @@ function propagate(op::MatrixMultiply{T,U}, datum::RowVector{W,Vector{W}}, adj::
     # TODO
 end
 
-# column vector * row vector (= column vector .* row vector)
-# TODO
+# column vector * row vector (outer product)
+# note: this is equivalent to column vector .* row vector
+@generate_gen_binary_operator(*, MatrixMultiply, GenColumnVector, GenRowVector)
+@generate_gen_concrete_binary_operator(*, MatrixMultiply, GenColumnVector, RowVector{W,Vector{W}} where W<:Real)
+@generate_concrete_gen_binary_operator(*, MatrixMultiply, Vector{W} where W <: Real, GenRowVector)
 
-# row vector * column_vector 
-# TODO
+function propagate(op::MatrixMultiply{T,U}, datum::Matrix{W}, adj::Matrix{Float64}) where {T<:GenColumnVector, U<:GenRowVector, W<:Real}
+    op.left.adj += vec(sum(adj .* op.right.datum, 2))
+    op.right.adj += RowVector(vec(sum(adj .* op.left.datum, 1)))
+end
+
+# row vector * column_vector = scalar (inner product)
+@generate_gen_binary_operator(*, MatrixMultiply, GenRowVector, GenColumnVector)
+@generate_gen_concrete_binary_operator(*, MatrixMultiply, GenRowVector, Vector{W} where W<:Real)
+@generate_concrete_gen_binary_operator(*, MatrixMultiply, RowVector{W,Vector{W}} where W <: Real, GenColumnVector)
+
+function propagate(op::MatrixMultiply{T,U}, datum::Real, adj::Float64) where {T<:GenRowVector, U<:GenColumnVector}
+    op.left.adj += adj * op.right.datum'
+    op.right.adj += adj * op.left.datum'
+end
 
 
+# ---- unary plus ----
 
-## ---- unary plus ----
-#@generate_unary_operator_type(UnaryPlus)
-#
-## + scalar, + column vector, + row vector, + matrix
-#function (+)(l::GenValue)
-    #makeGenValue((+)(datum(l)), l.tape, UnaryPlus(l))
-#end
-#
-#function propagate(op::UnaryPlus, datum::T, adj::U) where {T,U}
-    #op.arg.adj += adj
-#end
-#
-#
-## ---- unary minus ----
-#@generate_unary_operator_type(UnaryMinus)
-#
-## - scalar, - column vector, - row vector, - matrix
-#function (-)(l::GenValue)
-    #makeGenValue((-)(datum(l)), l.tape, UnaryMinus(l))
-#end
-#
-#function propagate(op::UnaryMinus, datum::T, adj::U) where {T,U}
-    #op.arg.adj -= adj
-#end
+@generate_unary_node_type(UnaryPlus)
+@generate_gen_unary_operator(+, UnaryPlus, GenValue)
 
+function propagate(op::UnaryPlus, datum::T, adj::U) where {T,U}
+    op.arg.adj += adj
+end
+
+# ---- unary minus ----
+
+@generate_unary_node_type(UnaryMinus)
+@generate_gen_unary_operator(-, UnaryMinus, GenValue)
+
+function propagate(op::UnaryMinus, datum::T, adj::U) where {T,U}
+    op.arg.adj -= adj
+end
 
 # ---- exp ----
 
@@ -622,5 +843,5 @@ function propagate(op::Transpose{U}, datum::Vector{W}, adj::Vector{Float64}) whe
     op.arg.adj += adj'
 end
 
-
-# TODO handle slice indexing
+# TODO handle slice indexing. This might be handled currently but inefficiently by Julia's
+# AbstractArray indexing facilities, which will probably produce an array of GenScalars
