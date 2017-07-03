@@ -1,7 +1,3 @@
-include("../src/ad/types.jl")
-include("../src/ad/operators.jl")
-
-using Base.Test
 
 dx = 1e-6
 
@@ -11,6 +7,8 @@ function finite_difference(f, val::Real)
     x_neg = val - dx
     (f(x_pos) - f(x_neg)) / (2. * dx)
 end
+
+ColumnOrRowVector = Union{Vector{W}, RowVector{W, Vector{W}}} where W<:Real
 
 function finite_difference(f, val::ColumnOrRowVector{W}) where W<:Real
     grad = zeros(val)
@@ -43,10 +41,24 @@ end
 function adtest(f, a_val, b_val)
 
     # test that the operator behavior matches the operator on the built-in types
+
+    # gen - gen
     tape = Tape()
     a = makeGenValue(a_val, tape)
     b = makeGenValue(b_val, tape)
     result = f(a, b)
+    @test f(a_val, b_val) == concrete(result)
+
+    # gen - concrete
+    tape = Tape()
+    a = makeGenValue(a_val, tape)
+    result = f(a, b_val)
+    @test f(a_val, b_val) == concrete(result)
+
+    # concrete - gen 
+    tape = Tape()
+    b = makeGenValue(b_val, tape)
+    result = f(a_val, b)
     @test f(a_val, b_val) == concrete(result)
 
     # test backpropagation
@@ -65,6 +77,7 @@ function adtest(f, a_val, b_val)
 end
 
 function adtest(f, a_val)
+
     # test that the operator behavior matches the operator on the built-in types
     tape = Tape()
     a = makeGenValue(a_val, tape)
@@ -96,56 +109,28 @@ end
     b_matrix = [4.13 33.123 5.32431; 4.314 5.1341 8.09] # 2 rows, 3 columns
 
     @testset "add" begin
-
-        # scalar + scalar
         adtest(+, a_scalar, b_scalar)
-
-        # scalar .+ scalar
-        adtest((a, b) -> a .+ b, a_scalar, b_scalar)
-
-        # scalar + column vector
+        adtest((a, b) -> ewise(+, a, b), a_scalar, b_scalar)
         adtest((a, b) -> (a + b), a_scalar, a_vector)
-
-        # scalar + row vector
         adtest((a, b) -> (a + b), a_scalar, a_row_vector)
-
-        # scalar .+ column vector
-        adtest((a, b) -> (a .+ b), a_scalar, a_vector)
-
-        # scalar .+ row vector
-        adtest((a, b) -> (a .+ b), a_scalar, a_row_vector)
-
-        # column vector + scalar
+        adtest((a, b) -> ewise(+, a, b), a_scalar, a_vector)
+        adtest((a, b) -> ewise(+, a, b), a_scalar, a_row_vector)
         adtest((a, b) -> (a + b), a_vector, a_scalar)
-
-        # row vector + scalar
         adtest((a, b) -> (a + b), a_row_vector, a_scalar)
-
-        # column vector .+ scalar
-        adtest((a, b) -> (a .+ b), a_vector, a_scalar)
-
-        # row vector .+ scalar
-        adtest((a, b) -> (a .+ b), a_row_vector, a_scalar)
-
-        # column vector + column vector
+        adtest((a, b) -> ewise(+, a, b), a_vector, a_scalar)
+        adtest((a, b) -> ewise(+, a, b), a_row_vector, a_scalar)
         adtest((a, b) -> (a + b), a_vector, b_vector)
-
-        # column vector .+ column vector
-        adtest((a, b) -> (a .+ b), a_vector, b_vector)
-
-        # row vector + row vector
+        adtest((a, b) -> ewise(+, a, b), a_vector, b_vector)
         adtest((a, b) -> (a + b), a_row_vector, b_row_vector)
-
-        # row vector .+ row vector
-        adtest((a, b) -> (a .+ b), a_row_vector, b_row_vector)
+        adtest((a, b) -> ewise(+, a, b), a_row_vector, b_row_vector)
 
         # column vector .+ row vector
         # TODO not implemented yet
-        #adtest((a, b) -> (a .+ b), a_vector, b_row_vector)
+        #adtest((a, b) -> ewise(+, a, b), a_vector, b_row_vector)
 
         # row vector .+ column vector
         # TODO not implemented yet
-        #adtest((a, b) -> (a .+ b), a_row_vector, b_vector)
+        #adtest((a, b) -> ewise(+, a, b), a_row_vector, b_vector)
 
         # scalar + matrix
         # TODO not implemented yet
@@ -157,11 +142,11 @@ end
 
         # scalar .+ matrix
         # TODO not implemented yet
-        #adtest((a, b) -> (a .+ b), a_scalar, a_matrix)
+        #adtest((a, b) -> ewise(+, a, b), a_scalar, a_matrix)
 
         # matrix .+ scalar
         # TODO not implemented yet
-        #adtest((a, b) -> (a .+ b), a_matrix, a_scalar)
+        #adtest((a, b) -> ewise(+, a, b), a_matrix, a_scalar)
 
         # matrix + matrix
         # TODO not implemented yet
@@ -169,7 +154,7 @@ end
 
         # matrix .+ matrix
         # TODO not implemented yet
-        #adtest((a, b) -> (a .+ b), a_matrix, a_scalar)
+        #adtest((a, b) -> ewise(+, a, b), a_matrix, a_scalar)
 
         # matrix .+ vector (broadcast)
         # TODO not implemented yet
@@ -181,56 +166,28 @@ end
     end
 
     @testset "subtract" begin
-
-        # scalar - scalar
         adtest(-, a_scalar, b_scalar)
-
-        # scalar .- scalar
-        adtest((a, b) -> a .- b, a_scalar, b_scalar)
-
-        # scalar - column vector
+        adtest((a, b) -> ewise(-, a, b), a_scalar, b_scalar)
         adtest((a, b) -> (a - b), a_scalar, a_vector)
-
-        # scalar - row vector
         adtest((a, b) -> (a - b), a_scalar, a_row_vector)
-
-        # scalar .- column vector
-        adtest((a, b) -> (a .- b), a_scalar, a_vector)
-
-        # scalar .- row vector
-        adtest((a, b) -> (a .- b), a_scalar, a_row_vector)
-
-        # column vector - scalar
+        adtest((a, b) -> ewise(-, a, b), a_scalar, a_vector)
+        adtest((a, b) -> ewise(-, a, b), a_scalar, a_row_vector)
         adtest((a, b) -> (a - b), a_vector, a_scalar)
-
-        # row vector - scalar
         adtest((a, b) -> (a - b), a_row_vector, a_scalar)
-
-        # column vector .- scalar
-        adtest((a, b) -> (a .- b), a_vector, a_scalar)
-
-        # row vector .- scalar
-        adtest((a, b) -> (a .- b), a_row_vector, a_scalar)
-
-        # column vector - column vector
+        adtest((a, b) -> ewise(-, a, b), a_vector, a_scalar)
+        adtest((a, b) -> ewise(-, a, b), a_row_vector, a_scalar)
         adtest((a, b) -> (a - b), a_vector, b_vector)
-
-        # column vector .- column vector
-        adtest((a, b) -> (a .- b), a_vector, b_vector)
-
-        # row vector - row vector
+        adtest((a, b) -> ewise(-, a, b), a_vector, b_vector)
         adtest((a, b) -> (a - b), a_row_vector, b_row_vector)
-
-        # row vector .- row vector
-        adtest((a, b) -> (a .- b), a_row_vector, b_row_vector)
+        adtest((a, b) -> ewise(-, a, b), a_row_vector, b_row_vector)
 
         # column vector .- row vector
         # TODO not implemented yet
-        #adtest((a, b) -> (a .- b), a_vector, b_row_vector)
+        #adtest((a, b) -> ewise(-, a, b), a_vector, b_row_vector)
 
         # row vector .- column vector
         # TODO not implemented yet
-        #adtest((a, b) -> (a .- b), a_row_vector, b_vector)
+        #adtest((a, b) -> ewise(-, a, b), a_row_vector, b_vector)
 
         # scalar - matrix
         # TODO not implemented yet
@@ -242,11 +199,11 @@ end
 
         # scalar .- matrix
         # TODO not implemented yet
-        #adtest((a, b) -> (a .- b), a_scalar, a_matrix)
+        #adtest((a, b) -> ewise(-, a, b), a_scalar, a_matrix)
 
         # matrix .- scalar
         # TODO not implemented yet
-        #adtest((a, b) -> (a .- b), a_matrix, a_scalar)
+        #adtest((a, b) -> ewise(-, a, b), a_matrix, a_scalar)
 
         # matrix - matrix
         # TODO not implemented yet
@@ -254,7 +211,7 @@ end
 
         # matrix .- matrix
         # TODO not implemented yet
-        #adtest((a, b) -> (a .- b), a_matrix, a_scalar)
+        #adtest((a, b) -> ewise(-, a, b), a_matrix, a_scalar)
 
         # matrix .- vector (broadcast)
         # TODO not implemented yet
@@ -266,56 +223,29 @@ end
     end
 
     @testset "divide" begin
-
-        # scalar / scalar
         adtest(/, a_scalar, b_scalar)
-
-        # scalar ./ scalar
-        adtest((a, b) -> a ./ b, a_scalar, b_scalar)
-
-        # scalar ./ column vector
-        adtest((a, b) -> (a ./ b), a_scalar, a_vector)
-
-        # scalar ./ row vector
-        adtest((a, b) -> (a ./ b), a_scalar, a_row_vector)
-
-        # column vector / scalar
+        adtest((a, b) -> ewise(/, a, b), a_scalar, b_scalar)
+        adtest((a, b) -> ewise(/, a, b), a_scalar, a_vector)
+        adtest((a, b) -> ewise(/, a, b), a_scalar, a_row_vector)
         adtest((a, b) -> (a / b), a_vector, a_scalar)
-
-        # row vector / scalar
         adtest((a, b) -> (a / b), a_row_vector, a_scalar)
-
-        # column vector ./ scalar
-        adtest((a, b) -> (a ./ b), a_vector, a_scalar)
-
-        # row vector ./ scalar
-        adtest((a, b) -> (a ./ b), a_row_vector, a_scalar)
-
-        # column vector ./ column vector
-        adtest((a, b) -> (a ./ b), a_vector, b_vector)
-
-        # row vector ./ row vector
-        adtest((a, b) -> (a ./ b), a_row_vector, b_row_vector)
+        adtest((a, b) -> ewise(/, a, b), a_vector, a_scalar)
+        adtest((a, b) -> ewise(/, a, b), a_row_vector, a_scalar)
+        adtest((a, b) -> ewise(/, a, b), a_vector, b_vector)
+        adtest((a, b) -> ewise(/, a, b), a_row_vector, b_row_vector)
 
         # column vector ./ row vector
         # TODO not implemented yet
-        #adtest((a, b) -> (a ./ b), a_vector, b_row_vector)
+        #adtest((a, b) -> ewise(/, a, b), a_vector, b_row_vector)
 
         # row vector ./ column vector
         # TODO not implemented yet
-        #adtest((a, b) -> (a ./ b), a_row_vector, b_vector)
+        #adtest((a, b) -> ewise(/, a, b), a_row_vector, b_vector)
 
-        # scalar ./ matrix
-        adtest((a, b) -> (a ./ b), a_scalar, a_matrix)
-
-        # matrix / scalar
+        adtest((a, b) -> ewise(/, a, b), a_scalar, a_matrix)
         adtest((a, b) -> (a / b), a_matrix, a_scalar)
-
-        # matrix ./ scalar
-        adtest((a, b) -> (a ./ b), a_matrix, a_scalar)
- 
-        # matrix ./ matrix
-        adtest((a, b) -> (a ./ b), a_matrix, a_scalar)
+        adtest((a, b) -> ewise(/, a, b), a_matrix, a_scalar)
+        adtest((a, b) -> ewise(/, a, b), a_matrix, a_scalar)
 
         # matrix ./ vector (broadcast)
         # TODO not implemented yet
@@ -327,57 +257,23 @@ end
     end
 
     @testset "elementwise-multiply" begin
-
-        # scalar * scalar
         adtest(*, a_scalar, b_scalar)
-
-        # scalar .* scalar
-        adtest((a, b) -> a .* b, a_scalar, b_scalar)
-
-        # scalar * column vector
+        adtest((a, b) -> ewise(*, a, b), a_scalar, b_scalar)
         adtest((a, b) -> (a * b), a_scalar, a_vector)
-
-        # scalar * row vector
         adtest((a, b) -> (a * b), a_scalar, a_row_vector)
-
-        # scalar .* column vector
-        adtest((a, b) -> (a .* b), a_scalar, a_vector)
-
-        # scalar .* row vector
-        adtest((a, b) -> (a .* b), a_scalar, a_row_vector)
-
-        # column vector * scalar
+        adtest((a, b) -> ewise(*, a, b), a_scalar, a_vector)
+        adtest((a, b) -> ewise(*, a, b), a_scalar, a_row_vector)
         adtest((a, b) -> (a * b), a_vector, a_scalar)
-
-        # row vector * scalar
         adtest((a, b) -> (a * b), a_row_vector, a_scalar)
-
-        # column vector .* scalar
-        adtest((a, b) -> (a .* b), a_vector, a_scalar)
-
-        # row vector .* scalar
-        adtest((a, b) -> (a .* b), a_row_vector, a_scalar)
-
-        # column vector .* column vector
-        adtest((a, b) -> (a .* b), a_vector, b_vector)
-
-        # row vector .* row vector
-        adtest((a, b) -> (a .* b), a_row_vector, b_row_vector)
-
-        # column vector .* row vector
-        adtest((a, b) -> (a .* b), a_vector, b_row_vector)
-
-        # row vector .* column vector
-        adtest((a, b) -> (a .* b), a_row_vector, b_vector)
-
-        # scalar * matrix
+        adtest((a, b) -> ewise(*, a, b), a_vector, a_scalar)
+        adtest((a, b) -> ewise(*, a, b), a_row_vector, a_scalar)
+        adtest((a, b) -> ewise(*, a, b), a_vector, b_vector)
+        adtest((a, b) -> ewise(*, a, b), a_row_vector, b_row_vector)
+        adtest((a, b) -> ewise(*, a, b), a_vector, b_row_vector)
+        adtest((a, b) -> ewise(*, a, b), a_row_vector, b_vector)
         adtest((a, b) -> (a * b), a_scalar, a_matrix)
-
-        # matrix * scalar
         adtest((a, b) -> (a * b), a_matrix, a_scalar)
-
-        # matrix .* matrix
-        adtest((a, b) -> (a .* b), a_matrix, a_scalar)
+        adtest((a, b) -> ewise(*, a, b), a_matrix, a_scalar)
 
         # matrix .* vector (broadcast)
         # TODO not implemented yet
@@ -389,125 +285,59 @@ end
     end
 
     @testset "matrix-multiply" begin
-
-        # matrix * matrix, linear index into result matrix 
         adtest((a, b) -> (a * b), a_matrix', a_matrix)
-
-        # matrix * column vector 
         adtest((a, b) -> (a * b), a_matrix', a_vector)
-
-        # row vector * matrix
-        #adtest((a, b) -> (a * b), a_row_vector, a_matrix)
-
-        # column vector * row vector 
+        #adtest((a, b) -> (a * b), a_row_vector, a_matrix) # TODO
         adtest((a, b) -> (a * b), a_vector, b_row_vector)
-
-        # row vector * column_vector 
         adtest((a, b) -> (a * b), a_row_vector, b_vector)
     end
 
     @testset "transpose" begin
-
-        # transpose scalar 
         adtest((a) -> a', a_scalar)
-
-        # transpose matrix
         adtest((a) -> a', a_matrix)
-
-        # transpose column vector 
         adtest((a) -> a', a_vector)
-
-        # transpose row vector 
         adtest((a) -> a', a_row_vector)
     end
 
     @testset "unary plus" begin
-        
-        # +scalar
         adtest(+, a_scalar)
-
-        # +column vector
         adtest(+, a_vector)
-
-        # +row vector
         adtest(+, a_row_vector)
-
-        # +matrix
         adtest(+, a_matrix)
     end
 
     @testset "unary minus" begin
-        
-        # -scalar
         adtest(-, a_scalar)
-
-        # -column vector
         adtest(-, a_vector)
-
-        # -row vector
         adtest(-, a_row_vector)
-
-        # -matrix
         adtest(-, a_matrix)
     end
 
     @testset "exp" begin
-        
-        # exp(scalar)
         adtest(exp, a_scalar)
-
-        # exp,(column vector)
-        adtest((a) -> exp.(a), a_vector)
-
-        # exp.(row vector)
-        adtest((a) -> exp.(a), a_row_vector)
-
-        # exp.(matrix)
-        adtest((a) -> exp.(a), a_matrix)
+        adtest((a) -> ewise(exp, a), a_vector)
+        adtest((a) -> ewise(exp, a), a_row_vector)
+        adtest((a) -> ewise(exp, a), a_matrix)
     end
 
     @testset "log" begin
-        
-        # log(scalar)
         adtest(log, a_scalar)
-
-        # log.(column vector)
-        adtest((a) -> log.(a), a_vector)
-
-        # log.(row vector)
-        adtest((a) -> log.(a), a_row_vector)
-
-        # log.(matrix)
-        adtest((a) -> log.(a), a_matrix)
+        adtest((a) -> ewise(log, a), a_vector)
+        adtest((a) -> ewise(log, a), a_row_vector)
+        adtest((a) -> ewise(log, a), a_matrix)
     end
 
     @testset "lgamma" begin
-        
-        # lgamma(scalar)
         adtest(lgamma, a_scalar)
-
-        # lgamma.(column vector)
-        adtest((a) -> lgamma.(a), a_vector)
-
-        # lgamma.(row vector)
-        adtest((a) -> lgamma.(a), a_row_vector)
-
-        # lgamma.(matrix)
-        adtest((a) -> lgamma.(a), a_matrix)
+        adtest((a) -> ewise(lgamma, a), a_vector)
+        adtest((a) -> ewise(lgamma, a), a_row_vector)
+        adtest((a) -> ewise(lgamma, a), a_matrix)
     end
 
     @testset "sum" begin
-        
-        # sum(scalar)
         adtest(sum, a_scalar)
-
-        # sum(column vector)
         adtest(sum, a_vector)
-
-        # sum(row vector)
         adtest(sum, a_row_vector)
-
-        # sum(matrix)
         adtest(sum, a_matrix)
     end
 

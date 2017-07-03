@@ -23,7 +23,7 @@ macro generate_gen_binary_operator(op, node_type, a_type, b_type)
         end)
 end
 
-macro generate_gen_concrete_binary_operator(op, node_type, a_type, b_type)
+macro generate_concrete_gen_binary_operator(op, node_type, a_type, b_type)
     eval(quote
             function ($op)(ldatum::$a_type, r::$b_type)
                 l = makeGenValue(ldatum, r.tape)
@@ -32,10 +32,10 @@ macro generate_gen_concrete_binary_operator(op, node_type, a_type, b_type)
         end)
 end
 
-macro generate_concrete_gen_binary_operator(op, node_type, a_type, b_type)
+macro generate_gen_concrete_binary_operator(op, node_type, a_type, b_type)
     eval(quote
             function ($op)(l::$a_type, rdatum::$b_type)
-                r = makeGenValue(rdatum, k.tape)
+                r = makeGenValue(rdatum, l.tape)
                 makeGenValue(($op)(concrete(l), rdatum), l.tape, ($node_type)(l, r))
             end
         end)
@@ -43,25 +43,25 @@ end
 
 macro generate_gen_binary_broadcast(op, node_type, a_type, b_type)
     eval(quote
-            function broadcast(::typeof($op), l::$a_type, r::$b_type)
+            function ewise(::typeof($op), l::$a_type, r::$b_type)
                 makeGenValue(broadcast($op, concrete(l), concrete(r)), l.tape, ($node_type)(l, r))
-            end
-        end)
-end
-
-macro generate_gen_concrete_binary_broadcast(op, node_type, a_type, b_type)
-    eval(quote
-            function broadcast(::typeof($op), ldatum::$a_type, r::$b_type)
-                l = makeGenValue(ldatum, r.tape)
-                makeGenValue(broadcast($op, ldatum, concrete(r)), l.tape, ($node_type)(l, r))
             end
         end)
 end
 
 macro generate_concrete_gen_binary_broadcast(op, node_type, a_type, b_type)
     eval(quote
-            function broadcast(::typeof($op), l::$a_type, rdatum::$b_type)
-                r = makeGenValue(rdatum, k.tape)
+            function ewise(::typeof($op), ldatum::$a_type, r::$b_type)
+                l = makeGenValue(ldatum, r.tape)
+                makeGenValue(broadcast($op, ldatum, concrete(r)), l.tape, ($node_type)(l, r))
+            end
+        end)
+end
+
+macro generate_gen_concrete_binary_broadcast(op, node_type, a_type, b_type)
+    eval(quote
+            function ewise(::typeof($op), l::$a_type, rdatum::$b_type)
+                r = makeGenValue(rdatum, l.tape)
                 makeGenValue(broadcast($op, concrete(l), rdatum), l.tape, ($node_type)(l, r))
             end
         end)
@@ -87,26 +87,12 @@ end
 
 macro generate_gen_unary_broadcast(op, node_type, a_type)
     eval(quote
-            function broadcast(::typeof($op), l::$a_type)
+            function ewise(::typeof($op), l::$a_type)
                 makeGenValue(broadcast($op, concrete(l)), l.tape, ($node_type)(l))
             end
         end)
 end
 
-
-# create Gen value from a concrete value
-
-makeGenValue(datum::ConcreteScalar, tape::Tape) = GenScalar(datum, tape, Input())
-makeGenValue(datum::ConcreteScalar, tape::Tape, op::AbstractOperator) = GenScalar(datum, tape, op)
-
-makeGenValue(datum::ConcreteColumnVector, tape::Tape) = GenColumnVector(datum, tape, Input())
-makeGenValue(datum::ConcreteColumnVector, tape::Tape, op::AbstractOperator) = GenColumnVector(datum, tape, op)
-
-makeGenValue(datum::ConcreteRowVector, tape::Tape) = GenRowVector(datum, tape, Input())
-makeGenValue(datum::ConcreteRowVector, tape::Tape, op::AbstractOperator) = GenRowVector(datum, tape, op)
-
-makeGenValue(datum::ConcreteMatrix, tape::Tape) = GenMatrix(datum, tape, Input())
-makeGenValue(datum::ConcreteMatrix, tape::Tape, op::AbstractOperator) = GenMatrix(datum, tape, op)
 
 
 # NOTES:
@@ -813,3 +799,4 @@ end
 
 # TODO handle slice indexing. This might be handled currently but inefficiently by Julia's
 # AbstractArray indexing facilities, which will probably produce an array of GenScalars
+

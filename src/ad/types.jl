@@ -37,14 +37,12 @@ function GenScalar{S<:Real, T<:AbstractOperator}(datum::S, tape::Tape, op::T)
 end
 
 GenScalar{S}(datum::S, tape::Tape) = GenScalar(datum, tape, Input())
-Base.size(v::GenScalar) = size(v.datum)
-Base.length(v::GenScalar) = length(v.datum)
 Base.getindex(v::GenScalar, i::Int) =  i == 1 ? v : error("Invalid index $i into scalar")
 
 
 # column vector numeric type
 
-mutable struct GenColumnVector{S<:Real, T<:AbstractOperator} <: AbstractArray{GenScalar{S}, 1}
+mutable struct GenColumnVector{S<:Real, T<:AbstractOperator}# <: AbstractArray{GenScalar{S}, 1}
     # NOTE: the datum is immutable (there is no setindex! operator)
     datum::Vector{S}
     adj::Vector{Float64}
@@ -61,8 +59,6 @@ function GenColumnVector{S<:Real, T<:AbstractOperator}(datum::Vector{S}, tape::T
 end
 
 GenColumnVector{S<:Real}(datum::Vector{S}, tape::Tape) = GenColumnVector(datum, tape, Input())
-
-Base.size(v::GenColumnVector) = size(v.datum)
 Base.IndexStyle(v::GenColumnVector) = IndexLinear()
 
 
@@ -85,8 +81,6 @@ function GenRowVector{S<:Real, T<:AbstractOperator}(datum::RowVector{S,Vector{S}
 end
 
 GenRowVector{S<:Real}(datum::Vector{S}, tape::Tape) = GenRowVector(datum, tape, Input())
-
-Base.size(v::GenRowVector) = size(v.datum)
 Base.IndexStyle(v::GenRowVector) = IndexLinear()
 
 
@@ -109,28 +103,23 @@ function GenMatrix{S<:Real, T<:AbstractOperator}(datum::Matrix{S}, tape::Tape, o
 end
 
 GenMatrix{S<:Real}(datum::Matrix{S}, tape::Tape) = GenMatrix(datum, tape, Input())
-
-Base.size(v::GenMatrix) = size(v.datum)
 Base.IndexStyle(v::GenMatrix) = IndexLinear()
 
 
-# other types
 
+# common
 GenValue = Union{GenScalar, GenColumnVector, GenRowVector, GenMatrix}
+Base.size(v::GenValue) = size(v.datum)
+Base.length(v::GenValue) = length(v.datum)
+
+
+# other types
 GenVector = Union{GenColumnVector, GenRowVector}
-ColumnOrRowVector = Union{Vector{W}, RowVector{W, Vector{W}}} where W<:Real
 
 ConcreteScalar = Real
 ConcreteColumnVector = Vector{W} where W<:Real
 ConcreteRowVector = RowVector{W, Vector{W}} where W<:Real
 ConcreteMatrix = Matrix{W} where W<:Real
-
-# adjoints always use Float64
-
-ScalarAdjoint = Float64
-ColumnVectorAdjoint = ConcreteColumnVector{Float64}
-RowVectorAdjoint = ConcreteRowVector{Float64}
-MatrixAdjoint = ConcreteMatrix{Float64}
 
 ConcreteValue = Union{
     ConcreteScalar,
@@ -139,11 +128,35 @@ ConcreteValue = Union{
     ConcreteMatrix
 }
 
+# element-wise operations on concrete values are equivalent to broadcast
+ewise(f, a::ConcreteValue) = broadcast(f, a)
+ewise(f, a::ConcreteValue, b::ConcreteValue) = broadcast(f, a, b)
+
+
+# create Gen value from a concrete value
+
+makeGenValue(datum::ConcreteScalar, tape::Tape) = GenScalar(datum, tape, Input())
+makeGenValue(datum::ConcreteScalar, tape::Tape, op::AbstractOperator) = GenScalar(datum, tape, op)
+
+makeGenValue(datum::ConcreteColumnVector, tape::Tape) = GenColumnVector(datum, tape, Input())
+makeGenValue(datum::ConcreteColumnVector, tape::Tape, op::AbstractOperator) = GenColumnVector(datum, tape, op)
+
+makeGenValue(datum::ConcreteRowVector, tape::Tape) = GenRowVector(datum, tape, Input())
+makeGenValue(datum::ConcreteRowVector, tape::Tape, op::AbstractOperator) = GenRowVector(datum, tape, op)
+
+makeGenValue(datum::ConcreteMatrix, tape::Tape) = GenMatrix(datum, tape, Input())
+makeGenValue(datum::ConcreteMatrix, tape::Tape, op::AbstractOperator) = GenMatrix(datum, tape, op)
+
+# adjoints always use Float64
+
+ScalarAdjoint = Float64
+ColumnVectorAdjoint = ConcreteColumnVector{Float64}
+RowVectorAdjoint = ConcreteRowVector{Float64}
+MatrixAdjoint = ConcreteMatrix{Float64}
+
 # show
 import Base.show
 show(io::IO, num::GenValue) = show(io, num.datum)
-
-
 
 # indexing into a vector gives a scalar
 
@@ -176,9 +189,7 @@ end
 
 # getting concrete values from the numeric struct
 
-concrete(x::Real) = x
-concrete(x::ColumnOrRowVector{W}) where W<:Real = x
-concrete(x::Matrix{W}) where W<:Real = x
+concrete(x::ConcreteValue) = x
 concrete(x::GenValue) = x.datum
 
 
@@ -208,6 +219,14 @@ export GenScalar
 export GenColumnVector
 export GenRowVector
 export GenMatrix
-export datum
+export GenValue
+export makeGenValue
+export ConcreteScalar
+export ConcreteColumnVector
+export ConcreteRowVector
+export ConcreteMatrix
+export ConcreteValue
+export concrete
 export backprop
 export partial
+export ewise
