@@ -101,7 +101,7 @@ function here(figure::Figure)
 end
 
 
-struct JupyterInlineRenderer
+mutable struct JupyterInlineRenderer
     name::String # The target name for Javascript
     dom_element_id::Nullable{String} # The DOM element where the JS code should render to
     comm::IJulia.Comm # communication object to Javascript
