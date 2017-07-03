@@ -119,20 +119,10 @@ function intervene!(trace::AbstractTrace, name::String, val::Any)
     trace.interventions[name] = val
 end
 
-function parametrize!(trace::DifferentiableTrace, name::String, val::Float64)
-    # just an intervene! that converts it to a GenScalar first (with the right tape)
+function parametrize!(trace::DifferentiableTrace, name::String, val::ConcreteValue)
+    # just an intervene! that converts it to a GenValue first (with the right tape)
     check_not_exists(trace, name)
-    trace.interventions[name] = GenScalar(val, trace.tape)
-end
-
-function parametrize!(trace::DifferentiableTrace, name::String, val::Vector{Float64})
-    check_not_exists(trace, name)
-    trace.interventions[name] = GenVector(val, trace.tape)
-end
-
-function parametrize!(trace::DifferentiableTrace, name::String, val::Matrix{Float64})
-    check_not_exists(trace, name)
-    trace.interventions[name] = GenMatrix(val, trace.tape)
+    trace.interventions[name] = makeGenValue(val, trace.tape)
 end
 
 function propose!(trace::AbstractTrace, name::String)
@@ -284,7 +274,7 @@ function expand_non_module(expr, name)
     end
 end
 
-macro ~(expr, name)
+macro tag(expr, name)
     # WARNING: T is a reserved symbol for 'trace'. It is an error if T occurs
     # in the program.
     # TODO: how to do this in a hygenic way?
@@ -376,7 +366,7 @@ export DifferentiableTrace
 export AbstractTrace
 export @program
 export @generate
-export @~
+export @tag
 export constrain!
 export intervene!
 export parametrize!
