@@ -93,5 +93,5 @@ end
 
 register_module(:gamma, Gamma())
 
-gamma{M,N}(k::M, s::N) = simulate(Gamma(), k, s)[2]
+gamma{M,N}(k::M, s::N) = simulate(Gamma(), k, s)[1]
 export gamma
