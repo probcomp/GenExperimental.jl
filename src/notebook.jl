@@ -136,7 +136,7 @@ end
     #renderer.dom_element_id = "$(subfigure.first.id)_frame$(subfigure.second)"
 #end
 
-function render(renderer::JupyterInlineRenderer, trace::Trace) # TODO handle DifferentiableTrace
+function render(renderer::JupyterInlineRenderer, trace::Trace; args...) # TODO handle DifferentiableTrace
     local id::String
     global active_viewport
     if (isnull(renderer.dom_element_id))
@@ -149,9 +149,8 @@ function render(renderer::JupyterInlineRenderer, trace::Trace) # TODO handle Dif
         # use explicitly attached viewport
         id = get(renderer.dom_element_id)
     end
-    IJulia.send_comm(renderer.comm, Dict("trace" => trace,
-										 "dom_element_id" => id,
-                                         "conf" => renderer.configuration))
+    data = Dict("trace" => trace, "dom_element_id" => id, "conf" => renderer.configuration, "args" => Dict(args))
+    IJulia.send_comm(renderer.comm, data)
 end
 
 macro javascript_str(s) display("text/javascript", s); end

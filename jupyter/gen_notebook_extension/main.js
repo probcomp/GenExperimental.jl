@@ -23,7 +23,8 @@ define(['require'], function(require) {
                 var id = msg.content.data.dom_element_id;
                 var trace = msg.content.data.trace;
                 var conf = msg.content.data.conf;
-                render_function(id, trace, conf);
+                var args = msg.content.data.args;
+                render_function(id, trace, conf, args);
             })
         });
         
