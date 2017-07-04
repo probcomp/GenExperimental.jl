@@ -1,7 +1,8 @@
 # Gen
 
-Gen is a featherweight embedded probabilistic programming language and
-compositional inference programming library
+Gen is a featherweight embedded probabilistic programming language and compositional inference programming library.
+
+Tested with Julia 0.6.0
 
 
 ## Installing
