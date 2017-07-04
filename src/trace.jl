@@ -37,7 +37,7 @@ mutable struct Trace <: AbstractTrace
     proposals::OrderedSet{String}
     recorded::OrderedDict{String,Any}
     visited::OrderedSet{String}
-    log_weight::Float64
+    score::Float64
     function Trace()
         constraints = OrderedDict{String,Any}()
         interventions = OrderedDict{String,Any}()
@@ -54,7 +54,7 @@ mutable struct DifferentiableTrace <: AbstractTrace
     proposals::OrderedSet{String}
     recorded::OrderedDict{String,Any}
     visited::OrderedSet{String}
-    log_weight::GenScalar # becomes type GenFloat (which can be automatically converted from a Float64)
+    score::GenScalar # becomes type GenFloat (which can be automatically converted from a Float64)
     tape::Tape
     function DifferentiableTrace()
         tape = Tape()
@@ -114,6 +114,13 @@ function constrain!(trace::AbstractTrace, name::String, val::Any)
     trace.constraints[name] = val
 end
 
+function unconstrain!(trace::AbstractTrace, name::String)
+    val = trace.constraints[name]
+    delete!(trace.constraints, name)
+    trace.recorded[name] = val
+end
+
+
 function intervene!(trace::AbstractTrace, name::String, val::Any)
     check_not_exists(trace, name)
     trace.interventions[name] = val
@@ -130,22 +137,14 @@ function propose!(trace::AbstractTrace, name::String)
     push!(trace.proposals, name)
 end
 
-function backprop(trace::DifferentiableTrace)
-    backprop(trace.log_weight)
-end
-
-function score(trace::AbstractTrace)
-    concrete(trace.log_weight)
-end
-
 function prepare(trace::Trace)
     trace.visited = OrderedSet{String}()
-    trace.log_weight = 0.0
+    #trace.score = 0.0
 end
 
 function prepare(trace::DifferentiableTrace)
     trace.visited = OrderedSet{String}()
-    trace.log_weight= GenScalar(0.0, trace.tape)
+    #trace.score= GenScalar(0.0, trace.tape)
 end
 
 function check_visited(trace::AbstractTrace)
@@ -168,11 +167,18 @@ end
 
 function finalize(trace::Trace)
     check_visited(trace)
+    previous_score = trace.score
+    trace.score = 0.0
+    previous_score
 end
 
 function finalize(trace::DifferentiableTrace)
     check_visited(trace)
+    previous_score = trace.score
+    backprop(previous_score)
+    trace.score = GenScalar(0.0, trace.tape)
     trace.tape = Tape()
+    concrete(previous_score)
 end
 
 
@@ -238,13 +244,13 @@ function expand_module(expr, name)
             val = $(esc(:T)).interventions[name]
         elseif haskey($(esc(:T)).constraints, name)
             val = $(esc(:T)).constraints[name]
-            $(esc(:T)).log_weight += regenerate($(mod), val, $(args...))
+            $(esc(:T)).score += regenerate($(mod), val, $(args...))
         else
-            (val, log_weight) = simulate($(mod), $(args...))
+            (val, score) = simulate($(mod), $(args...))
             # NOTE: will overwrite the previous value if it was already recorded
             $(esc(:T)).recorded[name] = val
             if name in $(esc(:T)).proposals
-                $(esc(:T)).log_weight += log_weight 
+                $(esc(:T)).score += score 
             end
         end
         push!($(esc(:T)).visited, name)
@@ -330,7 +336,7 @@ macro generate(trace, program)
     end
     function_name = program.args[1]
     quote
-        # reset the score to zero, and the visited set to empty
+        # and the visited set to empty
         prepare($(esc(trace)))
 
         # run the program, passing in the trace as the first arg.
@@ -339,14 +345,87 @@ macro generate(trace, program)
             $(map((a) -> esc(a), program.args[2:end])...))
 
         # reset the tape (the old tape is preserved through
-        # the reference of the log-weight)
-        # this is so the old log-weight can still be referenced
+        # the reference of the score)
+        # this is so the old score can still be referenced
         # (and gradients for it can be taken) while new parameters
         # can be meanwhile parameterize!-d 
-        finalize($(esc(trace)))
-        value
+        previous_score = finalize($(esc(trace)))
+
+        # return the previous score. the return value of the function is discarded.
+        previous_score
     end
 end
+
+macro generate(model_trace, model_program, proposal_program, mapping)
+    quote
+        # TODO check that model_trace has no choices set to propose?
+
+        # fill in any missing values in the mapping by sampling from the proposal program
+        # constrain the proposal program for any choices that were provided
+        proposal_trace = Trace()
+        new_model_constraints = Set{String}()
+        #local model_trace = $(esc(model_trace))
+        for (proposal_name, model_name) in $(esc(mapping))
+            if !hasconstraint($(esc(model_trace)), model_name)
+                propose!(proposal_trace, proposal_name)
+                push!(new_model_constraints, model_name)
+            else
+                constrain!(proposal_trace, proposal_name, value($(esc(model_trace)), model_name))
+            end
+        end
+        proposal_score = @generate(proposal_trace, $(esc(proposal_program)))
+
+        # score the values in the mapping, along with any extant constraints in the model trace,
+        # under the model program
+        for (proposal_name, model_name) in $(esc(mapping))
+            if !hasconstraint($(esc(model_trace)), model_name)
+                constrain!($(esc(model_trace)), model_name, value(proposal_trace, proposal_name))
+            end
+        end
+        model_score = @generate($(esc(model_trace)), $(esc(model_program)))
+
+		# convert new constraints to to just recorded values (keep old constraints)
+		for model_name in new_model_constraints
+			unconstrain!($(esc(model_trace)), model_name)
+		end
+        model_score - proposal_score
+    end
+end
+
+macro generate(model_trace, model_program, proposal_trace, proposal_program, mapping)
+    quote
+        # TODO check that model_trace has no choices set to propose?
+
+        # fill in any missing values in the mapping by sampling from the proposal program
+        # constrain the proposal program for any choices that were provided
+        new_model_constraints = Set{String}()
+        for (proposal_name, model_name) in $(esc(mapping))
+            if !hasconstraint($(esc(model_trace)), model_name)
+                propose!($(esc(proposal_trace)), proposal_name)
+                push!(new_model_constraints, model_name)
+            else
+                constrain!($(esc(proposal_trace)), proposal_name, value($(esc(model_trace)), model_name))
+            end
+        end
+        proposal_score = @generate($(esc(proposal_trace)), $(esc(proposal_program)))
+
+        # score the values in the mapping, along with any extant constraints in the model trace,
+        # under the model program
+        for (proposal_name, model_name) in $(esc(mapping))
+            if !hasconstraint($(esc(model_trace)), model_name)
+                constrain!($(esc(model_trace)), model_name, value($(esc(proposal_trace)), proposal_name))
+            end
+        end
+        model_score = @generate($(esc(model_trace)), $(esc(model_program)))
+
+		# convert new constraints to to just recorded values (keep old constraints)
+		for model_name in new_model_constraints
+			unconstrain!($(esc(model_trace)), model_name)
+		end
+        model_score - proposal_score
+    end
+end
+
 
 # TODO: this is substnatially different from the two-arguemnt form of
 # @generate in its semantics. perhaps it should be given a 
@@ -368,13 +447,13 @@ export @program
 export @generate
 export @tag
 export constrain!
+export unconstrain!
 export intervene!
 export parametrize!
 export derivative
 export propose!
 export hasvalue
 export value 
-export backprop
 export score
 export hasconstraint
 export choices
