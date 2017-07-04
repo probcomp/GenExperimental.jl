@@ -10,6 +10,7 @@ First, install the Julia packages that Gen depends on:
 ```
 julia> Pkg.add("Distributions")
 julia> Pkg.add("DataStructures")
+julia> Pkg.add("SpecialFunctions")
 ```
 
 To make Gen available for import with `using Gen`, add the following to your

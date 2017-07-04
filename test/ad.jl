@@ -1,13 +1,16 @@
 
 dx = 1e-6
 
-function finite_difference(f, val::Float64)
+
+function finite_difference(f, val::Real)
     x_pos = val + dx
     x_neg = val - dx
     (f(x_pos) - f(x_neg)) / (2. * dx)
 end
 
-function finite_difference(f, val::Vector{Float64})
+ColumnOrRowVector = Union{Vector{W}, RowVector{W, Vector{W}}} where W<:Real
+
+function finite_difference(f, val::ColumnOrRowVector{W}) where W<:Real
     grad = zeros(val)
     for i=1:length(val)
         e_vec = zeros(val)
@@ -35,235 +38,307 @@ function finite_difference(f, val::Matrix{Float64})
 end
 
 
-@testset "automatic differentiation" begin
+function adtest(f, a_val, b_val)
 
-    @testset "basic operations" begin
+    # test that the operator behavior matches the operator on the built-in types
 
-        srand(1)
-        a_val, b_val = rand(2)
-    
-        # binary plus
-        tape = Tape()
-        a = GenScalar(a_val, tape)
-        b = GenScalar(b_val, tape)
-        c = a + b
-        backprop(c)
-        @test isapprox(partial(a), finite_difference((x) -> x + b_val, a_val))
-        @test isapprox(partial(b), finite_difference((x) -> a_val + x, b_val))
-        @test concrete(a) + concrete(b) == concrete(a + b)
+    # gen - gen
+    tape = Tape()
+    a = makeGenValue(a_val, tape)
+    b = makeGenValue(b_val, tape)
+    result = f(a, b)
+    @test f(a_val, b_val) == concrete(result)
 
-        # unary plus
-        tape = Tape()
-        a = GenScalar(a_val, tape)
-        c = +a
-        backprop(c)
-        @test isapprox(partial(a), finite_difference((x) -> +x, a_val))
-        @test concrete(+a) == concrete(a)
-    
-        # binary minus
-        tape = Tape()
-        a = GenScalar(a_val, tape)
-        b = GenScalar(b_val, tape)
-        c = a - b
-        backprop(c)
-        @test isapprox(partial(a), finite_difference((x) -> x - b_val, a_val))
-        @test isapprox(partial(b), finite_difference((x) -> a_val - x, b_val))
-        @test concrete(a - b) == concrete(a) - concrete(b)
-    
-        # unary minus
-        tape = Tape()
-        a = GenScalar(a_val, tape)
-        c = -a
-        backprop(c)
-        @test isapprox(partial(a), finite_difference((x) -> -x, a_val))
-        @test concrete(-a) == -concrete(a)
+    # gen - concrete
+    tape = Tape()
+    a = makeGenValue(a_val, tape)
+    result = f(a, b_val)
+    @test f(a_val, b_val) == concrete(result)
 
-        # times
-        tape = Tape()
-        a = GenScalar(a_val, tape)
-        b = GenScalar(b_val, tape)
-        c = a * b
-        backprop(c)
-        @test isapprox(partial(a), finite_difference((x) -> x * b_val, a_val))
-        @test isapprox(partial(b), finite_difference((x) -> a_val * x, b_val))
-        @test concrete(a * b) == concrete(a) * concrete(b)
-    
-        # divide
-        tape = Tape()
-        a = GenScalar(a_val, tape)
-        b = GenScalar(b_val, tape)
-        c = a / b
-        backprop(c)
-        @test isapprox(partial(a), finite_difference((x) -> x / b_val, a_val))
-        @test isapprox(partial(b), finite_difference((x) -> a_val / x, b_val))
-        @test concrete(a / b) == concrete(a) / concrete(b)
-    
-        # log 
-        tape = Tape()
-        a = GenScalar(a_val, tape)
-        c = log(a)
-        backprop(c)
-        @test isapprox(partial(a), finite_difference(log, a_val))
-        @test concrete(log(a)) == log(concrete(a))
-    
-        # exp 
-        tape = Tape()
-        a = GenScalar(a_val, tape)
-        c = exp(a)
-        backprop(c)
-        @test isapprox(partial(a), finite_difference(exp, a_val))
-        @test concrete(exp(a)) == exp(concrete(a))
+    # concrete - gen 
+    tape = Tape()
+    b = makeGenValue(b_val, tape)
+    result = f(a_val, b)
+    @test f(a_val, b_val) == concrete(result)
 
-        # lgamma
+    # test backpropagation
+    # this works for scalars, vectors, and matrix results.
+    # note that scalars have scalar[1] = scalar
+    for i=1:length(result)
         tape = Tape()
-        a = GenScalar(a_val, tape)
-        c = lgamma(a)
-        backprop(c)
-        @test isapprox(partial(a), finite_difference(lgamma, a_val))
-        @test concrete(lgamma(a)) == lgamma(concrete(a))
-
+        a = makeGenValue(a_val, tape)
+        b = makeGenValue(b_val, tape)
+        f_i = (x, y) -> f(x, y)[i]
+        result_i = f_i(a, b)
+        backprop(result_i)
+        @test isapprox(partial(a), finite_difference((x) -> f_i(x, b_val), a_val))
+        @test isapprox(partial(b), finite_difference((x) -> f_i(a_val, x), b_val))
     end
-
-    @testset "simple expressions" begin
-        
-        srand(1)
-        x_val, y_val, z_val = rand(3)
-
-        # w = x + y + z
-        tape = Tape()
-        x = GenScalar(x_val, tape)
-        y = GenScalar(y_val, tape)
-        z = GenScalar(z_val, tape)
-        w = x + y - z
-        backprop(w)
-        @test isapprox(partial(x), finite_difference((x) -> (x + y_val - z_val), x_val))
-        @test isapprox(partial(y), finite_difference((y) -> (x_val + y - z_val), y_val))
-        @test isapprox(partial(z), finite_difference((z) -> (x_val + y_val - z), z_val))
-
-    end
-
-    @testset "sigmoid function" begin
-        srand(1)
-        sig = (x) -> Float64(1.0) / (Float64(1.0) + exp(-x))
-        tape = Tape()
-        x_val = rand()
-        x = GenScalar(x_val, tape)
-        y = sig(x)
-        backprop(y)
-        @test isapprox(partial(x), finite_difference(sig, x_val))
-        
-    end
-
-    @testset "operations involving matrices" begin
-
-        # getindex
-        tape = Tape()
-        a_val = rand(2, 3)
-        a = GenMatrix(a_val, tape)
-        b = a[1, 2]
-        backprop(b)
-        @test isapprox(partial(a), [0. 1. 0.; 0. 0. 0.])
-
-        # multiply and sum
-        tape = Tape()
-        a_val = rand(2, 3)
-        b_val = rand(3, 2)
-        a = GenMatrix(a_val, tape)
-        b = GenMatrix(b_val, tape)
-        c = sum(a * b)
-        backprop(c)
-        # a * b
-        # (a * b)[1,1] = a[1,1]*b[1,1] + a[1,2]*b[2,1] + a[1,3]*b[3,1]
-        # (a * b)[1,2] = a[1,1]*b[1,2] + a[1,2]*b[2,2] + a[1,3]*b[3,2]
-        # (a * b)[2,1] = a[2,1]*b[1,1] + a[2,2]*b[2,1] + a[2,3]*b[3,1]
-        # (a * b)[2,2] = a[2,1]*b[1,2] + a[2,2]*b[2,2] + a[2,3]*b[3,2]
-
-        # deriv a[1,1] = b[1,1] + b[1,2]
-        # deriv a[1,2] = b[2,1] + b[2,2]
-        # deriv a[1,3] = b[3,1] + b[3,2]
-        # deriv a[2,1] = b[1,1] + b[1,2]
-        # deriv a[2,2] = b[2,1] + b[2,2]
-        # deriv a[2,3] = b[3,1] + b[3,2]
-        row = sum(b_val, 2)'
-        @test isapprox(partial(a), vcat(row, row))
-        
-        # deriv b[1,1] = a[1,1] + a[2,1]
-        # deriv b[1,2] = a[1,1] + a[2,1]
-        # deriv b[2,1] = a[1,2] + a[2,2]
-        # deriv b[2,2] = a[1,2] + a[2,2]
-        # deriv b[3,1] = a[1,3] + a[2,3]
-        # deriv b[3,2] = a[1,3] + a[2,3]
-        col = sum(a_val, 1)'
-        @test isapprox(partial(b), hcat(col, col))
-
-        # elementwise op
-        tape = Tape()
-        a_val = rand(2, 3)
-        a = GenMatrix(a_val, tape)
-        b = exp(a)
-        backprop(sum(b))
-        @test isapprox(partial(a), exp(a_val))
-    
-    end
-
-    @testset "operations involving vectors" begin
-
-        # getindex
-        tape = Tape()
-        a_val = rand(2)
-        a = GenVector(a_val, tape)
-        f = (a) -> a[2]
-        b = f(a)
-        backprop(b)
-        @test isapprox(partial(a), finite_difference(f, a_val))
-        @test concrete(b) == f(a_val)
-
-        # transpose
-        tape = Tape()
-        a_val = rand(2)
-        a = GenVector(a_val, tape)
-        f = (a) -> a'
-        b = f(a)
-        @test typeof(b) <: GenMatrix
-        @test concrete(b) == f(a_val)
-        backprop(b[1, 2])
-        @test isapprox(partial(a), finite_difference((a) -> (a')[1,2], a_val))
-
-        # matrix-vector multiply
-        tape = Tape()
-        a_val = rand(2)
-        b_val = rand(3, 2)
-        a = GenVector(a_val, tape)
-        b = GenMatrix(b_val, tape)
-        c = b * a
-        @test typeof(c) <: GenVector
-        @test concrete(c) == b_val * a_val
-        backprop(c[1])
-        # b * a
-        # (b * a)[1] = b[1,1]*a[1] + b[1,2]*a[2] 
-        # deriv a[1] = b[1,1]
-        # deriv a[2] = b[1,2]
-        @test isapprox(partial(a), finite_difference((a) -> (b_val * a)[1], a_val))
-        
-        # deriv b[1,1] = a[1]
-        # deriv b[1,2] = a[2]
-        # deriv b[2,1] = 0.
-        # deriv b[2,2] = 0.
-        # deriv b[3,1] = 0.
-        # deriv b[3,2] = 0.
-        @test isapprox(partial(b), finite_difference((b) -> (b * a_val)[1], b_val))
-
-        # elementwise op
-        tape = Tape()
-        a_val = rand(2)
-        a = GenVector(a_val, tape)
-        b = exp(a)
-        backprop(sum(b))
-        @test isapprox(partial(a), finite_difference((a) -> sum(exp(a)), a_val))
-    
-    end
-
-
 end
 
+function adtest(f, a_val)
 
+    # test that the operator behavior matches the operator on the built-in types
+    tape = Tape()
+    a = makeGenValue(a_val, tape)
+    result = f(a)
+    @test f(a_val) == concrete(result)
+
+    # test backpropagation
+    # this works for scalars, vectors, and matrix results.
+    # note that scalars have scalar[1] = scalar
+    for i=1:length(result)
+        tape = Tape()
+        a = makeGenValue(a_val, tape)
+        f_i = (x) -> f(x)[i]
+        result_i = f_i(a)
+        backprop(result_i)
+        @test isapprox(partial(a), finite_difference(f_i, a_val))
+    end
+end
+
+@testset "automatic differentiation" begin
+
+    a_scalar = 1.300181
+    b_scalar = 1.45245
+    a_vector = [1.4123, 4.3452]
+    b_vector = [8.3453, 0.9913]
+    a_row_vector = a_vector'
+    b_row_vector = b_vector'
+    a_matrix = [1.4123 4.3452 40.1; 10.123 0.9314 0.11] # 2 rows, 3 columns
+    b_matrix = [4.13 33.123 5.32431; 4.314 5.1341 8.09] # 2 rows, 3 columns
+
+    @testset "add" begin
+        adtest(+, a_scalar, b_scalar)
+        adtest((a, b) -> ewise(+, a, b), a_scalar, b_scalar)
+        adtest((a, b) -> (a + b), a_scalar, a_vector)
+        adtest((a, b) -> (a + b), a_scalar, a_row_vector)
+        adtest((a, b) -> ewise(+, a, b), a_scalar, a_vector)
+        adtest((a, b) -> ewise(+, a, b), a_scalar, a_row_vector)
+        adtest((a, b) -> (a + b), a_vector, a_scalar)
+        adtest((a, b) -> (a + b), a_row_vector, a_scalar)
+        adtest((a, b) -> ewise(+, a, b), a_vector, a_scalar)
+        adtest((a, b) -> ewise(+, a, b), a_row_vector, a_scalar)
+        adtest((a, b) -> (a + b), a_vector, b_vector)
+        adtest((a, b) -> ewise(+, a, b), a_vector, b_vector)
+        adtest((a, b) -> (a + b), a_row_vector, b_row_vector)
+        adtest((a, b) -> ewise(+, a, b), a_row_vector, b_row_vector)
+
+        # column vector .+ row vector
+        # TODO not implemented yet
+        #adtest((a, b) -> ewise(+, a, b), a_vector, b_row_vector)
+
+        # row vector .+ column vector
+        # TODO not implemented yet
+        #adtest((a, b) -> ewise(+, a, b), a_row_vector, b_vector)
+
+        # scalar + matrix
+        # TODO not implemented yet
+        #adtest((a, b) -> (a + b), a_scalar, a_matrix)
+
+        # matrix + scalar
+        # TODO not implemented yet
+        #adtest((a, b) -> (a + b), a_matrix, a_scalar)
+
+        # scalar .+ matrix
+        # TODO not implemented yet
+        #adtest((a, b) -> ewise(+, a, b), a_scalar, a_matrix)
+
+        # matrix .+ scalar
+        # TODO not implemented yet
+        #adtest((a, b) -> ewise(+, a, b), a_matrix, a_scalar)
+
+        # matrix + matrix
+        # TODO not implemented yet
+        #adtest((a, b) -> (a + b), a_matrix, a_scalar)
+
+        # matrix .+ matrix
+        # TODO not implemented yet
+        #adtest((a, b) -> ewise(+, a, b), a_matrix, a_scalar)
+
+        # matrix .+ vector (broadcast)
+        # TODO not implemented yet
+
+        # vector .+ matrix (broadcast)
+        # TODO not implemented yet
+
+        # TODO test cartesian indexing into a matrix
+    end
+
+    @testset "subtract" begin
+        adtest(-, a_scalar, b_scalar)
+        adtest((a, b) -> ewise(-, a, b), a_scalar, b_scalar)
+        adtest((a, b) -> (a - b), a_scalar, a_vector)
+        adtest((a, b) -> (a - b), a_scalar, a_row_vector)
+        adtest((a, b) -> ewise(-, a, b), a_scalar, a_vector)
+        adtest((a, b) -> ewise(-, a, b), a_scalar, a_row_vector)
+        adtest((a, b) -> (a - b), a_vector, a_scalar)
+        adtest((a, b) -> (a - b), a_row_vector, a_scalar)
+        adtest((a, b) -> ewise(-, a, b), a_vector, a_scalar)
+        adtest((a, b) -> ewise(-, a, b), a_row_vector, a_scalar)
+        adtest((a, b) -> (a - b), a_vector, b_vector)
+        adtest((a, b) -> ewise(-, a, b), a_vector, b_vector)
+        adtest((a, b) -> (a - b), a_row_vector, b_row_vector)
+        adtest((a, b) -> ewise(-, a, b), a_row_vector, b_row_vector)
+
+        # column vector .- row vector
+        # TODO not implemented yet
+        #adtest((a, b) -> ewise(-, a, b), a_vector, b_row_vector)
+
+        # row vector .- column vector
+        # TODO not implemented yet
+        #adtest((a, b) -> ewise(-, a, b), a_row_vector, b_vector)
+
+        # scalar - matrix
+        # TODO not implemented yet
+        #adtest((a, b) -> (a - b), a_scalar, a_matrix)
+
+        # matrix - scalar
+        # TODO not implemented yet
+        #adtest((a, b) -> (a - b), a_matrix, a_scalar)
+
+        # scalar .- matrix
+        # TODO not implemented yet
+        #adtest((a, b) -> ewise(-, a, b), a_scalar, a_matrix)
+
+        # matrix .- scalar
+        # TODO not implemented yet
+        #adtest((a, b) -> ewise(-, a, b), a_matrix, a_scalar)
+
+        # matrix - matrix
+        # TODO not implemented yet
+        #adtest((a, b) -> (a - b), a_matrix, a_scalar)
+
+        # matrix .- matrix
+        # TODO not implemented yet
+        #adtest((a, b) -> ewise(-, a, b), a_matrix, a_scalar)
+
+        # matrix .- vector (broadcast)
+        # TODO not implemented yet
+
+        # vector .- matrix (broadcast)
+        # TODO not implemented yet
+
+        # TODO test cartesian indexing into a matrix
+    end
+
+    @testset "divide" begin
+        adtest(/, a_scalar, b_scalar)
+        adtest((a, b) -> ewise(/, a, b), a_scalar, b_scalar)
+        adtest((a, b) -> ewise(/, a, b), a_scalar, a_vector)
+        adtest((a, b) -> ewise(/, a, b), a_scalar, a_row_vector)
+        adtest((a, b) -> (a / b), a_vector, a_scalar)
+        adtest((a, b) -> (a / b), a_row_vector, a_scalar)
+        adtest((a, b) -> ewise(/, a, b), a_vector, a_scalar)
+        adtest((a, b) -> ewise(/, a, b), a_row_vector, a_scalar)
+        adtest((a, b) -> ewise(/, a, b), a_vector, b_vector)
+        adtest((a, b) -> ewise(/, a, b), a_row_vector, b_row_vector)
+
+        # column vector ./ row vector
+        # TODO not implemented yet
+        #adtest((a, b) -> ewise(/, a, b), a_vector, b_row_vector)
+
+        # row vector ./ column vector
+        # TODO not implemented yet
+        #adtest((a, b) -> ewise(/, a, b), a_row_vector, b_vector)
+
+        adtest((a, b) -> ewise(/, a, b), a_scalar, a_matrix)
+        adtest((a, b) -> (a / b), a_matrix, a_scalar)
+        adtest((a, b) -> ewise(/, a, b), a_matrix, a_scalar)
+        adtest((a, b) -> ewise(/, a, b), a_matrix, a_scalar)
+
+        # matrix ./ vector (broadcast)
+        # TODO not implemented yet
+
+        # vector ./ matrix (broadcast)
+        # TODO not implemented yet
+
+        # TODO test cartesian indexing into a matrix
+    end
+
+    @testset "elementwise-multiply" begin
+        adtest(*, a_scalar, b_scalar)
+        adtest((a, b) -> ewise(*, a, b), a_scalar, b_scalar)
+        adtest((a, b) -> (a * b), a_scalar, a_vector)
+        adtest((a, b) -> (a * b), a_scalar, a_row_vector)
+        adtest((a, b) -> ewise(*, a, b), a_scalar, a_vector)
+        adtest((a, b) -> ewise(*, a, b), a_scalar, a_row_vector)
+        adtest((a, b) -> (a * b), a_vector, a_scalar)
+        adtest((a, b) -> (a * b), a_row_vector, a_scalar)
+        adtest((a, b) -> ewise(*, a, b), a_vector, a_scalar)
+        adtest((a, b) -> ewise(*, a, b), a_row_vector, a_scalar)
+        adtest((a, b) -> ewise(*, a, b), a_vector, b_vector)
+        adtest((a, b) -> ewise(*, a, b), a_row_vector, b_row_vector)
+        adtest((a, b) -> ewise(*, a, b), a_vector, b_row_vector)
+        adtest((a, b) -> ewise(*, a, b), a_row_vector, b_vector)
+        adtest((a, b) -> (a * b), a_scalar, a_matrix)
+        adtest((a, b) -> (a * b), a_matrix, a_scalar)
+        adtest((a, b) -> ewise(*, a, b), a_matrix, a_scalar)
+
+        # matrix .* vector (broadcast)
+        # TODO not implemented yet
+
+        # vector .* matrix (broadcast)
+        # TODO not implemented yet
+
+        # TODO test cartesian indexing into a matrix
+    end
+
+    @testset "matrix-multiply" begin
+        adtest((a, b) -> (a * b), a_matrix', a_matrix)
+        adtest((a, b) -> (a * b), a_matrix', a_vector)
+        #adtest((a, b) -> (a * b), a_row_vector, a_matrix) # TODO
+        adtest((a, b) -> (a * b), a_vector, b_row_vector)
+        adtest((a, b) -> (a * b), a_row_vector, b_vector)
+    end
+
+    @testset "transpose" begin
+        adtest((a) -> a', a_scalar)
+        adtest((a) -> a', a_matrix)
+        adtest((a) -> a', a_vector)
+        adtest((a) -> a', a_row_vector)
+    end
+
+    @testset "unary plus" begin
+        adtest(+, a_scalar)
+        adtest(+, a_vector)
+        adtest(+, a_row_vector)
+        adtest(+, a_matrix)
+    end
+
+    @testset "unary minus" begin
+        adtest(-, a_scalar)
+        adtest(-, a_vector)
+        adtest(-, a_row_vector)
+        adtest(-, a_matrix)
+    end
+
+    @testset "exp" begin
+        adtest(exp, a_scalar)
+        adtest((a) -> ewise(exp, a), a_vector)
+        adtest((a) -> ewise(exp, a), a_row_vector)
+        adtest((a) -> ewise(exp, a), a_matrix)
+    end
+
+    @testset "log" begin
+        adtest(log, a_scalar)
+        adtest((a) -> ewise(log, a), a_vector)
+        adtest((a) -> ewise(log, a), a_row_vector)
+        adtest((a) -> ewise(log, a), a_matrix)
+    end
+
+    @testset "lgamma" begin
+        adtest(lgamma, a_scalar)
+        adtest((a) -> ewise(lgamma, a), a_vector)
+        adtest((a) -> ewise(lgamma, a), a_row_vector)
+        adtest((a) -> ewise(lgamma, a), a_matrix)
+    end
+
+    @testset "sum" begin
+        adtest(sum, a_scalar)
+        adtest(sum, a_vector)
+        adtest(sum, a_row_vector)
+        adtest(sum, a_matrix)
+    end
+
+end

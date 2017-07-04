@@ -11,7 +11,7 @@ function random_viewport_name()
     "id_$(replace(string(Base.Random.uuid4()), "-", ""))"
 end
 
-type Figure
+mutable struct Figure
     id::String
     num_cols::Int
     num_rows::Int
@@ -27,7 +27,7 @@ type Figure
     margin_right::Real
     titles::Array{String,1}
     function Figure(;id::String=random_viewport_name(), num_cols::Int=1, num_rows::Int=1,
-                    width::Int=200, height::Int=200, 
+                    width::Int=200, height::Int=200,
                     trace_xmin::Real=0.0, trace_ymin::Real=0.0,
                     trace_width::Real=1.0, trace_height::Real=1.0,
                     margin_top::Real=0.0, margin_bottom::Real=0.0,
@@ -42,17 +42,17 @@ end
 id(figure::Figure) = figure.id
 
 id(subfigure::Pair{Figure,Int}) = "$(id(subfigure.first))_frame$(subfigure.second)"
-    
+
 function here(figure::Figure)
     setup = """
     <div id="$(figure.id)"></div>
     <script>
         var d3 = require("nbextensions/d3/d3.min");
-    
+
         var svg = d3.select("#$(figure.id)").append("svg")
             .attr("width", $(figure.width))
             .attr("height", $(figure.height));
-    
+
         // TODO delete me
         svg.append("rect")
             .attr("x", 0)
@@ -61,7 +61,7 @@ function here(figure::Figure)
             .attr("height", "100%")
             .style("stroke", "white")
             .style("fill", "white");
-    
+
         var tile_width = $(figure.width) / $(figure.num_cols);
         var tile_height = $(figure.height) / $(figure.num_rows);
         var i = 1;
@@ -101,19 +101,19 @@ function here(figure::Figure)
 end
 
 
-type JupyterInlineRenderer
+mutable struct JupyterInlineRenderer
     name::String # The target name for Javascript
     dom_element_id::Nullable{String} # The DOM element where the JS code should render to
     comm::IJulia.Comm # communication object to Javascript
     configuration::Dict # gets sent to the JS renderer alongside the trace (the JS renderer is currently stateless)
-    
+
     function JupyterInlineRenderer(name::String, configuration::Dict)
         comm = IJulia.Comm(name, data=Dict())
         new(name, Nullable{String}(), comm, configuration)
     end
 end
 
-# 
+#
 #
 #
 #
@@ -136,7 +136,7 @@ end
     #renderer.dom_element_id = "$(subfigure.first.id)_frame$(subfigure.second)"
 #end
 
-function render(renderer::JupyterInlineRenderer, trace::Trace) # TODO handle DifferentiableTrace
+function render(renderer::JupyterInlineRenderer, trace::Trace; args...) # TODO handle DifferentiableTrace
     local id::String
     global active_viewport
     if (isnull(renderer.dom_element_id))
@@ -149,9 +149,8 @@ function render(renderer::JupyterInlineRenderer, trace::Trace) # TODO handle Dif
         # use explicitly attached viewport
         id = get(renderer.dom_element_id)
     end
-    IJulia.send_comm(renderer.comm, Dict("trace" => trace,
-										 "dom_element_id" => id,
-                                         "conf" => renderer.configuration))
+    data = Dict("trace" => trace, "dom_element_id" => id, "conf" => renderer.configuration, "args" => Dict(args))
+    IJulia.send_comm(renderer.comm, data)
 end
 
 macro javascript_str(s) display("text/javascript", s); end
