@@ -82,7 +82,7 @@ struct MultivariateNormal <: Gen.Module{Array{Float64,1}} end
 
 function regenerate(::MultivariateNormal, x::Array{Float64,1}, mu::Array{Float64,1}, std::Array{Float64,1})
     d = Distributions.MvNormal(concrete(mu), concrete(std)) 
-    logpdf(d, x)
+    Distributions.logpdf(d, x)
 end
 
 function simulate(mvnormal::MultivariateNormal, mu::Array{Float64,1}, std::Array{Float64,1})
