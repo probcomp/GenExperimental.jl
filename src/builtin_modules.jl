@@ -76,6 +76,25 @@ register_module(:normal, Normal())
 normal{M,N}(mu::M, std::N) = simulate(Normal(), mu, std)[1]
 export normal
 
+# multivariateNormal normal -------------------------------------
+
+struct MultivariateNormal <: Gen.Module{Array{Float64,1}} end
+
+function regenerate(::MultivariateNormal, x::Array{Float64,1}, mu::Array{Float64,1}, std::Array{Float64,1})
+    d = Distributions.MvNormal(concrete(mu), concrete(std)) 
+    logpdf(d, x)
+end
+
+function simulate(mvnormal::MultivariateNormal, mu::Array{Float64,1}, std::Array{Float64,1})
+    x = rand(Distributions.MvNormal(concrete(mu), concrete(std)))
+    (x, regenerate(mvnormal, x, mu, std))
+end
+
+register_module(:mvnormal, MultivariateNormal())
+
+mvnormal(mu::Array{Float64,1}, std::Array{Float64,1}) = simulate(MultivariateNormal(), mu, std)[1]
+export mvnormal
+
 
 # gamma --------------------------------------------------
 # k = shape, s = scale
