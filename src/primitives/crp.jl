@@ -33,7 +33,7 @@ has_cluster(state::CRPState, cluster::Int) = haskey(state.counts, cluster)
 counts(state::CRPState, cluster::Int) = state.counts[cluster]
 clusters(state::CRPState) = keys(state.counts)
 
-function joint_log_probability(state::CRPState, alpha::Float64)
+function joint_log_probability(state::CRPState, alpha::T) where {T}
     N = state.total_count
     ll = length(state.counts) * log(alpha)
     ll += sum(lgamma.(collect(values(state.counts))))
@@ -77,7 +77,7 @@ end
 
 struct CRPDraw <: Gen.Module{Int} end
 
-function simulate(::CRPDraw, state::CRPState, alpha::Float64)
+function simulate(::CRPDraw, state::CRPState, alpha::T) where {T}
     # NOTE: does not incorporate the cluster draw into the CRP state
     clusters = collect(keys(state.counts))
     probs = Array{Float64,1}(length(clusters) + 1)
@@ -96,7 +96,7 @@ function simulate(::CRPDraw, state::CRPState, alpha::Float64)
     (cluster, log(probs[j]))
 end
 
-function regenerate(::CRPDraw, cluster::Int, state::CRPState, alpha::Float64)
+function regenerate(::CRPDraw, cluster::Int, state::CRPState, alpha::T) where {T}
     new_cluster = next_new_cluster(state)
     if cluster == new_cluster
         log(alpha) - log(state.total_count + alpha)
@@ -106,7 +106,9 @@ function regenerate(::CRPDraw, cluster::Int, state::CRPState, alpha::Float64)
 end
 
 register_module(:draw_crp, CRPDraw())
-draw_crp = (state::CRPDraw, alpha::Float64) -> simulate(CRPDraw(), state, alpha)[1]
+function draw_crp(state::CRPDraw, alpha::T) where {T}
+    simulate(CRPDraw(), state, alpha)[1]
+end
 
 export CRPState
 export next_new_cluster
