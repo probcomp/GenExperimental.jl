@@ -2,8 +2,9 @@ using Gen
 using Distributions
 using Base.Test
 
-include("ad.jl")
+#include("ad.jl")
 include("crp.jl")
+include("nign.jl")
 
 @testset "primitive modules" begin
 
