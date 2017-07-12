@@ -1,11 +1,19 @@
 module Gen
 
-    #include("ad.jl")
+    # automatic differentiation
     include("ad/types.jl")
     include("ad/operators.jl")
+
+    # basic math operations
     include("math.jl")
+
+    # trace interface and probabilistic programming
     include("trace.jl")
-    include("builtin_modules.jl")
+
+    # custom features for jupyter notebooks
     include("notebook.jl")
+
+    # built-in probabilistic primitives
+    include("primitives/primitives.jl")
 
 end
