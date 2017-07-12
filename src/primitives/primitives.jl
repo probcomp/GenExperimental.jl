@@ -3,6 +3,7 @@
 # NOTE: every new primitive must have a unit test suite (see test/primitives/)
 include("flip.jl")
 include("uniform.jl")
+include("uniform_discrete.jl")
 include("nil.jl")
 include("normal.jl")
 include("gamma.jl")
