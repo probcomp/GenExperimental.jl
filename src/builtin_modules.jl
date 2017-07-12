@@ -116,20 +116,21 @@ gamma{M,N}(k::M, s::N) = simulate(Gamma(), k, s)[1]
 export gamma
 
 # discrete uniform -------------------------------------
+# min and max are inclusive
 
 struct DiscreteUniform <: Gen.Module{Int64} end
 
-function regenerate(::DiscreteUniform, x::Int64, a::Int64, b::Int64)
-    d = Distributions.DiscreteUniform(concrete(a), concrete(b)) 
+function regenerate(::DiscreteUniform, x::Int64, min::Int64, max::Int64)
+    d = Distributions.DiscreteUniform(concrete(min), concrete(max)) 
     Distributions.logpdf(d, x)
 end
 
-function simulate(duniform::DiscreteUniform, a::Int64, b::Int64)
-    x = rand(Distributions.DiscreteUniform(concrete(a), concrete(b)))
-    (x, regenerate(duniform, x, a, b))
+function simulate(duniform::DiscreteUniform, min::Int64, max::Int64)
+    x = rand(Distributions.DiscreteUniform(concrete(min), concrete(max)))
+    (x, regenerate(duniform, x, min, max))
 end
 
 register_module(:duniform, DiscreteUniform())
 
-duniform(a::Int64, b::Int64) = simulate(DiscreteUniform(), a, b)[1]
+duniform(min::Int64, max::Int64) = simulate(DiscreteUniform(), min, max)[1]
 export duniform
