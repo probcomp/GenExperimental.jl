@@ -114,3 +114,22 @@ register_module(:gamma, Gamma())
 
 gamma{M,N}(k::M, s::N) = simulate(Gamma(), k, s)[1]
 export gamma
+
+# discrete uniform -------------------------------------
+
+struct DiscreteUniform <: Gen.Module{Int64} end
+
+function regenerate(::DiscreteUniform, x::Int64, a::Int64, b::Int64)
+    d = Distributions.DiscreteUniform(concrete(a), concrete(b)) 
+    Distributions.logpdf(d, x)
+end
+
+function simulate(duniform::DiscreteUniform, a::Int64, b::Int64)
+    x = rand(Distributions.DiscreteUniform(concrete(a), concrete(b)))
+    (x, regenerate(duniform, x, a, b))
+end
+
+register_module(:duniform, DiscreteUniform())
+
+duniform(a::Int64, b::Int64) = simulate(DiscreteUniform(), a, b)[1]
+export duniform
