@@ -16,3 +16,4 @@ register_module(:mvnormal, MultivariateNormal())
 
 mvnormal(mu::Vector{Float64}, std::Matrix{Float64}) = simulate(MultivariateNormal(), mu, std)[1]
 export mvnormal
+export MultivariateNormal

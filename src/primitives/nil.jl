@@ -12,3 +12,4 @@ register_module(:nil, Nil())
 
 nil() = simulate(Nil())[1]
 export nil
+export Nil

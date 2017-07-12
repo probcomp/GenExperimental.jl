@@ -13,3 +13,4 @@ register_module(:flip, Flip())
 
 flip{T}(p::T) = simulate(Flip(), p)[1]
 export flip
+export Flip

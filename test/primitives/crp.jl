@@ -1,4 +1,4 @@
-@testset "crp" begin
+@testset "CRP" begin
 
     @testset "assignment book-keeping" begin
         crp = CRPState()

@@ -17,3 +17,4 @@ register_module(:normal, Normal())
 
 normal{M,N}(mu::M, std::N) = simulate(Normal(), mu, std)[1]
 export normal
+export Normal
