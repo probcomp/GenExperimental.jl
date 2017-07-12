@@ -24,9 +24,9 @@ include("ad.jl")
 
     # discrete uniform
     x = 5
-    a = 1
-    b = 10
-    @test isapprox(regenerate(Gen.DiscreteUniform(), x, a, b), logpdf(DiscreteUniform(a, b), x))
+    min = 1
+    max = 10
+    @test isapprox(regenerate(Gen.DiscreteUniform(), x, min, max), log(1./max))
 
     # multinormal
     x = [1., 1.]
