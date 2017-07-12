@@ -3,6 +3,7 @@ using Distributions
 using Base.Test
 
 include("ad.jl")
+include("crp.jl")
 
 @testset "primitive modules" begin
 
