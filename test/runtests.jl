@@ -22,6 +22,12 @@ include("ad.jl")
     s = 0.3
     @test isapprox(regenerate(Gen.Gamma(), x, k, s), logpdf(Gamma(k, s), x))
 
+    # discrete uniform
+    x = 5
+    min = 1
+    max = 10
+    @test isapprox(regenerate(Gen.DiscreteUniform(), x, min, max), log(1./max))
+
     # multinormal
     x = [1., 1.]
     mu = [1.0, 1.0]
