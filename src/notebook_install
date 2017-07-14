@@ -1,7 +1,0 @@
-jupyter nbextension install gen_notebook_extension/ --user
-jupyter nbextension enable gen_notebook_extension/main --user
-
-# for D3
-mkdir /home/marcoct/.local/share/jupyter/nbextensions/d3
-cp ~/Downloads/d3.min.js /home/marcoct/.local/share/jupyter/nbextensions/d3
-jupyter nbextension enable d3/d3.min --user
