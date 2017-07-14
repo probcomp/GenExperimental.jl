@@ -134,7 +134,13 @@
         @test value(trace, 9) == a9
 
         # test that the score is for the contsrained values
-        @test isapprox(score, log(1. * (1. / (1. + alpha))))
+        expected_score = log(1. * (1. / (1. + alpha)))
+        @test isapprox(score, expected_score)
+
+        # generate again and check that the score hasn't changed
+        # (this checks that the sufficient statistics were correctly reverted)
+        score = generate!(CRPJointGenerator(), (n, alpha), trace)
+        @test isapprox(score, expected_score)
 
     end
 
