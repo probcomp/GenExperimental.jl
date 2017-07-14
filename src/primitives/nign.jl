@@ -73,7 +73,7 @@ function sample_parameters(params::NIGNParams)
 	(mu, rho)
 end
 
-function joint_log_density(state::NIGNState, params::NIGNParams)
+function logpdf(state::NIGNState, params::NIGNParams)
     post_params = posterior_params(state, params)
     Z0 = log_z(params.r, params.s, params.nu)
     ZN = log_z(post_params.r, post_params.s, post_params.nu)
@@ -101,10 +101,19 @@ end
 
 register_primitive(:draw_nign, NIGNDraw)
 
+
+#############################################
+# NIGN joint Generator with custom subtrace #
+#############################################
+
+make_exchangeable_generator(:NIGNJointTrace, :NIGNJointGenerator,
+    NIGNParams, NIGNState, NIGNDraw, Float64)
+
+
 export NIGNParams
 export NIGNState
 export NIGNDraw
 export incorporate!
 export unincorporate!
-export joint_log_density
+export logpdf
 export posterior_params

@@ -10,6 +10,6 @@ function register_primitive(shortname::Symbol, generator_type::Type)
 end
 
 include("simple.jl")
+include("exchangeable_joint_generator.jl")
 include("crp.jl")
-include("crp_joint_generator.jl")
 include("nign.jl")

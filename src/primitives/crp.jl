@@ -36,7 +36,7 @@ counts(state::CRPState, cluster::Int) = state.counts[cluster]
 clusters(state::CRPState) = keys(state.counts)
 
 # TODO unecessary type parameter
-function joint_log_probability(state::CRPState, alpha::T) where {T}
+function logpdf(state::CRPState, alpha::T) where {T}
     # alpha may be concrete or differentaible value
     N = state.total_count
     ll = length(state.counts) * log(alpha)
@@ -116,11 +116,23 @@ end
 
 register_primitive(:draw_crp, CRPDraw)
 
+
+############################################
+# CRP joint Generator with custom subtrace #
+############################################
+
+make_exchangeable_generator(:CRPJointTrace, :CRPJointGenerator,
+    Float64, CRPState, CRPDraw, Int)
+
+# next new cluster relative to the currently constrained assignments
+next_new_cluster(trace::ExchangeableJointTrace{CRPState, CRPDraw, Int}) =
+    next_new_cluster(trace.constrained_state)
+
 export CRPState
 export next_new_cluster
 export has_cluster
 export counts
 export clusters
-export joint_log_probability
+export logpdf
 export incorporate!
 export unincorporate!
