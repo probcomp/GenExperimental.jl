@@ -1,6 +1,6 @@
-##################################
-# Generator with custom subtrace #
-##################################
+############################################
+# CRP joint Generator with custom subtrace #
+############################################
 
 # a generator over values [a1, a2, a3, ..., an] where n is the argument
 # can re-use traces for different n
