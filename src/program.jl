@@ -218,42 +218,42 @@ struct ProbabilisticProgram <: Generator{AbstractTrace}
 end
 
 function tagged!(trace::Trace, generator::AtomicGenerator{T}, args::Tuple, name::String) where {T}
-	local value::T
-	subtrace = AtomicTrace{T}()
-	# NOTE: currently the value itself is stored in the trace, not the subtrace
-	if haskey(trace.constraints, name)
-		value = trace.constraints[name]
-		constrain!(subtrace, value)
-	elseif name in trace.proposals
-		propose!(subtrace)
-	end
-	trace.score += generate!(generator, args, subtrace)
-	value = get(subtrace)
-	trace.recorded[name] = value
-	push!(trace.visited, name)
-	value
+    local value::T
+    subtrace = AtomicTrace{T}()
+    # NOTE: currently the value itself is stored in the trace, not the subtrace
+    if haskey(trace.constraints, name)
+        value = trace.constraints[name]
+        constrain!(subtrace, value)
+    elseif name in trace.proposals
+        propose!(subtrace)
+    end
+    trace.score += generate!(generator, args, subtrace)
+    value = get(subtrace)
+    trace.recorded[name] = value
+    push!(trace.visited, name)
+    value
 end
 
 function tagged!(trace::Trace, value::T, name::String) where {T}
-	if haskey(trace.constraints, name)
-		error("cannot constrain $name")
-	else
-		trace.recorded[name] = value
-	end
-	push!(trace.visited, name)
-	value
+    if haskey(trace.constraints, name)
+        error("cannot constrain $name")
+    else
+        trace.recorded[name] = value
+    end
+    push!(trace.visited, name)
+    value
 end
 
 # create a new probabilistic program
 macro program(args, body)
 
-	# generate new symbol for this execution trace
-	trace_symbol = gensym()
+    # generate new symbol for this execution trace
+    trace_symbol = gensym()
 
-	# first argument is the trace
+    # first argument is the trace
     new_args = [:($trace_symbol::AbstractTrace)]
 
-	# remaining arguments are the original arguments
+    # remaining arguments are the original arguments
     if args.head == :(::)
 
         # single argument
@@ -271,18 +271,18 @@ macro program(args, body)
     end
     arg_tuple = Expr(:tuple, new_args...)
 
-	# overload the tag function to tag values in the correct trace
-	prefix = quote
-		tag(gen::AtomicGenerator, stuff::Tuple, name::String) = tagged!($trace_symbol, gen, stuff, name)
+    # overload the tag function to tag values in the correct trace
+    prefix = quote
+        tag(gen::AtomicGenerator, stuff::Tuple, name::String) = tagged!($trace_symbol, gen, stuff, name)
 
-		# primitives overload invocation syntax () and expand into this:
-		tag(gen_and_args::Tuple{AtomicGenerator,Tuple}, name::String) = tagged!($trace_symbol, gen_and_args[1], gen_and_args[2], name)
+        # primitives overload invocation syntax () and expand into this:
+        tag(gen_and_args::Tuple{AtomicGenerator,Tuple}, name::String) = tagged!($trace_symbol, gen_and_args[1], gen_and_args[2], name)
 
-		# arbitrary non-generator tagged values
-		tag(other::Any, name::String) = tagged!($trace_symbol, other, name)
-	end
+        # arbitrary non-generator tagged values
+        tag(other::Any, name::String) = tagged!($trace_symbol, other, name)
+    end
 
-	# evaluates to a ProbabilisticProgram struct
+    # evaluates to a ProbabilisticProgram struct
     Expr(:call, :ProbabilisticProgram, 
         Expr(:function, arg_tuple, quote $prefix; $body end))
 end

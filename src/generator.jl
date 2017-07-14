@@ -27,7 +27,7 @@ end
 
 mutable struct AtomicTrace{T}
     value::Nullable{T}
-	mode::SubtraceMode
+    mode::SubtraceMode
 end
 
 AtomicTrace(value) = AtomicTrace(Nullable(value), record)
@@ -36,24 +36,24 @@ get(trace::AtomicTrace) = Base.get(trace.value)
 set!(trace::AtomicTrace{T}, value::T) where {T} = begin trace.value = Nullable{T}(value) end
 
 function unconstrain!(trace::AtomicTrace)
-	if trace.mode != constrain
-		error("not constrained")
-	end
-	trace.mode = record
+    if trace.mode != constrain
+        error("not constrained")
+    end
+    trace.mode = record
 end
 
 function constrain!(trace::AtomicTrace{T}, value::T) where {T}
-	trace.mode = constrain
-	trace.value = Nullable{T}(value)
+    trace.mode = constrain
+    trace.value = Nullable{T}(value)
 end
 
 function propose!(trace::AtomicTrace{T}) where {T}
-	trace.mode = propose
+    trace.mode = propose
 end
 
 function intervene!(trace::AtomicTrace{T}, value::T) where {T}
-	trace.mode = intervene
-	trace.value = Nullable{T}(value)
+    trace.mode = intervene
+    trace.value = Nullable{T}(value)
 end
 
 AtomicGenerator{T} = Generator{AtomicTrace{T}}
@@ -72,18 +72,18 @@ AtomicGenerator{T} = Generator{AtomicTrace{T}}
 abstract type AssessableAtomicGenerator{T} <: AtomicGenerator{T} end
 
 function generate!(g::AssessableAtomicGenerator{T}, args::Tuple, trace::AtomicTrace{T}) where {T}
-	local value::T
-	if trace.mode == intervene || trace.mode == constrain
-		value = get(trace)
-	else
-		value = simulate(g, args...)
-		set!(trace, value)
-	end
-	if trace.mode == constrain || trace.mode == propose
-		logpdf(g, value, args...)
-	else
-		0.
-	end
+    local value::T
+    if trace.mode == intervene || trace.mode == constrain
+        value = get(trace)
+    else
+        value = simulate(g, args...)
+        set!(trace, value)
+    end
+    if trace.mode == constrain || trace.mode == propose
+        logpdf(g, value, args...)
+    else
+        0.
+    end
 end
 
 
