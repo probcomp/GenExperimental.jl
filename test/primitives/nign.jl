@@ -63,7 +63,7 @@
         expected = joint_log_density(nign, params) - log_density_before
         unincorporate!(nign, x3)
 
-        actual = regenerate(NIGNDraw(), x3, nign, params)
+        actual = logpdf(draw_nign, x3, nign, params)
         @test isapprox(actual, expected)
     
     end

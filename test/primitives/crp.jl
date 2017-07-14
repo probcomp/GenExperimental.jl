@@ -93,7 +93,7 @@
 
         # test probability of selecting new cluster
         # c3: [4] | c1: [1], c2: [2, 3]
-        actual = regenerate(CRPDraw(), c3, crp, alpha)
+        actual = logpdf(draw_crp, c3, crp, alpha)
         incorporate!(crp, c3)
         expected_joint = joint_log_probability(crp, alpha) - log_prob_before
         unincorporate!(crp, c3)
@@ -103,7 +103,7 @@
 
         # test probability of joining previous cluster
         # c1: [1, 4] | c1: [1], c2: [2, 3]
-        actual = regenerate(CRPDraw(), c1, crp, alpha)
+        actual = logpdf(draw_crp, c1, crp, alpha)
         incorporate!(crp, c1)
         expected_joint = joint_log_probability(crp, alpha) - log_prob_before
         unincorporate!(crp, c1)

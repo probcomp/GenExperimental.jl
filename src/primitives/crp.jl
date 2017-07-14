@@ -1,7 +1,9 @@
+######################################################
+# Sufficient stastics for Chinese restaurant process #
+######################################################
+
 import DataStructures.Stack
 import DataStructures.OrderedDict
-import Gen.simulate
-import Gen.regenerate
 
 # data structure for storing sufficient statistics for CRP
 
@@ -71,32 +73,16 @@ function unincorporate!(state::CRPState, cluster::Int)
     state.total_count -= 1
 end
 
-# draw_crp -------------------------------------------------------
 
-# NOTE: this module does not mutate the CRP state
+##################################
+# Generator for drawing from CRP #
+##################################
 
-struct CRPDraw <: Gen.Module{Int} end
+# NOTE: does not mutate the CRP state
 
-function simulate(::CRPDraw, state::CRPState, alpha::T) where {T}
-    # NOTE: does not incorporate the cluster draw into the CRP state
-    clusters = collect(keys(state.counts))
-    probs = Array{Float64,1}(length(clusters) + 1)
-    for (j, cluster) in enumerate(clusters)
-        probs[j] = state.counts[cluster]
-    end
-    probs[end] = alpha
-    probs = probs / sum(probs)
-    j = rand(Categorical(probs))
-    if (j == length(clusters) + 1)
-        # new cluster
-        cluster = next_new_cluster(state)
-    else
-        cluster = clusters[j]
-    end
-    (cluster, log(probs[j]))
-end
+struct CRPDraw <: AssessableAtomicGenerator{Int} end
 
-function regenerate(::CRPDraw, cluster::Int, state::CRPState, alpha::T) where {T}
+function logpdf(::CRPDraw, cluster::Int, state::CRPState, alpha)
     new_cluster = next_new_cluster(state)
     if cluster == new_cluster
         log(alpha) - log(state.total_count + alpha)
@@ -105,10 +91,26 @@ function regenerate(::CRPDraw, cluster::Int, state::CRPState, alpha::T) where {T
     end
 end
 
-register_module(:draw_crp, CRPDraw())
-function draw_crp(state::CRPDraw, alpha::T) where {T}
-    simulate(CRPDraw(), state, alpha)[1]
+function simulate(::CRPDraw, state::CRPState, alpha)
+    clusters = collect(keys(state.counts))
+    probs = Array{Float64,1}(length(clusters) + 1)
+    for (j, cluster) in enumerate(clusters)
+        probs[j] = state.counts[cluster]
+    end
+    probs[end] = alpha
+    probs = probs / sum(probs)
+    j = rand(Categorical(probs))
+    
+    # return the drawn cluster
+    if (j == length(clusters) + 1)
+        # new cluster
+        next_new_cluster(state)
+    else
+        clusters[j]
+    end
 end
+
+register_primitive(:draw_crp, CRPDraw)
 
 export CRPState
 export next_new_cluster
@@ -118,5 +120,3 @@ export clusters
 export joint_log_probability
 export incorporate!
 export unincorporate!
-export CRPDraw
-export draw_crp
