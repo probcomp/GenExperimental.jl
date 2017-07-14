@@ -113,4 +113,29 @@
 
     end
 
+    @testset "CRP generator" begin
+
+        alpha = 0.25
+        trace = CRPJointTrace()
+
+        # test that the correct values were generated and that the 
+        # the constrained values were not modified
+        n = 10
+        constrain!(trace, 5, next_new_cluster(trace))
+        a5 = value(trace, 5)
+        constrain!(trace, 9, a5)
+        a9 = value(trace, 9)
+        score = generate!(CRPJointGenerator(), (n, alpha), trace)
+        for i=1:n
+            @test hasvalue(trace, i)
+        end
+        @test !hasvalue(trace, n+1)
+        @test value(trace, 5) == a5
+        @test value(trace, 9) == a9
+
+        # test that the score is for the contsrained values
+        @test isapprox(score, log(1. * (1. / (1. + alpha))))
+
+    end
+
 end

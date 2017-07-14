@@ -35,7 +35,9 @@ has_cluster(state::CRPState, cluster::Int) = haskey(state.counts, cluster)
 counts(state::CRPState, cluster::Int) = state.counts[cluster]
 clusters(state::CRPState) = keys(state.counts)
 
+# TODO unecessary type parameter
 function joint_log_probability(state::CRPState, alpha::T) where {T}
+    # alpha may be concrete or differentaible value
     N = state.total_count
     ll = length(state.counts) * log(alpha)
     ll += sum(lgamma.(collect(values(state.counts))))
@@ -80,6 +82,8 @@ end
 
 # NOTE: does not mutate the CRP state
 
+import Distributions
+
 struct CRPDraw <: AssessableAtomicGenerator{Int} end
 
 function logpdf(::CRPDraw, cluster::Int, state::CRPState, alpha)
@@ -99,7 +103,7 @@ function simulate(::CRPDraw, state::CRPState, alpha)
     end
     probs[end] = alpha
     probs = probs / sum(probs)
-    j = rand(Categorical(probs))
+    j = rand(Distributions.Categorical(probs))
     
     # return the drawn cluster
     if (j == length(clusters) + 1)

@@ -11,4 +11,5 @@ end
 
 include("simple.jl")
 include("crp.jl")
+include("crp_joint_generator.jl")
 include("nign.jl")
