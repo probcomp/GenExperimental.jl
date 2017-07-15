@@ -13,146 +13,122 @@ using DataStructures
 
 abstract type AbstractTrace end
 
+struct TraceElement{T}
+    value::Nullable{T}
+    mode::SubtraceMode
+end
+
+TraceElement(value, mode::SubtraceMode) = TraceElement(Nullable(value), mode)
+
+function set_value!(element::TraceElement{T}, value::T) where {T}
+    element.value = Nullable{T}(value)
+end
+
 mutable struct Trace <: AbstractTrace
-    constraints::OrderedDict{Any,Any}
-    interventions::OrderedDict{Any,Any}
-    proposals::OrderedSet{Any}
-    recorded::OrderedDict{Any,Any}
-    visited::OrderedSet{Any}
+    elements::Dict{Any, TraceElement}
+    subtraces::Dict{Any, Any}
+    visited::Set{Any}
+
+    # keys are names of sub-traces
+    # valus are mapping from names to (alias, mode, visited, [value])
+    # at the end of generate! we should check that all aliases were visited
+    # e.g. "cluster-7" => ("x2", constrain, false, 2) for a constraint
+    # e.g. "cluster-7" => ("x2", record, false)
+    aliases::Dict{Any, Dict{Any, Any}}
     score::Float64
     function Trace()
-        constraints = OrderedDict{Any,Any}()
-        interventions = OrderedDict{Any,Any}()
-        proposals = OrderedSet{Any}()
-        recorded = OrderedDict{Any,Any}()
+        elements = Dict{Any, TraceElement}()
+        subtraces = Dict{Any, Any}()
         visited = OrderedSet{Any}()
-        new(constraints, interventions, proposals, recorded, visited, 0.0)
+        aliases = Dict{Any, Dict{Any, Any}}()
+        new(elements, subtraces, visited, aliases, 0.0)
     end
 end
 
+# TODO modify DifferentiableTrace
+# TODO add aliases
 mutable struct DifferentiableTrace <: AbstractTrace
-    constraints::OrderedDict{Any,Any}
-    interventions::OrderedDict{Any,Any}
-    proposals::OrderedSet{Any}
-    recorded::OrderedDict{Any,Any}
+    elements::Dict{Any, TraceElement}
+    subtraces::Dict{Any, Any}
     visited::OrderedSet{Any}
     score::GenScalar # becomes type GenFloat (which can be automatically converted from a Float64)
     tape::Tape
     function DifferentiableTrace()
-        tape = Tape()
-        constraints = OrderedDict{Any,Any}()
-        interventions = OrderedDict{Any,Any}()
-        proposals = OrderedSet{Any}()
-        recorded = OrderedDict{Any,Any}()
+        elements = Dict{Any, TraceElement}()
+        subtraces = Dict{Any, Any}()
         visited = OrderedSet{Any}()
-        new(constraints, interventions, proposals, recorded, visited, GenScalar(0.0, tape), tape)
+        tape = Tape()
+        new(elements, subtraces, visited, GenScalar(0.0, tape), tape)
     end
 end
 
-function choices(trace::AbstractTrace)
-    keys(trace.recorded)
+# TODO rename to names or addresses
+choices(trace::AbstractTrace) = keys(trace.elements)
+
+function Base.print(io::IO, trace::Trace)
+    println(io, "Trace(")
+    indent = "  "
+    for (name, element) in trace.elements
+        if element.mode == record
+            println(io, "$indent $name = $(element.value)")
+        elseif element.mode == propose
+            println(io, "$indent+$name = $(element.value)")
+        elseif element.mode == constrain
+            println(io, "$indent*$name = $(element.value)")
+        elseif element.mode == intervene
+            println(io, "$indent!$name = $(element.value)")
+        end
+    end
+    println(io, ")")
 end
 
-function Base.print(trace::AbstractTrace)
-    println("-- Constraints --")
-    for k in keys(trace.constraints)
-        v = trace.constraints[k]
-        println("$k => $v")
-    end
-    println("-- Interventions --")
-    for k in keys(trace.interventions)
-        v = trace.interventions[k]
-        println("$k => $v")
-    end
-    println("-- Proposals --")
-    for k in trace.proposals
-        println("$k")
-    end
-    println("-- Recorded --")
-    for k in keys(trace.recorded)
-        v = trace.recorded[k]
-        println("$k => $v")
-    end
-end
-
-function check_not_exists(trace::AbstractTrace, name)
-    if haskey(trace.constraints, name)
-        error("$name is already marked as a constraint")
-    end
-    if haskey(trace.interventions, name)
-        error("$name is already marked as an intervention")
-    end
-    if name in trace.proposals
-        error("$name is already marked as a proposal")
-    end
-    if haskey(trace.recorded, name)
-        # delete from the recording if we are doing something special with it
-        delete!(trace.recorded, name)
-    end
-end
+Base.delete!(trace::AbstractTrace, name) = delete!(trace.elements, name)
 
 function constrain!(trace::AbstractTrace, name, val)
-    check_not_exists(trace, name)
-    trace.constraints[name] = val
+    trace.elements[name] = TraceElement(val, constrain)
 end
-
-function unconstrain!(trace::AbstractTrace, name)
-    val = trace.constraints[name]
-    delete!(trace.constraints, name)
-    trace.recorded[name] = val
-end
-
 
 function intervene!(trace::AbstractTrace, name, val)
-    check_not_exists(trace, name)
-    trace.interventions[name] = val
+    trace.elements[name] = TraceElement(val, intervene)
 end
 
 function parametrize!(trace::DifferentiableTrace, name, val::ConcreteValue)
     # just an intervene! that converts it to a GenValue first (with the right tape)
-    check_not_exists(trace, name)
-    trace.interventions[name] = makeGenValue(val, trace.tape)
+    trace.elements[name] = TraceElement(makeGenValue(val, trace.tape), intervene)
 end
 
-function propose!(trace::AbstractTrace, name)
-    check_not_exists(trace, name)
-    push!(trace.proposals, name)
+propose!(trace::AbstractTrace, name) = push!(trace.proposals, name)
+
+function prepare!(trace::AbstractTrace)
+    trace.visited = Set{Any}()
+    trace.aliases = Dict{Any, Dict{Any, Any}}()
 end
 
-function prepare(trace::Trace)
-    trace.visited = OrderedSet{Any}()
-end
-
-function prepare(trace::DifferentiableTrace)
-    trace.visited = OrderedSet{Any}()
+function check_not_visited(trace::AbstractTrace, name)
+    if name in trace.visited
+        error("$name already visited")
+    end
 end
 
 function check_visited(trace::AbstractTrace)
-    for name in keys(trace.constraints)
-        if !(name in trace.visited)
-            error("constraint $name not visited")
-        end
-    end
-    for name in keys(trace.interventions)
-        if !(name in trace.visited)
-            error("intervention $name not visited")
-        end
-    end
-    for name in trace.proposals
-        if !(name in trace.visited)
-            error("proposal $name not visited")
+    for (name, element) in trace.elements
+        if (((element.mode == constrain) ||
+            (element.mode == propose) ||
+            (element.mode == intervene)) &&
+           !(name in trace.visited))
+            error("$name in mode $mode was not visited")
         end
     end
 end
 
-function finalize(trace::Trace)
+function finalize!(trace::Trace)
     check_visited(trace)
     previous_score = trace.score
     trace.score = 0.0
     previous_score
 end
 
-function finalize(trace::DifferentiableTrace)
+function finalize!(trace::DifferentiableTrace)
     check_visited(trace)
     previous_score = trace.score
     backprop(previous_score)
@@ -161,92 +137,148 @@ function finalize(trace::DifferentiableTrace)
     concrete(previous_score)
 end
 
-
-function derivative(trace::DifferentiableTrace, name)
-    partial(value(trace, name))
-end
-
-function Base.delete!(trace::AbstractTrace, name)
-    if haskey(trace.constraints, name)
-        delete!(trace.constraints, name)
-    end
-    if haskey(trace.interventions, name)
-        delete!(trace.interventions, name)
-    end
-    if name in trace.proposals
-        delete!(trace.proposals, name)
-    end
-    if haskey(trace.recorded, name)
-        delete!(trace.recorded, name)
-    end
-end
+derivative(trace::DifferentiableTrace, name) = partial(value(trace, name))
 
 function hasvalue(trace::AbstractTrace, name)
-    if haskey(trace.constraints, name)
-        return true
-    end
-    if haskey(trace.interventions, name)
-        return true
-    end
-    if haskey(trace.recorded, name)
-        return true
-    end
-    return false
+    haskey(trace.elements, name) && !isnull(trace.elements[name].value)
 end
 
 function hasconstraint(trace::AbstractTrace, name)
-    haskey(trace.constraints, name)
+    haskey(trace.constraints, name) && trace.elements[name].mode == constrain
 end
 
-function value(trace::AbstractTrace, name)
-    if haskey(trace.constraints, name)
-        return trace.constraints[name]
-    elseif haskey(trace.interventions, name)
-        return trace.interventions[name]
-    elseif haskey(trace.recorded, name)
-        return trace.recorded[name]
-    else
-        error("trace does not contain a value for $name")
-    end
-end
+value(trace::AbstractTrace, name) = get(trace.elements[name].value)
 
 
 ## Probabilistic program generator
 
+println("defining prob prog")
 struct ProbabilisticProgram <: Generator{AbstractTrace}
     program::Function
 end
 
+# process a tagged generic generator call
+function tagged!(trace::Trace, generator::Generator{TraceType}, args::Tuple, name) where {TraceType}
+    check_not_visited(trace, name)
+    local subtrace::TraceType
+    if haskey(trace.subtraces, name)
+        subtrace = trace.subtraces[name]
+    else
+        subtrace = TraceType()
+        trace.subtraces[name] = subtrace
+    end
+
+    # convert directives applied to aliases onto subtrace directives
+    if haskey(trace.aliases, name)
+        for (subname, alias) in trace.aliases[name]
+            if alias in trace.elements
+                element = trace.elements[alias]
+                if element.mode == constrain
+                    constrain!(subtrace, subname, get(element.value))
+                elseif element.mode == propose
+                    propose!(subtrace, subname)
+                elseif element.mode == intervene
+                    intervene!(subtrace, subname, get(element.value))
+                end
+            end
+        end
+    end
+
+    # TODO need to modify generate! to return both!
+    (trace.score, value) = generate!(generator, args, subtrace)
+    
+    # record any values into elements for the alias
+    if haskey(trace.aliases, name)
+        for (subname, alias) in trace.aliases[name]
+            if !(alias in trace.elements)
+                # aliases are recorded
+                trace.elements[alias] = TraceElement(value, record)
+            else
+                # retain the same mode for the alias
+                set_value!(trace.elements[alias], value)
+            end
+            push!(trace.visited, alias)
+        end
+    end
+    value
+end
+
+# process a tagged atomic generator call
 function tagged!(trace::Trace, generator::AtomicGenerator{T}, args::Tuple, name) where {T}
+    check_not_visited(trace, name)
+
+    # NOTE: atomic generators cannot be aliased
+
+    # the value is stored in the trace, not the subtrace, as with general generators
     local value::T
     local subtrace::AtomicTrace{T}
-    # NOTE: currently the value itself is stored in the trace, not the subtrace
-    if haskey(trace.constraints, name)
-        value = trace.constraints[name]
-        subtrace = AtomicTrace(value)
-        constrain!(subtrace, value)
-    elseif name in trace.proposals
-        subtrace = AtomicTrace(T)
-        propose!(subtrace)
+    local element::TraceElement{T}
+    exists = hasvalue(trace.elements, name)
+    if exists
+        element = trace.elements[name]
+        value = element.value
+        if element.mode == constrain
+            subtrace = AtomicTrace(value)
+            constrain!(subtrace, value)
+        elseif element.mode == propose
+            subtrace = AtomicTrace(T)
+            propose!(subtrace, value)
+        elseif element.mode == intervene
+            push!(trace.visited, name)
+            return value
+        else
+            subtrace = AtomicTrace(T)
+        end
     else
         subtrace = AtomicTrace(T)
     end
-    trace.score += generate!(generator, args, subtrace)
-    value = get(subtrace)
-    trace.recorded[name] = value
+    (score, value) = generate!(generator, args, subtrace)
+    trace.score += score
+    if exists
+        element.value = value
+    else
+        element = TraceElement(value, record)
+    end
     push!(trace.visited, name)
     value
 end
 
+# process a generic tagged value 
 function tagged!(trace::Trace, value::T, name) where {T}
-    if haskey(trace.constraints, name)
-        error("cannot constrain $name")
-    else
-        trace.recorded[name] = value
+    check_not_visited(trace, name)
+    return_value = value
+    local element::TraceElement{T}
+    if haskey(trace.elements, name)
+        element = trace.elements[name]
+        if trace.element.mode == constrain 
+            error("cannot constrain $name, it is not a generator call")
+        elseif trace.element.mode == propose
+            error("cannot propose $name, it is not a generator call")
+        elseif trace.element.mode == intervene
+            return_value = get(trace.element.value)
+        end
     end
     push!(trace.visited, name)
-    value
+    return_value
 end
+
+# add an alias mapping a name in a sub-trace to a name in this trace
+function add_alias!(trace::Trace, alias, name, subname)
+
+    # the alias must come earlier in the program than the sub-trace it is aliasing
+    check_not_visited(trace, name)
+
+    # TODO: enforce that the the alias can only be use once
+    # NOTE: we don't use trace.visited to confirm the aliases are not visited
+    # because we mark an alias as visited when its target is visited.
+
+    if !haskey(trace.aliases, name)
+        trace.aliases[name] = Dict{Any, Any}()
+    end
+    trace.aliases[name][subname] = alias
+    nothing
+end
+
 
 # create a new probabilistic program
 macro program(args, body)
@@ -284,6 +316,9 @@ macro program(args, body)
 
         # arbitrary non-generator tagged values
         tag(other, name) = tagged!($trace_symbol, other, name)
+
+        # tag((name, subname) => alias) adds an alias 
+        tag(arg::Pair{Tuple{Any, Any}, Any}) = add_alias!($trace_symbol, arg[2], arg[1][1], arg[1][2])
     end
 
     # evaluates to a ProbabilisticProgram struct
@@ -292,11 +327,10 @@ macro program(args, body)
 end
 
 function generate!(p::ProbabilisticProgram, args::Tuple, trace::AbstractTrace)
-    prepare(trace)
-    p.program(trace, args...)
-
-    # returns the previous score
-    finalize(trace)
+    prepare!(trace)
+    value = p.program(trace, args...)
+    score = finalize!(trace)
+    (score, value)
 end
 
 (p::ProbabilisticProgram)(args...) = (p, args)
@@ -316,7 +350,7 @@ function generate!(model_trace::AbstractTrace, model_program::ProbabilisticProgr
             constrain!(proposal_trace, proposal_name, value(model_trace, model_name))
         end
     end
-    proposal_score = generate!(proposal_program, proposal_trace)
+    (proposal_score, _) = generate!(proposal_program, proposal_trace)
 
     # score the values in the mapping, along with any extant constraints in the model trace,
     # under the model program
@@ -325,12 +359,14 @@ function generate!(model_trace::AbstractTrace, model_program::ProbabilisticProgr
             constrain!(model_trace, model_name, value(proposal_trace, proposal_name))
         end
     end
-    model_score = generate!(model_trace, model_program)
+    (model_score, _) = generate!(model_trace, model_program)
 
     # convert new constraints to to just recorded values (keep old constraints)
     for model_name in new_model_constraints
         unconstrain!(model_trace, model_name)
     end
+
+    # NOTE: this doesn't return a value, just a score
     model_score - proposal_score
 end
 

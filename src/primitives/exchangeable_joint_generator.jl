@@ -117,7 +117,8 @@ function generate!(::ExchangeableJointGenerator, args::Tuple{Int,Tuple}, trace::
         unincorporate!(trace.constrained_state, trace.values[i])
     end
     
-    score
+    value = copy(trace.values)
+    (score, value)
 end
 
 export ExchangeableJointTrace

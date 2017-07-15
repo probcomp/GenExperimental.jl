@@ -3,7 +3,7 @@
 ######################
 
 # Each Generator{TraceType} should implement:
-# score = generate!(generator, trace::TraceType)
+# score, value = generate!(generator, trace::TraceType)
 
 abstract type Generator{TraceType} end
 
@@ -81,10 +81,11 @@ function generate!(g::AssessableAtomicGenerator{T}, args::Tuple, trace::AtomicTr
         set!(trace, value)
     end
     if trace.mode == constrain || trace.mode == propose
-        logpdf(g, value, args...)
+        score = logpdf(g, value, args...)
     else
-        0.
+        score = 0.
     end
+    (score, value)
 end
 
 
