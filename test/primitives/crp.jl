@@ -34,20 +34,20 @@
 
     end
 
-    @testset "joint_log_probability" begin
+    @testset "logpdf" begin
 
         alpha = 0.25
         crp = CRPState()
-        @test joint_log_probability(crp, alpha) == 0.0
+        @test logpdf(crp, alpha) == 0.0
 
         # [1]
         c1 = next_new_cluster(crp)
         incorporate!(crp, c1)
-        @test joint_log_probability(crp, alpha) == 0.0
+        @test logpdf(crp, alpha) == 0.0
         
         # join the same table as 1: [1,2]
         incorporate!(crp, c1)
-        actual = joint_log_probability(crp, alpha)
+        actual = logpdf(crp, alpha)
         expected = log(1. / (1. + alpha))
         @test isapprox(actual, expected)
 
@@ -55,20 +55,20 @@
         unincorporate!(crp, c1)
         c2 = next_new_cluster(crp)
         incorporate!(crp, c2)
-        actual = joint_log_probability(crp, alpha)
+        actual = logpdf(crp, alpha)
         expected = log(alpha / (1. + alpha))
         @test isapprox(actual, expected)
 
         # join same table as 1: [1, 3] [2]
         incorporate!(crp, c1)
-        actual = joint_log_probability(crp, alpha)
+        actual = logpdf(crp, alpha)
         expected = log((alpha / (1.+alpha)) * 
                        (1./(2.+alpha)))
         @test isapprox(actual, expected)
 
         # join same table as 1 [1, 3, 4] [2]
         incorporate!(crp, c1)
-        actual = joint_log_probability(crp, alpha)
+        actual = logpdf(crp, alpha)
         expected = log((alpha / (1.+alpha)) * 
                        (1./(2.+alpha)) *
                        (2./(3.+alpha)))
@@ -89,13 +89,13 @@
         c3 = next_new_cluster(crp)
 
         # log(prob([1], [2, 3]))
-        log_prob_before = joint_log_probability(crp, alpha)
+        log_prob_before = logpdf(crp, alpha)
 
         # test probability of selecting new cluster
         # c3: [4] | c1: [1], c2: [2, 3]
         actual = logpdf(draw_crp, c3, crp, alpha)
         incorporate!(crp, c3)
-        expected_joint = joint_log_probability(crp, alpha) - log_prob_before
+        expected_joint = logpdf(crp, alpha) - log_prob_before
         unincorporate!(crp, c3)
         expected_manual = log(alpha / (alpha + 1 + 2))
         @test isapprox(actual, expected_manual)
@@ -105,7 +105,7 @@
         # c1: [1, 4] | c1: [1], c2: [2, 3]
         actual = logpdf(draw_crp, c1, crp, alpha)
         incorporate!(crp, c1)
-        expected_joint = joint_log_probability(crp, alpha) - log_prob_before
+        expected_joint = logpdf(crp, alpha) - log_prob_before
         unincorporate!(crp, c1)
         expected_manual = log(1 / (alpha + 1 + 2))
         @test isapprox(actual, expected_manual)
