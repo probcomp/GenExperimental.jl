@@ -31,6 +31,7 @@ mutable struct AtomicTrace{T}
 end
 
 AtomicTrace(value) = AtomicTrace(Nullable(value), record)
+AtomicTrace(::Type{T}) where {T} = AtomicTrace(Nullable{T}(), record)
 has(trace::AtomicTrace) = !isnull(trace.value)
 get(trace::AtomicTrace) = Base.get(trace.value)
 set!(trace::AtomicTrace{T}, value::T) where {T} = begin trace.value = Nullable{T}(value) end

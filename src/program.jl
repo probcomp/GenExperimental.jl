@@ -219,13 +219,17 @@ end
 
 function tagged!(trace::Trace, generator::AtomicGenerator{T}, args::Tuple, name) where {T}
     local value::T
-    subtrace = AtomicTrace{T}()
+    local subtrace::AtomicTrace{T}
     # NOTE: currently the value itself is stored in the trace, not the subtrace
     if haskey(trace.constraints, name)
         value = trace.constraints[name]
+        subtrace = AtomicTrace(value)
         constrain!(subtrace, value)
     elseif name in trace.proposals
+        subtrace = AtomicTrace(T)
         propose!(subtrace)
+    else
+        subtrace = AtomicTrace(T)
     end
     trace.score += generate!(generator, args, subtrace)
     value = get(subtrace)
