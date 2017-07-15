@@ -14,37 +14,37 @@ using DataStructures
 abstract type AbstractTrace end
 
 mutable struct Trace <: AbstractTrace
-    constraints::OrderedDict{String,Any}
-    interventions::OrderedDict{String,Any}
-    proposals::OrderedSet{String}
-    recorded::OrderedDict{String,Any}
-    visited::OrderedSet{String}
+    constraints::OrderedDict{Any,Any}
+    interventions::OrderedDict{Any,Any}
+    proposals::OrderedSet{Any}
+    recorded::OrderedDict{Any,Any}
+    visited::OrderedSet{Any}
     score::Float64
     function Trace()
-        constraints = OrderedDict{String,Any}()
-        interventions = OrderedDict{String,Any}()
-        proposals = OrderedSet{String}()
-        recorded = OrderedDict{String,Any}()
-        visited = OrderedSet{String}()
+        constraints = OrderedDict{Any,Any}()
+        interventions = OrderedDict{Any,Any}()
+        proposals = OrderedSet{Any}()
+        recorded = OrderedDict{Any,Any}()
+        visited = OrderedSet{Any}()
         new(constraints, interventions, proposals, recorded, visited, 0.0)
     end
 end
 
 mutable struct DifferentiableTrace <: AbstractTrace
-    constraints::OrderedDict{String,Any}
-    interventions::OrderedDict{String,Any}
-    proposals::OrderedSet{String}
-    recorded::OrderedDict{String,Any}
-    visited::OrderedSet{String}
+    constraints::OrderedDict{Any,Any}
+    interventions::OrderedDict{Any,Any}
+    proposals::OrderedSet{Any}
+    recorded::OrderedDict{Any,Any}
+    visited::OrderedSet{Any}
     score::GenScalar # becomes type GenFloat (which can be automatically converted from a Float64)
     tape::Tape
     function DifferentiableTrace()
         tape = Tape()
-        constraints = OrderedDict{String,Any}()
-        interventions = OrderedDict{String,Any}()
-        proposals = OrderedSet{String}()
-        recorded = OrderedDict{String,Any}()
-        visited = OrderedSet{String}()
+        constraints = OrderedDict{Any,Any}()
+        interventions = OrderedDict{Any,Any}()
+        proposals = OrderedSet{Any}()
+        recorded = OrderedDict{Any,Any}()
+        visited = OrderedSet{Any}()
         new(constraints, interventions, proposals, recorded, visited, GenScalar(0.0, tape), tape)
     end
 end
@@ -75,7 +75,7 @@ function Base.print(trace::AbstractTrace)
     end
 end
 
-function check_not_exists(trace::AbstractTrace, name::String)
+function check_not_exists(trace::AbstractTrace, name)
     if haskey(trace.constraints, name)
         error("$name is already marked as a constraint")
     end
@@ -91,40 +91,40 @@ function check_not_exists(trace::AbstractTrace, name::String)
     end
 end
 
-function constrain!(trace::AbstractTrace, name::String, val::Any)
+function constrain!(trace::AbstractTrace, name, val)
     check_not_exists(trace, name)
     trace.constraints[name] = val
 end
 
-function unconstrain!(trace::AbstractTrace, name::String)
+function unconstrain!(trace::AbstractTrace, name)
     val = trace.constraints[name]
     delete!(trace.constraints, name)
     trace.recorded[name] = val
 end
 
 
-function intervene!(trace::AbstractTrace, name::String, val::Any)
+function intervene!(trace::AbstractTrace, name, val)
     check_not_exists(trace, name)
     trace.interventions[name] = val
 end
 
-function parametrize!(trace::DifferentiableTrace, name::String, val::ConcreteValue)
+function parametrize!(trace::DifferentiableTrace, name, val::ConcreteValue)
     # just an intervene! that converts it to a GenValue first (with the right tape)
     check_not_exists(trace, name)
     trace.interventions[name] = makeGenValue(val, trace.tape)
 end
 
-function propose!(trace::AbstractTrace, name::String)
+function propose!(trace::AbstractTrace, name)
     check_not_exists(trace, name)
     push!(trace.proposals, name)
 end
 
 function prepare(trace::Trace)
-    trace.visited = OrderedSet{String}()
+    trace.visited = OrderedSet{Any}()
 end
 
 function prepare(trace::DifferentiableTrace)
-    trace.visited = OrderedSet{String}()
+    trace.visited = OrderedSet{Any}()
 end
 
 function check_visited(trace::AbstractTrace)
@@ -162,11 +162,11 @@ function finalize(trace::DifferentiableTrace)
 end
 
 
-function derivative(trace::DifferentiableTrace, name::String)
+function derivative(trace::DifferentiableTrace, name)
     partial(value(trace, name))
 end
 
-function Base.delete!(trace::AbstractTrace, name::String)
+function Base.delete!(trace::AbstractTrace, name)
     if haskey(trace.constraints, name)
         delete!(trace.constraints, name)
     end
@@ -181,7 +181,7 @@ function Base.delete!(trace::AbstractTrace, name::String)
     end
 end
 
-function hasvalue(trace::AbstractTrace, name::String)
+function hasvalue(trace::AbstractTrace, name)
     if haskey(trace.constraints, name)
         return true
     end
@@ -194,11 +194,11 @@ function hasvalue(trace::AbstractTrace, name::String)
     return false
 end
 
-function hasconstraint(trace::AbstractTrace, name::String)
+function hasconstraint(trace::AbstractTrace, name)
     haskey(trace.constraints, name)
 end
 
-function value(trace::AbstractTrace, name::String)
+function value(trace::AbstractTrace, name)
     if haskey(trace.constraints, name)
         return trace.constraints[name]
     elseif haskey(trace.interventions, name)
@@ -217,7 +217,7 @@ struct ProbabilisticProgram <: Generator{AbstractTrace}
     program::Function
 end
 
-function tagged!(trace::Trace, generator::AtomicGenerator{T}, args::Tuple, name::String) where {T}
+function tagged!(trace::Trace, generator::AtomicGenerator{T}, args::Tuple, name) where {T}
     local value::T
     subtrace = AtomicTrace{T}()
     # NOTE: currently the value itself is stored in the trace, not the subtrace
@@ -234,7 +234,7 @@ function tagged!(trace::Trace, generator::AtomicGenerator{T}, args::Tuple, name:
     value
 end
 
-function tagged!(trace::Trace, value::T, name::String) where {T}
+function tagged!(trace::Trace, value::T, name) where {T}
     if haskey(trace.constraints, name)
         error("cannot constrain $name")
     else
@@ -273,13 +273,13 @@ macro program(args, body)
 
     # overload the tag function to tag values in the correct trace
     prefix = quote
-        tag(gen::AtomicGenerator, stuff::Tuple, name::String) = tagged!($trace_symbol, gen, stuff, name)
+        tag(gen::AtomicGenerator, stuff::Tuple, name) = tagged!($trace_symbol, gen, stuff, name)
 
         # primitives overload invocation syntax () and expand into this:
-        tag(gen_and_args::Tuple{AtomicGenerator,Tuple}, name::String) = tagged!($trace_symbol, gen_and_args[1], gen_and_args[2], name)
+        tag(gen_and_args::Tuple{AtomicGenerator,Tuple}, name) = tagged!($trace_symbol, gen_and_args[1], gen_and_args[2], name)
 
         # arbitrary non-generator tagged values
-        tag(other::Any, name::String) = tagged!($trace_symbol, other, name)
+        tag(other, name) = tagged!($trace_symbol, other, name)
     end
 
     # evaluates to a ProbabilisticProgram struct
@@ -301,9 +301,9 @@ end
 ## Binary generate for two probabilistic program traces
 
 function generate!(model_trace::AbstractTrace, model_program::ProbabilisticProgram,
-                   proposal_program::ProbabilisticProgram, mapping::Dict{String,String})
+                   proposal_program::ProbabilisticProgram, mapping::Dict{Any,Any})
     proposal_trace = Trace()
-    new_model_constraints = Set{String}()
+    new_model_constraints = Set{Any}()
     for (proposal_name, model_name) in mapping
         if !hasconstraint(model_trace, model_name)
             propose!(proposal_trace, proposal_name)
