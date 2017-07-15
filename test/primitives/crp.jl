@@ -125,9 +125,10 @@
         a5 = value(trace, 5)
         constrain!(trace, 9, a5)
         a9 = value(trace, 9)
-        score = generate!(CRPJointGenerator(), (n, alpha), trace)
+        (score, values) = generate!(CRPJointGenerator(), (n, alpha), trace)
         for i=1:n
             @test hasvalue(trace, i)
+            @test value(trace, i) == values[i]
         end
         @test !hasvalue(trace, n+1)
         @test value(trace, 5) == a5
@@ -139,8 +140,10 @@
 
         # generate again and check that the score hasn't changed
         # (this checks that the sufficient statistics were correctly reverted)
-        score = generate!(CRPJointGenerator(), (n, alpha), trace)
+        (score, values) = generate!(CRPJointGenerator(), (n, alpha), trace)
         @test isapprox(score, expected_score)
+        @test values[5] == a5
+        @test values[9] == a9
 
     end
 
