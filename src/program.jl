@@ -13,7 +13,7 @@ using DataStructures
 
 abstract type AbstractTrace end
 
-struct TraceElement{T}
+mutable struct TraceElement{T}
     value::Nullable{T}
     mode::SubtraceMode
 end
@@ -39,7 +39,7 @@ mutable struct Trace <: AbstractTrace
     function Trace()
         elements = Dict{Any, TraceElement}()
         subtraces = Dict{Any, Any}()
-        visited = OrderedSet{Any}()
+        visited = Set{Any}()
         aliases = Dict{Any, Dict{Any, Any}}()
         new(elements, subtraces, visited, aliases, 0.0)
     end
@@ -50,13 +50,13 @@ end
 mutable struct DifferentiableTrace <: AbstractTrace
     elements::Dict{Any, TraceElement}
     subtraces::Dict{Any, Any}
-    visited::OrderedSet{Any}
+    visited::Set{Any}
     score::GenScalar # becomes type GenFloat (which can be automatically converted from a Float64)
     tape::Tape
     function DifferentiableTrace()
         elements = Dict{Any, TraceElement}()
         subtraces = Dict{Any, Any}()
-        visited = OrderedSet{Any}()
+        visited = Set{Any}()
         tape = Tape()
         new(elements, subtraces, visited, GenScalar(0.0, tape), tape)
     end
@@ -147,12 +147,11 @@ function hasconstraint(trace::AbstractTrace, name)
     haskey(trace.constraints, name) && trace.elements[name].mode == constrain
 end
 
-value(trace::AbstractTrace, name) = get(trace.elements[name].value)
+value(trace::AbstractTrace, name) = Base.get(trace.elements[name].value)
 
 
 ## Probabilistic program generator
 
-println("defining prob prog")
 struct ProbabilisticProgram <: Generator{AbstractTrace}
     program::Function
 end
@@ -174,11 +173,11 @@ function tagged!(trace::Trace, generator::Generator{TraceType}, args::Tuple, nam
             if alias in trace.elements
                 element = trace.elements[alias]
                 if element.mode == constrain
-                    constrain!(subtrace, subname, get(element.value))
+                    constrain!(subtrace, subname, Base.get(element.value))
                 elseif element.mode == propose
                     propose!(subtrace, subname)
                 elseif element.mode == intervene
-                    intervene!(subtrace, subname, get(element.value))
+                    intervene!(subtrace, subname, Base.get(element.value))
                 end
             end
         end
@@ -213,10 +212,10 @@ function tagged!(trace::Trace, generator::AtomicGenerator{T}, args::Tuple, name)
     local value::T
     local subtrace::AtomicTrace{T}
     local element::TraceElement{T}
-    exists = hasvalue(trace.elements, name)
+    exists = hasvalue(trace, name)
     if exists
         element = trace.elements[name]
-        value = element.value
+        value = Base.get(element.value)
         if element.mode == constrain
             subtrace = AtomicTrace(value)
             constrain!(subtrace, value)
@@ -235,9 +234,9 @@ function tagged!(trace::Trace, generator::AtomicGenerator{T}, args::Tuple, name)
     (score, value) = generate!(generator, args, subtrace)
     trace.score += score
     if exists
-        element.value = value
+        set_value!(element, value)
     else
-        element = TraceElement(value, record)
+        trace.elements[name] = TraceElement(value, record)
     end
     push!(trace.visited, name)
     value
@@ -255,7 +254,7 @@ function tagged!(trace::Trace, value::T, name) where {T}
         elseif trace.element.mode == propose
             error("cannot propose $name, it is not a generator call")
         elseif trace.element.mode == intervene
-            return_value = get(trace.element.value)
+            return_value = Base.get(trace.element.value)
         end
     end
     push!(trace.visited, name)
