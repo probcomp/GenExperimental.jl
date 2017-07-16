@@ -29,19 +29,20 @@ mutable struct Trace <: AbstractTrace
     subtraces::Dict{Any, Any}
     visited::Set{Any}
 
-    # keys are names of sub-traces
-    # valus are mapping from names to (alias, mode, visited, [value])
-    # at the end of generate! we should check that all aliases were visited
-    # e.g. "cluster-7" => ("x2", constrain, false, 2) for a constraint
-    # e.g. "cluster-7" => ("x2", record, false)
+    # maps the generator name to a mapping from subname to alias
     aliases::Dict{Any, Dict{Any, Any}}
+
+    # maps the alias name to a pair of (name, subname)
+    back_aliases::Dict{Any, Tuple{Any, Any}}
+
     score::Float64
     function Trace()
         elements = Dict{Any, TraceElement}()
         subtraces = Dict{Any, Any}()
         visited = Set{Any}()
         aliases = Dict{Any, Dict{Any, Any}}()
-        new(elements, subtraces, visited, aliases, 0.0)
+        back_aliases = Dict{Any, Tuple{Any, Any}}()
+        new(elements, subtraces, visited, aliases, back_aliases, 0.0)
     end
 end
 
@@ -64,6 +65,7 @@ end
 
 # TODO rename to names or addresses
 choices(trace::AbstractTrace) = keys(trace.elements)
+lookup_alias(trace::AbstractTrace, alias) = trace.back_aliases[alias]
 
 function Base.print(io::IO, trace::Trace)
     println(io, "Trace(")
@@ -148,6 +150,7 @@ function hasconstraint(trace::AbstractTrace, name)
 end
 
 value(trace::AbstractTrace, name) = Base.get(trace.elements[name].value)
+subtrace(trace::AbstractTrace, name) = trace.subtraces[name]
 
 
 ## Probabilistic program generator
@@ -275,6 +278,7 @@ function add_alias!(trace::Trace, alias, name, subname)
         trace.aliases[name] = Dict{Any, Any}()
     end
     trace.aliases[name][subname] = alias
+    trace.back_aliases[alias] = (name, subname)
     nothing
 end
 
@@ -289,7 +293,15 @@ macro program(args, body)
     new_args = [:($trace_symbol::AbstractTrace)]
 
     # remaining arguments are the original arguments
-    if args.head == :(::)
+    local name::Nullable{Symbol}
+    if args.head == :call
+    
+        # @program name(args...)
+        name = args.args[1]
+        for arg in args.args[2:end]
+            push!(new_args, arg)
+        end
+    elseif args.head == :(::)
 
         # single argument
         push!(new_args, args)
@@ -319,10 +331,18 @@ macro program(args, body)
         # tag((name, subname) => alias) adds an alias 
         tag(arg::Pair{Tuple{Any, Any}, Any}) = add_alias!($trace_symbol, arg[2], arg[1][1], arg[1][2])
     end
+    new_body = quote $prefix; $body end
 
     # evaluates to a ProbabilisticProgram struct
-    Expr(:call, :ProbabilisticProgram, 
-        Expr(:function, arg_tuple, quote $prefix; $body end))
+    if isnull(name)
+        Expr(:call, :ProbabilisticProgram, 
+            Expr(:function, arg_tuple, new_body))
+    else
+        function_name = Base.get(name)
+        Main.eval(Expr(:function,
+                    Expr(:call, function_name, new_args...),
+                        new_body))
+    end
 end
 
 function generate!(p::ProbabilisticProgram, args::Tuple, trace::AbstractTrace)
@@ -385,3 +405,4 @@ export value
 export score
 export hasconstraint
 export choices
+export lookup_alias

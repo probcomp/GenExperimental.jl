@@ -34,6 +34,8 @@ mutable struct ExchangeableJointTrace{StateType,DrawType,ValueType}
     values::Dict{Int,ValueType} 
 end
 
+num(trace::ExchangeableJointTrace) = trace.max_constrained_index
+
 function ExchangeableJointTrace{S,D,V}(::Type{S}, ::Type{D}, ::Type{V})
     ExchangeableJointTrace{S,D,V}(D(), S(), 0, Set{Int}(), Set{Int}(), Dict{Int,V}())
 end
@@ -57,7 +59,8 @@ function constrain!(trace::ExchangeableJointTrace, i::Int, value)
     end
 end
 
-function unconstrain!(trace::ExchangeableJointTrace, i::Int)
+function delete!(trace::ExchangeableJointTrace, i::Int)
+    # TODO should this be called unconstrain or delete?
     if !(i in trace.constrained)
         error("cannot unconstrain $i, it is not constrained")
     end
