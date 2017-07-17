@@ -128,6 +128,11 @@ make_exchangeable_generator(:CRPJointTrace, :CRPJointGenerator,
 next_new_cluster(trace::ExchangeableJointTrace{CRPState, CRPDraw, Int}) =
     next_new_cluster(trace.constrained_state)
 
+has_cluster(trace::ExchangeableJointTrace{CRPState, CRPDraw, Int}, cluster::Int) = haskey(trace.constrained_state, cluster)
+#counts(state::CRPState, cluster::Int) = state.counts[cluster]
+#clusters(state::CRPState) = keys(state.counts)
+
+
 export CRPState
 export next_new_cluster
 export has_cluster
