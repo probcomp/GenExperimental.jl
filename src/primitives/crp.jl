@@ -46,6 +46,9 @@ function logpdf(state::CRPState, alpha::T) where {T}
 end
 
 function incorporate!(state::CRPState, cluster::Int)
+    println("incorporate! $cluster")
+    println(state.counts)
+    println(next_new_cluster(state))
     @assert !haskey(state.counts, next_new_cluster(state))
     @assert (cluster == next_new_cluster(state)) || haskey(state.counts, cluster)
     if cluster == next_new_cluster(state)
@@ -65,11 +68,14 @@ function incorporate!(state::CRPState, cluster::Int)
 end
 
 function unincorporate!(state::CRPState, cluster::Int)
+    println("unincorporate! $cluster")
+    println(state.counts)
+    println(next_new_cluster(state))
     @assert !haskey(state.counts, next_new_cluster(state))
     state.counts[cluster] -= 1
     if state.counts[cluster] == 0
         # free the empyt cluster
-        delete!(state.counts, cluster)
+        Base.delete!(state.counts, cluster)
         push!(state.free, cluster)
     end
     state.total_count -= 1
@@ -122,7 +128,7 @@ register_primitive(:draw_crp, CRPDraw)
 ############################################
 
 make_exchangeable_generator(:CRPJointTrace, :CRPJointGenerator,
-    Float64, CRPState, CRPDraw, Int)
+    Tuple{Set,Float64}, CRPState, CRPDraw, Int)
 
 # next new cluster relative to the currently constrained assignments
 next_new_cluster(trace::ExchangeableJointTrace{CRPState, CRPDraw, Int}) =

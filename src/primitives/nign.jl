@@ -107,7 +107,7 @@ register_primitive(:draw_nign, NIGNDraw)
 #############################################
 
 make_exchangeable_generator(:NIGNJointTrace, :NIGNJointGenerator,
-    NIGNParams, NIGNState, NIGNDraw, Float64)
+    Tuple{Set,NIGNParams}, NIGNState, NIGNDraw, Float64)
 
 
 export NIGNParams

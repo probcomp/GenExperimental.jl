@@ -150,8 +150,9 @@ function hasconstraint(trace::AbstractTrace, name)
 end
 
 value(trace::AbstractTrace, name) = Base.get(trace.elements[name].value)
+has_subtrace(trace::AbstractTrace, name) = haskey(trace.subtraces, name)
 subtrace(trace::AbstractTrace, name) = trace.subtraces[name]
-
+add_subtrace!(trace::AbstractTrace, name, subtrace) = begin trace.subtraces[name] = subtrace end
 
 ## Probabilistic program generator
 
@@ -173,8 +174,9 @@ function tagged!(trace::Trace, generator::Generator{TraceType}, args::Tuple, nam
     # convert directives applied to aliases onto subtrace directives
     if haskey(trace.aliases, name)
         for (subname, alias) in trace.aliases[name]
-            if alias in trace.elements
+            if haskey(trace.elements, alias)
                 element = trace.elements[alias]
+                println("aliased element: $element")
                 if element.mode == constrain
                     constrain!(subtrace, subname, Base.get(element.value))
                 elseif element.mode == propose
@@ -187,22 +189,23 @@ function tagged!(trace::Trace, generator::Generator{TraceType}, args::Tuple, nam
     end
 
     # TODO need to modify generate! to return both!
-    (trace.score, value) = generate!(generator, args, subtrace)
+    (trace.score, return_value) = generate!(generator, args, subtrace)
     
     # record any values into elements for the alias
     if haskey(trace.aliases, name)
         for (subname, alias) in trace.aliases[name]
-            if !(alias in trace.elements)
+            alias_value = value(subtrace, subname)
+            if !haskey(trace.elements, alias)
                 # aliases are recorded
-                trace.elements[alias] = TraceElement(value, record)
+                trace.elements[alias] = TraceElement(alias_value, record)
             else
                 # retain the same mode for the alias
-                set_value!(trace.elements[alias], value)
+                set_value!(trace.elements[alias], alias_value)
             end
             push!(trace.visited, alias)
         end
     end
-    value
+    return_value
 end
 
 # process a tagged atomic generator call
@@ -266,6 +269,7 @@ end
 
 # add an alias mapping a name in a sub-trace to a name in this trace
 function add_alias!(trace::Trace, alias, name, subname)
+    println("adding alias=$alias, name=$name, subname=$subname")
 
     # the alias must come earlier in the program than the sub-trace it is aliasing
     check_not_visited(trace, name)
@@ -298,6 +302,7 @@ macro program(args, body)
     
         # @program name(args...)
         name = args.args[1]
+        println("function definition name=$name")
         for arg in args.args[2:end]
             push!(new_args, arg)
         end
@@ -320,16 +325,16 @@ macro program(args, body)
 
     # overload the tag function to tag values in the correct trace
     prefix = quote
-        tag(gen::AtomicGenerator, stuff::Tuple, name) = tagged!($trace_symbol, gen, stuff, name)
+        tag(gen::Generator, stuff::Tuple, name) = Gen.tagged!($trace_symbol, gen, stuff, name)
 
         # primitives overload invocation syntax () and expand into this:
-        tag(gen_and_args::Tuple{AtomicGenerator,Tuple}, name) = tagged!($trace_symbol, gen_and_args[1], gen_and_args[2], name)
+        tag(gen_and_args::Tuple{Generator,Tuple}, name) = Gen.tagged!($trace_symbol, gen_and_args[1], gen_and_args[2], name)
 
         # arbitrary non-generator tagged values
-        tag(other, name) = tagged!($trace_symbol, other, name)
+        tag(other, name) = Gen.tagged!($trace_symbol, other, name)
 
         # tag((name, subname) => alias) adds an alias 
-        tag(arg::Pair{Tuple{Any, Any}, Any}) = add_alias!($trace_symbol, arg[2], arg[1][1], arg[1][2])
+        tag(arg::Pair) = Gen.add_alias!($trace_symbol, arg[2], arg[1][1], arg[1][2])
     end
     new_body = quote $prefix; $body end
 
@@ -339,9 +344,11 @@ macro program(args, body)
             Expr(:function, arg_tuple, new_body))
     else
         function_name = Base.get(name)
-        Main.eval(Expr(:function,
-                    Expr(:call, function_name, new_args...),
-                        new_body))
+        println("defining function $function_name")
+        Main.eval(quote
+            $function_name = $(Expr(:call, :(Gen.ProbabilisticProgram), 
+                                Expr(:function, arg_tuple, new_body)))
+        end)
     end
 end
 
@@ -406,3 +413,12 @@ export score
 export hasconstraint
 export choices
 export lookup_alias
+export has_subtrace
+export subtrace
+export add_subtrace!
+export tag
+
+# TODO: these aren't part of the interface, but are currently exported because otherwise
+# the macro body cannot resolve these functions
+export tagged!
+export add_alias!
