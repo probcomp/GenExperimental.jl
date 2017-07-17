@@ -26,7 +26,7 @@ We want to make such breaks in abstraction explicit (using aliases, see below)
 -------------------------------------------
 Q: Do we accept aliasing within a program?
 
-tag(alias, name)
+tag(alias => name)
 ..
 tag(expr, alias)
 
@@ -39,7 +39,7 @@ Q: Do we allow creating an alias, such that all constraints on that alias get tu
    constraints on a particular sub-trace?
 
 A: Yes. This is how we permit the values of a sub-trace to be exposed as names in the top-level
-   trace. It would be possible to alias all 
+   trace.
 
 
 -------------------------------------------
@@ -51,10 +51,11 @@ A: A trace is a flat map from addresses (Any) to sub-traces (where atomic
    Aliases are dynamically constructed in-line during program execution.
    Aliases map a name to a (sub-trace, sub-address) pair.
 
-   Constraints, interventions, and proposals on aliases are dynamically
-   converted into constraints on the sub-trace immediately prior to generating the
-   sub-generator on the sub-trace. After generating a sub-trace, all aliased
-   values in the sub-trace are also recorded in top-level trace, under the alias name.
+   Constraints, (interventions, and proposals) on aliases are dynamically
+   converted into constraints (interventions, and proposals) on the sub-trace
+   immediately prior to generating the sub-generator on the sub-trace. After
+   generating a sub-trace, all aliased values in the sub-trace are also recorded
+   in top-level trace, under the alias name.
 
    A generator sets the sub-trace, and also returns a value.  The value is usually 
    a representation of some sub-part of the sub-trace. is this enforced? why have two copies
@@ -84,14 +85,34 @@ A: A trace is a flat map from addresses (Any) to sub-traces (where atomic
    that is documented. for example, we can constrain the sub-trace of a joint CRP
    and guarantee that the return value vector of assignments produced during
    regeneration has certain values for the constrained assignments. the meta-programs
-   will rely on these invariants relating the sub-trace and the output that are
-   implemented by the generator
+   will on these invariants relating the sub-trace and the output that are
+   part of the generator's specification.
     
 
 -------------------------------------------
 Q: how do we extract values from a sub-trace into a value in the program?
 
-Decision: do not allow deep addressing into subtraces
-Decision: allow aliasing, in which a name in a trace is 
+A: the generator returns some value, in additon to filling in the sub-trace
+   the generator has a docuemnted specification that describes the invariants
+   relating these two distinct pieces of data.
 
+
+-------------------------------------------
+Q: the probabilistic program for DPMM will still involve an O(N) traversal, even with 
+   joint generators for the CRP and NIGN. IN parricular, this traversal is responsible
+   for dynamically computing the aliases from data indices (e.g. "x-$i" to sub-trace 
+   elements e.g. "(cluster-6, 4)"). how would this be done in a network that handles
+   incremental computation?
+
+A:  A 'module network' is really going to be a probabilistic program (with the
+    same underlying trace data structure and same representation langugae, but in
+    which the programmer can overload the implementation of generate! to be more
+    efficiet than the default generate! implementation for probabilistic programs
+    (which just runs the program as in the 'lightweight' paper).
+
+    We'll start out with just allowing the ability to override generate!, and then 
+    gradually add higher-level primitives to make that process reqiure less new code
+    each time.
+    
+    
 
