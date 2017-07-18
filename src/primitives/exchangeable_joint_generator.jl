@@ -20,12 +20,10 @@ mutable struct ExchangeableJointTrace{StateType,DrawType,ValueType}
     # must be compatible with the StateType
     draw_generator::DrawType
 
-    # the state that has incorporated all draws
+    # the state that contains all constrained draws between calls to generate!
+    # it is also temporarily to generate unconstrained draws inte
     state::StateType
 
-    # the state that has incorporated only constrained draws
-    constrained_state::StateType
-    
     # values for all constrained or recorded addresses
     values::Dict{Any,ValueType}
 
@@ -45,29 +43,21 @@ function Base.print(io::IO, trace::ExchangeableJointTrace{S,D,V}) where {S,D,V}
     end
     println("state")
     println(trace.state)
-    println("constrained state")
-    println(trace.constrained_state)
     println(io, ")")
 end
 
 
 function ExchangeableJointTrace{S,D,V}(::Type{S}, ::Type{D}, ::Type{V})
-    ExchangeableJointTrace{S,D,V}(D(), S(), S(), Dict{Any,V}(), Set{Any}())
+    ExchangeableJointTrace{S,D,V}(D(), S(), Dict{Any,V}(), Set{Any}())
 end
 
-constrained_state(trace::ExchangeableJointTrace) = trace.constrained_state
+state(trace::ExchangeableJointTrace) = trace.state
 
 function constrain!(trace::ExchangeableJointTrace, name, value)
-    println("trying to constrain to value = $value")
     if name in trace.constrained
         error("cannot constrain $name, it is already constrained")
     end
-    if haskey(trace.values, name)
-        # it was recorded
-        unincorporate!(trace.state, value)
-    end
     trace.values[name] = value
-    incorporate!(trace.constrained_state, value)
     incorporate!(trace.state, value)
     push!(trace.constrained, name)
 end
@@ -78,12 +68,11 @@ function delete!(trace::ExchangeableJointTrace, name)
     end
     value = trace.values[name]
     Base.delete!(trace.values, name)
-    unincorporate!(trace.constrained_state, value)
     unincorporate!(trace.state, value)
     Base.delete!(trace.constrained, name)
 end
 
-Base.length(trace::ExchangeableJointTrace) = length(trace.values)
+num_constrained(trace::ExchangeableJointTrace) = length(trace.constrained)
 hasvalue(trace::ExchangeableJointTrace, name) = haskey(trace.values, name)
 value(trace::ExchangeableJointTrace, name) = trace.values[name]
 
@@ -91,38 +80,30 @@ type ExchangeableJointGenerator{T} <: Generator{T <: ExchangeableJointTrace} end
 
 # samples new draws from the conditional distribution
 # score is the marginal probability of the constrained choices
-function draw_and_incorporate!(trace::ExchangeableJointTrace, name, params::Tuple)
-    value = simulate(trace.draw_generator, trace.state, params...)
-    incorporate!(trace.state, value)
-    incorporate!(trace.constrained_state, value)
-    trace.values[name] = value
-    push!(trace.constrained, name)
-end
-
 function generate!(::ExchangeableJointGenerator, args::Tuple{Set, Tuple}, trace::ExchangeableJointTrace{S,D,V}) where {S,D,V}
 
     # the set of new addresses to generate at
-    # NOTE: this could be the total address space, but then every call to generate! would be O(N)
-    # so that we could check that every constrained address is in the space.
+    # NOTE: the order of the set is undefined?
+    # we sort it 
     names = args[1]
     
     # the parameters
     params = args[2]
 
     # the score is the log marginal probability of the constrained values
-    score = logpdf(trace.constrained_state, params...)
+    score = logpdf(trace.state, params...)
 
     # TODO can we combine the constrained and non-constrained state into one and just roll-back
     # the unconstraints after regenerate?
 
-    # generate new values
+    # generate requested values
     new_values = Dict{Any,V}()
     for name in names
         if !(name in trace.constrained)
+            # NOTE unconstrained draws are not persisted in the state between
+            # calls to generate!  but they are persisted in trace.values
             if haskey(trace.values, name)
                 Base.delete!(trace.values, name)
-                # NOTE these are not persiste din the sufficient staitics (but they are persisted in trace.values)
-                #unincorporate!(trace.state, trace.values[name])
             end
             value = simulate(trace.draw_generator, trace.state, params...)
             incorporate!(trace.state, value)
@@ -131,18 +112,24 @@ function generate!(::ExchangeableJointGenerator, args::Tuple{Set, Tuple}, trace:
         new_values[name] = trace.values[name]
     end
 
-    # unincorporate all new values
+    # unincorporate all unconstrained requested values
+    # TODO: constantly adding and removing values in each call to generate!
+    # may introduce extra numerical drift
     for name in names
         if !(name in trace.constrained)
             unincorporate!(trace.state, trace.values[name])
         end
     end
+    @assert isapprox(logpdf(trace.state, params...), score, atol=1e-10)
 
     # return only the new values
     (score, new_values)
 end
 
-
+export constrain!
+export hasvalue
+export value
+export num_constrained
 export ExchangeableJointTrace
 export ExchangeableJointGenerator
 
@@ -156,11 +143,11 @@ function make_exchangeable_generator(trace_type_name::Symbol, generator_type_nam
             trace::ExchangeableJointTrace{$state_type, $draw_type, $value_type}
         end
         constrain!(trace::$trace_type_name, name, value) = constrain!(trace.trace, name, value)
-        delete!(trace::$trace_type_name, name) = delete!(trace.trace, name)
-        Base.length(trace::$trace_type_name) = length(trace.trace)
+        Base.delete!(trace::$trace_type_name, name) = delete!(trace.trace, name)
+        num_constrained(trace::$trace_type_name) = num_constrained(trace.trace)
         hasvalue(trace::$trace_type_name, name) = hasvalue(trace.trace)
         value(trace::$trace_type_name, name) = value(trace.trace, name)
-        Base.print(io::IO, trace::$trace_type_name) = print(io, trace.trace)
+        Base.print(io::IO, trace::$trace_type_name) = print(io, "$($trace_type_name)(\n$(trace.trace)\n)")
         $trace_type_name() = $trace_type_name(
             ExchangeableJointTrace($state_type, $draw_type, $value_type))
 
@@ -172,7 +159,6 @@ function make_exchangeable_generator(trace_type_name::Symbol, generator_type_nam
         end
 
         (::Type{$generator_type_name})(args...) = ($generator_type_name(), args)
-
 
 
         export $trace_type_name

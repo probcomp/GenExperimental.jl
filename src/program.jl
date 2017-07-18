@@ -26,6 +26,8 @@ end
 
 mutable struct Trace <: AbstractTrace
     elements::Dict{Any, TraceElement}
+
+    # NOTE: we never delete subtraces. TODO should we?
     subtraces::Dict{Any, Any}
     visited::Set{Any}
 
@@ -146,7 +148,7 @@ function hasvalue(trace::AbstractTrace, name)
 end
 
 function hasconstraint(trace::AbstractTrace, name)
-    haskey(trace.constraints, name) && trace.elements[name].mode == constrain
+    haskey(trace.elements, name) && trace.elements[name].mode == constrain
 end
 
 value(trace::AbstractTrace, name) = Base.get(trace.elements[name].value)
@@ -176,7 +178,6 @@ function tagged!(trace::Trace, generator::Generator{TraceType}, args::Tuple, nam
         for (subname, alias) in trace.aliases[name]
             if haskey(trace.elements, alias)
                 element = trace.elements[alias]
-                println("aliased element: $element")
                 if element.mode == constrain
                     constrain!(subtrace, subname, Base.get(element.value))
                 elseif element.mode == propose
@@ -262,6 +263,8 @@ function tagged!(trace::Trace, value::T, name) where {T}
         elseif trace.element.mode == intervene
             return_value = Base.get(trace.element.value)
         end
+    else
+        trace.elements[name] = TraceElement(value, record)
     end
     push!(trace.visited, name)
     return_value
@@ -269,7 +272,6 @@ end
 
 # add an alias mapping a name in a sub-trace to a name in this trace
 function add_alias!(trace::Trace, alias, name, subname)
-    println("adding alias=$alias, name=$name, subname=$subname")
 
     # the alias must come earlier in the program than the sub-trace it is aliasing
     check_not_visited(trace, name)
@@ -302,7 +304,6 @@ macro program(args, body)
     
         # @program name(args...)
         name = args.args[1]
-        println("function definition name=$name")
         for arg in args.args[2:end]
             push!(new_args, arg)
         end
@@ -344,7 +345,6 @@ macro program(args, body)
             Expr(:function, arg_tuple, new_body))
     else
         function_name = Base.get(name)
-        println("defining function $function_name")
         Main.eval(quote
             $function_name = $(Expr(:call, :(Gen.ProbabilisticProgram), 
                                 Expr(:function, arg_tuple, new_body)))
