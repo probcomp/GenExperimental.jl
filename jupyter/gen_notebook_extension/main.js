@@ -5,14 +5,10 @@ define(['require'], function(require) {
     }
 
     function find_choice(trace, name) {
-        if (name in trace.recorded) {
-            return { value: trace.recorded[name], where: "recorded" }
-        } else if (name in trace.interventions) {
-            return { value: trace.interventions[name], where: "interventions"}
-        } else if (name in trace.constraints) {
-            return { value: trace.constraints[name], where: "constraints"}
+        if (name in trace.elements) {
+            return { value: trace.elements[name].value, where: trace.elements[name].mode };
         } else {
-            return null
+            return null;
         }
     }
 

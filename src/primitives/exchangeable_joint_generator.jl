@@ -54,12 +54,16 @@ end
 state(trace::ExchangeableJointTrace) = trace.state
 
 function constrain!(trace::ExchangeableJointTrace, name, value)
-    if name in trace.constrained
-        error("cannot constrain $name, it is already constrained")
+    if name in trace.constrained 
+        # it's okay to reconstrain (to a potentially different value)
+        # TODO is there numerical instability introduced by repeatedly 
+        # unincorporating and incorporating?
+        unincorporate!(trace.state, value)
+    else
+        push!(trace.constrained, name)
     end
     trace.values[name] = value
     incorporate!(trace.state, value)
-    push!(trace.constrained, name)
 end
 
 function delete!(trace::ExchangeableJointTrace, name)

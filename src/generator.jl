@@ -8,7 +8,7 @@
 abstract type Generator{TraceType} end
 
 # subtraces can be in one of several modes:
-@enum SubtraceMode record propose constrain intervene
+@enum SubtraceMode record=1 propose=2 constrain=3 intervene=4
 
 # some generators overload generator(args) into (generator, args)
 # this function allows the syntax generate!(generator(args), trace)
@@ -33,7 +33,7 @@ end
 AtomicTrace(value) = AtomicTrace(Nullable(value), record)
 AtomicTrace(::Type{T}) where {T} = AtomicTrace(Nullable{T}(), record)
 has(trace::AtomicTrace) = !isnull(trace.value)
-get(trace::AtomicTrace) = Base.get(trace.value)
+Base.get(trace::AtomicTrace) = Base.get(trace.value)
 set!(trace::AtomicTrace{T}, value::T) where {T} = begin trace.value = Nullable{T}(value) end
 
 function unconstrain!(trace::AtomicTrace)
@@ -95,7 +95,6 @@ export Generator
 export generate!
 export AtomicTrace
 export AtomicGenerator
-export get
 export has
 export simulate
 export logpdf

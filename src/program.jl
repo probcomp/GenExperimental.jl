@@ -256,12 +256,12 @@ function tagged!(trace::Trace, value::T, name) where {T}
     local element::TraceElement{T}
     if haskey(trace.elements, name)
         element = trace.elements[name]
-        if trace.element.mode == constrain 
+        if element.mode == constrain 
             error("cannot constrain $name, it is not a generator call")
-        elseif trace.element.mode == propose
+        elseif element.mode == propose
             error("cannot propose $name, it is not a generator call")
-        elseif trace.element.mode == intervene
-            return_value = Base.get(trace.element.value)
+        elseif element.mode == intervene
+            return_value = Base.get(element.value)
         end
     else
         trace.elements[name] = TraceElement(value, record)
