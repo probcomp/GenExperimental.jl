@@ -127,6 +127,9 @@ export AtomicGenerator
 
 abstract type AssessableAtomicGenerator{T} <: AtomicGenerator{T} end
 
+function simulate end
+function logpdf end
+
 function generate!(g::AssessableAtomicGenerator{T}, args::Tuple, trace::AtomicTrace{T}) where {T}
     local value::T
     if trace.mode == intervene || trace.mode == constrain
@@ -144,3 +147,5 @@ function generate!(g::AssessableAtomicGenerator{T}, args::Tuple, trace::AtomicTr
 end
 
 export AssessableAtomicGenerator
+export simulate
+export logpdf

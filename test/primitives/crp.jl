@@ -3,31 +3,30 @@
     @testset "assignment book-keeping" begin
         crp = CRPState()
 
-        c1 = next_new_cluster(crp)
+        c1 = new_cluster(crp)
         @test c1 == 1
         incorporate!(crp, c1)
 
-        c2 = next_new_cluster(crp)
+        c2 = new_cluster(crp)
         @test c2 == 2
         incorporate!(crp, c2)
 
         incorporate!(crp, c2)
         @test counts(crp, c1) == 1
         @test counts(crp, c2) == 2
-        @test next_new_cluster(crp) == c2 + 1
+        @test new_cluster(crp) == c2 + 1
         @test crp.next_cluster == c2 + 2
 
         unincorporate!(crp, c1)
         @test !has_cluster(crp, c1)
         @test counts(crp, c2) == 2
-        @test next_new_cluster(crp) == c1
+        @test new_cluster(crp) != c2
 
         unincorporate!(crp, c2)
         @test counts(crp, c2) == 1
 
         unincorporate!(crp, c2)
         @test !has_cluster(crp, c2)
-        @test next_new_cluster(crp) == c2
 
         # this is never decremented
         @test crp.next_cluster == c2 + 2
@@ -41,7 +40,7 @@
         @test logpdf(crp, alpha) == 0.0
 
         # [1]
-        c1 = next_new_cluster(crp)
+        c1 = new_cluster(crp)
         incorporate!(crp, c1)
         @test logpdf(crp, alpha) == 0.0
         
@@ -53,7 +52,7 @@
 
         # join a new table: [1] [2]
         unincorporate!(crp, c1)
-        c2 = next_new_cluster(crp)
+        c2 = new_cluster(crp)
         incorporate!(crp, c2)
         actual = logpdf(crp, alpha)
         expected = log(alpha / (1. + alpha))
@@ -81,19 +80,19 @@
 
         # [1], [2, 3]
         crp = CRPState()
-        c1 = next_new_cluster(crp)
+        c1 = new_cluster(crp)
         incorporate!(crp, c1)
-        c2 = next_new_cluster(crp)
+        c2 = new_cluster(crp)
         incorporate!(crp, c2)
         incorporate!(crp, c2)
-        c3 = next_new_cluster(crp)
+        c3 = new_cluster(crp)
 
         # log(prob([1], [2, 3]))
         log_prob_before = logpdf(crp, alpha)
 
         # test probability of selecting new cluster
         # c3: [4] | c1: [1], c2: [2, 3]
-        actual = logpdf(draw_crp, c3, crp, alpha)
+        actual = logpdf(CRPDraw(), c3, crp, alpha)
         incorporate!(crp, c3)
         expected_joint = logpdf(crp, alpha) - log_prob_before
         unincorporate!(crp, c3)
@@ -103,7 +102,7 @@
 
         # test probability of joining previous cluster
         # c1: [1, 4] | c1: [1], c2: [2, 3]
-        actual = logpdf(draw_crp, c1, crp, alpha)
+        actual = logpdf(CRPDraw(), c1, crp, alpha)
         incorporate!(crp, c1)
         expected_joint = logpdf(crp, alpha) - log_prob_before
         unincorporate!(crp, c1)
@@ -121,16 +120,16 @@
         # test that the correct values were generated and that the 
         # the constrained values were not modified
         n = 10
-        constrain!(trace, 5, next_new_cluster(trace))
+        constrain!(trace, 5, new_cluster(trace))
         a5 = value(trace, 5)
         constrain!(trace, 9, a5)
         a9 = value(trace, 9)
-        (score, values) = generate!(CRPJointGenerator(), (n, alpha), trace)
+        (score, values) = generate!(CRPJointGenerator(), (Set(1:n), alpha), trace)
         for i=1:n
-            @test hasvalue(trace, i)
+            @test haskey(trace, i)
             @test value(trace, i) == values[i]
         end
-        @test !hasvalue(trace, n+1)
+        @test !haskey(trace, n+1)
         @test value(trace, 5) == a5
         @test value(trace, 9) == a9
 
@@ -140,7 +139,7 @@
 
         # generate again and check that the score hasn't changed
         # (this checks that the sufficient statistics were correctly reverted)
-        (score, values) = generate!(CRPJointGenerator(), (n, alpha), trace)
+        (score, values) = generate!(CRPJointGenerator(), (Set(1:n), alpha), trace)
         @test isapprox(score, expected_score)
         @test values[5] == a5
         @test values[9] == a9

@@ -63,7 +63,7 @@
         expected = logpdf(nign, params) - log_density_before
         unincorporate!(nign, x3)
 
-        actual = logpdf(draw_nign, x3, nign, params)
+        actual = logpdf(NIGNDraw(), x3, nign, params)
         @test isapprox(actual, expected)
     
     end
@@ -79,12 +79,12 @@
         a5 = value(trace, 5)
         constrain!(trace, 9, 6.2)
         a9 = value(trace, 9)
-        (score, values) = generate!(NIGNJointGenerator(), (n, params), trace)
+        (score, values) = generate!(NIGNJointGenerator(), (Set(1:n), params), trace)
         for i=1:n
-            @test hasvalue(trace, i)
+            @test haskey(trace, i)
             @test value(trace, i) == values[i]
         end
-        @test !hasvalue(trace, n+1)
+        @test !haskey(trace, n+1)
         @test value(trace, 5) == a5
         @test value(trace, 9) == a9
 
@@ -97,7 +97,7 @@
 
         # generate again and check that the score hasn't changed
         # (this checks that the sufficient statistics were correctly reverted)
-        (score, values) = generate!(NIGNJointGenerator(), (n, params), trace)
+        (score, values) = generate!(NIGNJointGenerator(), (Set(1:n), params), trace)
         @test isapprox(score, expected_score)
         @test values[5] == a5
         @test values[9] == a9

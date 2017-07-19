@@ -1,8 +1,8 @@
 import Distributions
 
 @testset "flip" begin
-    @test isapprox(logpdf(flip, true, 0.1), log(0.1))
-    @test isapprox(logpdf(flip, false, 0.1), log(0.9))
+    @test isapprox(logpdf(Flip(), true, 0.1), log(0.1))
+    @test isapprox(logpdf(Flip(), false, 0.1), log(0.9))
 end
 
 @testset "gamma" begin
@@ -12,7 +12,7 @@ end
     x = 0.1
     k = 0.2
     s = 0.3
-    @test isapprox(logpdf(Gen.gamma, x, k, s), Distributions.logpdf(Distributions.Gamma(k, s), x))
+    @test isapprox(logpdf(Gamma(), x, k, s), Distributions.logpdf(Distributions.Gamma(k, s), x))
 end
 
 @testset "normal" begin
@@ -22,7 +22,7 @@ end
     x = 0.1
     mu = 0.2
     std = 0.3
-    @test isapprox(logpdf(normal, x, mu, std), Distributions.logpdf(Distributions.Normal(mu, std), x))
+    @test isapprox(logpdf(Normal(), x, mu, std), Distributions.logpdf(Distributions.Normal(mu, std), x))
 end
 
 @testset "mvnormal" begin
@@ -36,23 +36,23 @@ end
     x = [1., 1.]
     mu = [1.0, 1.0]
     std = [0.1 0.0; 0.0 0.1]
-    @test isapprox(logpdf(mvnormal, x, mu, std), 
+    @test isapprox(logpdf(MultivariateNormal(), x, mu, std), 
                    Distributions.logpdf(Distributions.MultivariateNormal(mu, std), x))
 end
 
 @testset "uniform" begin
-    @test isapprox(logpdf(uniform, 1., 0., 2.), log(0.5))
-    @test logpdf(uniform, -1., 0., 2.) == -Inf
+    @test isapprox(logpdf(UniformContinuous(), 1., 0., 2.), log(0.5))
+    @test logpdf(UniformContinuous(), -1., 0., 2.) == -Inf
 end
 
 @testset "uniform_discrete" begin
     x = 5
     lower = 1
     upper = 10
-    @test isapprox(logpdf(uniform_discrete, x, lower, upper), log(1./upper))
+    @test isapprox(logpdf(UniformDiscrete(), x, lower, upper), log(1./upper))
 end
 
 @testset "nil" begin
-    @test isapprox(logpdf(nil, nil), log(1.0))
-    @test logpdf(nil, 5) == -Inf
+    @test isapprox(logpdf(Nil(), Nil()), log(1.0))
+    @test logpdf(Nil(), 5) == -Inf
 end

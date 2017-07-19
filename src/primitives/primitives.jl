@@ -24,6 +24,6 @@ end
 
 include("simple.jl")
 
-#include("exchangeable_joint_generator.jl")
-#include("crp.jl")
-#include("nign.jl")
+include("exchangeable_joint_generator.jl")
+include("crp.jl")
+include("nign.jl")

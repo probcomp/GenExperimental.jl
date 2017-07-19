@@ -15,7 +15,7 @@
 
 # TODO handle 'propose!
 
-mutable struct ExchangeableJointTrace{StateType,DrawType,ValueType}
+mutable struct ExchangeableJointTrace{StateType,DrawType,ValueType} <: Trace
     # the generator that will be used for drawing new values
     # must be compatible with the StateType
     draw_generator::DrawType
@@ -82,7 +82,7 @@ num_constrained(trace::ExchangeableJointTrace) = length(trace.constrained)
 Base.haskey(trace::ExchangeableJointTrace, addr) = haskey(trace.values, addr)
 value(trace::ExchangeableJointTrace, addr) = trace.values[addr]
 
-type ExchangeableJointGenerator{T} <: Generator{T <: ExchangeableJointTrace} end
+type ExchangeableJointGenerator{T} <: Generator{T} end
 
 # samples new draws from the conditional distribution
 # score is the marginal probability of the constrained choices
@@ -132,12 +132,9 @@ function generate!(::ExchangeableJointGenerator, args::Tuple{Set, Tuple}, trace:
     (score, new_values)
 end
 
-export constrain!
-export hasvalue
-export value
-export num_constrained
 export ExchangeableJointTrace
 export ExchangeableJointGenerator
+export num_constrained
 
 function make_exchangeable_generator(trace_type_name::Symbol, generator_type_name::Symbol,
     generator_args_type::Type, state_type::Type, draw_type::Type, value_type::Type)
@@ -145,13 +142,13 @@ function make_exchangeable_generator(trace_type_name::Symbol, generator_type_nam
     
         # we define a custom trace type so we can get a zero-argument constructor
         # and so that its separately extensible
-        struct $trace_type_name
+        struct $trace_type_name <: Trace
             trace::ExchangeableJointTrace{$state_type, $draw_type, $value_type}
         end
         constrain!(trace::$trace_type_name, addr, value) = constrain!(trace.trace, addr, value)
         Base.delete!(trace::$trace_type_name, addr) = delete!(trace.trace, addr)
         num_constrained(trace::$trace_type_name) = num_constrained(trace.trace)
-        hasvalue(trace::$trace_type_name, addr) = hasvalue(trace.trace)
+        Base.haskey(trace::$trace_type_name, addr) = haskey(trace.trace, addr)
         value(trace::$trace_type_name, addr) = value(trace.trace, addr)
         Base.print(io::IO, trace::$trace_type_name) = print(io, "$($trace_type_name)(\n$(trace.trace)\n)")
         $trace_type_name() = $trace_type_name(
