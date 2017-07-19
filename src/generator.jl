@@ -1,11 +1,29 @@
-######################
-# Generic generators #
-######################
+##################################
+# Generic generators  and traces #
+##################################
 
-# Each Generator{TraceType} should implement:
-# score, value = generate!(generator, trace::TraceType)
+abstract type Trace end
 
-abstract type Generator{TraceType} end
+function value end
+function constrain! end
+function intervene! end
+function propose! end
+
+Base.delete!(t::Trace, addr) = delete!(t, (addr,))
+Base.haskey(t::Trace, addr) = haskey(t, (addr,))
+value(t::Trace, addr) = value(t, (addr,))
+Base.getindex(t::Trace, addr::Tuple) = value(t, addr)
+Base.getindex(t::Trace, addr...) = t[addr]
+constrain!(t::Trace, addr, val) = constrain!(t, (addr,), val)
+intervene!(t::Trace, addr, val) = intervene!(t, (addr,), val)
+propose!(t::Trace, addr, val) = propose!(t, (addr,), val)
+
+abstract type Generator{T <: Trace} end
+
+"""
+    (score, value) = generate!(generator::Geneerator{T}, trace::T)
+"""
+function generate! end
 
 # subtraces can be in one of several modes:
 @enum SubtraceMode record=1 propose=2 constrain=3 intervene=4
@@ -16,6 +34,15 @@ function generate!(generator_and_args::Tuple{Generator,Tuple}, trace)
     generate!(generator_and_args[1], generator_and_args[2], trace)
 end
 
+export Generator
+export Trace
+export SubtraceMode
+export value
+export constrain!
+export intervene!
+export propose!
+export generate!
+
 
 #####################
 # Atomic generators #
@@ -25,22 +52,24 @@ end
 # one 'address' in the trace) these correspond to 'probabilistic modules' of
 # https://arxiv.org/abs/1612.04759
 
-mutable struct AtomicTrace{T}
+mutable struct AtomicTrace{T} <: Trace
     value::Nullable{T}
     mode::SubtraceMode
 end
 
-AtomicTrace(value) = AtomicTrace(Nullable(value), record)
+"Construct an atomic trace with a missing value"
 AtomicTrace(::Type{T}) where {T} = AtomicTrace(Nullable{T}(), record)
-has(trace::AtomicTrace) = !isnull(trace.value)
-Base.get(trace::AtomicTrace) = Base.get(trace.value)
-set!(trace::AtomicTrace{T}, value::T) where {T} = begin trace.value = Nullable{T}(value) end
 
-function unconstrain!(trace::AtomicTrace)
-    if trace.mode != constrain
-        error("not constrained")
-    end
-    trace.mode = record
+"Construct an atomic trace with a value"
+AtomicTrace(value) = AtomicTrace(Nullable(value), record)
+
+"Get the value from an atomic trace, or an error if there is none"
+Base.get(trace::AtomicTrace) = get(trace.value)
+
+atomic_addr_err(addr::Tuple) = error("address not found: $addr; the only valid address is ()")
+
+function Base.getindex(trace::AtomicTrace, addr::Tuple)
+    addr == () ? get(trace) : atomic_addr_err(addr)
 end
 
 function constrain!(trace::AtomicTrace{T}, value::T) where {T}
@@ -48,8 +77,8 @@ function constrain!(trace::AtomicTrace{T}, value::T) where {T}
     trace.value = Nullable{T}(value)
 end
 
-function propose!(trace::AtomicTrace{T}) where {T}
-    trace.mode = propose
+function constrain!(trace::AtomicTrace{T}, addr, value::T) where {T}
+    addr == () ? constrain!(trace, value) : atomic_addr_err(addr)
 end
 
 function intervene!(trace::AtomicTrace{T}, value::T) where {T}
@@ -57,7 +86,33 @@ function intervene!(trace::AtomicTrace{T}, value::T) where {T}
     trace.value = Nullable{T}(value)
 end
 
+function intervene!(trace::AtomicTrace{T}, addr, value::T) where {T}
+    addr == () ? intervene!(trace, value) : atomic_addr_err(addr)
+end
+
+function propose!(trace::AtomicTrace)
+    trace.mode = propose
+end
+
+function propose!(trace::AtomicTrace, addr)
+    addr == () ? propose!(trace, addr) : atomic_addr_err(addr)
+end
+
+function Base.delete!(t::AtomicTrace{T}) where {T}
+    trace.mode = record
+    trace.value = Nullable{T}()
+end
+
+function Base.delete!(t::AtomicTrace, addr)
+    addr == () ? delete!(trace, value) : atomic_addr_err(addr)
+end
+
 AtomicGenerator{T} = Generator{AtomicTrace{T}}
+
+empty_trace(::AtomicGenerator{T}) where {T} = AtomicTrace(T)
+
+export AtomicTrace
+export AtomicGenerator
 
 
 ################################
@@ -75,10 +130,10 @@ abstract type AssessableAtomicGenerator{T} <: AtomicGenerator{T} end
 function generate!(g::AssessableAtomicGenerator{T}, args::Tuple, trace::AtomicTrace{T}) where {T}
     local value::T
     if trace.mode == intervene || trace.mode == constrain
-        value = get(trace)
+        value = get(trace.value)
     else
         value = simulate(g, args...)
-        set!(trace, value)
+        trace.value = Nullable(value)
     end
     if trace.mode == constrain || trace.mode == propose
         score = logpdf(g, value, args...)
@@ -88,13 +143,4 @@ function generate!(g::AssessableAtomicGenerator{T}, args::Tuple, trace::AtomicTr
     (score, value)
 end
 
-
-# exports
-export register_generator_shortname
-export Generator
-export generate!
-export AtomicTrace
-export AtomicGenerator
-export has
-export simulate
-export logpdf
+export AssessableAtomicGenerator
