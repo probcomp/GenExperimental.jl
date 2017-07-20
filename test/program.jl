@@ -330,3 +330,69 @@ end
     @test isapprox(score, expected_score)
 end
 
+@testset "aliasing" begin
+
+    sub = @program () begin
+
+        # a generator invocation
+        a = @g(normal(0, 1), "a")
+
+        # an expression
+        b = @e(a + 1, "b")
+    end
+
+    foo = @program () begin
+        # 2 -> 1/a
+        # 3 -> 1/b
+        @alias(2, (1, "a"))
+        @alias(3, (1, "b"))
+        x = @g(sub(), 1)
+    end
+
+    # retrieve recorded value at alias
+    t = ProgramTrace()
+    @generate!(foo(), t)
+    @test haskey(t, (1, "a"))
+    @test haskey(t, (1, "b"))
+    @test haskey(t, 2)
+    @test haskey(t, 3)
+    @test t[1, "a"] == t[2]
+    @test t[1, "b"] == t[3]
+    
+    # constrain an alias
+    t = ProgramTrace()
+    @generate!(foo(), t)
+    constrain!(t, 2, 2.2)
+    @test t[2] == 2.2
+    # NOTE: until we have run generate! again, the alias is just a separate subtrace
+    @test t[1, "a"] != t[2]
+    score, _ = @generate!(foo(), t)
+    @test t[2] == 2.2
+    @test t[1, "a"] == t[2]
+    @test score == logpdf(normal, 2.2, 0, 1)
+
+    # intervene on an alias
+    t = ProgramTrace()
+    @generate!(foo(), t)
+    intervene!(t, 2, 2.2)
+    intervene!(t, 3, 3.3)
+    @test t[2] == 2.2
+    @test t[3] == 3.3
+    # NOTE: until we have run generate! again, the alias is just a separate subtrace
+    @test t[1, "a"] != t[2]
+    @test t[1, "b"] != t[3]
+    score, _ = @generate!(foo(), t)
+    @test t[2] == 2.2
+    @test t[1, "a"] == t[2]
+    @test t[3] == 3.3
+    @test t[1, "b"] == t[3]
+    @test score == 0.
+
+    # propose an alias
+    t = ProgramTrace()
+    propose!(t, 2, Float64)
+    score, _ = @generate!(foo(), t)
+    @test t[1, "a"] == t[2]
+    @test score == logpdf(normal, t[2], 0, 1)
+
+end
