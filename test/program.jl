@@ -146,8 +146,16 @@ end
 
         # an expression
         y = @e(x + 1, "y")
-        
-        (x, y)
+
+        # a generator invocation labelled as an expression
+        # using low-level syntax
+        z = tag_expression(normal(0, 1), "z")
+
+        # an expression
+        # using low-level syntax
+        w = tag_expression(x + 1, "w")
+
+        (x, y, z, w)
     end
     t = ProgramTrace()
     
@@ -155,18 +163,24 @@ end
     score, val = @generate!(foo(), t)
     @test haskey(t, "x")
     @test haskey(t, "y")
+    @test haskey(t, "z")
+    @test haskey(t, "w")
     @test score == 0.
-    @test val == (value(t, "x"), value(t, "y"))
+    @test val == (t["x"], t["y"], t["z"], t["w"])
+    @test t["w"] == t["x"] + 1
 
     # test intervention
     intervene!(t, "x", 2.)
     intervene!(t, "y", 3.)
+    intervene!(t, "z", 2.)
+    intervene!(t, "w", 3.)
     score, val = @generate!(foo(), t)
-    @test value(t, "x") == 2
-    @test value(t, "y") == 3
+    @test t["x"] == 2.
+    @test t["y"] == 3.
+    @test t["z"] == 2.
+    @test t["w"] == 3.
     @test score == 0.
-    @test val == (2, 3)
-
+    @test val == (2., 3., 2., 3.)
 end
 
 @testset "proposing from trace" begin
