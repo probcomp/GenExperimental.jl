@@ -27,10 +27,16 @@ mutable struct ProgramTrace <: Trace
     score::Float64
 
     # the return value addressed at () (initially is nothing)
+    # TODO would adding return type information to the trace constructor be useful?
     return_value
+    
+    # only the return value with address () can be intervened on
+    # if it is, then generate! still runs as usual and returns the same score as usual
+    #, except that the return value is fixed to the intervened value
+    intervened::Bool
 end
 
-ProgramTrace() = ProgramTrace(Dict{Any, Trace}(), 0., nothing)#, Dict(), Set(), Set())
+ProgramTrace() = ProgramTrace(Dict{Any, Trace}(), 0., nothing, false)
 
 
 """
@@ -63,12 +69,8 @@ function constrain!(t::ProgramTrace, addr::Tuple, val)
 end
 
 function intervene!(t::ProgramTrace, addr::Tuple, val)
-    # TODO how do we make sure we enact this intervention during a call to generate!
-    # this should short circuit the entire execution
-    # add a switch statement to geneerate!(programtrace..)
     if addr == ()
-        # TODO set intervened flag
-        #t.intervened = true
+        t.intervened = true
         t.return_value = val
         return
     end
@@ -81,6 +83,8 @@ function intervene!(t::ProgramTrace, addr::Tuple, val)
         else
             error("cannot intervene $addr. there is no subtrace at $addrhead.")
         end
+    else
+        subtrace = t.subtraces[addrhead]
     end
     intervene!(subtrace, addr[2:end], val)
 end
@@ -98,6 +102,8 @@ function propose!(t::ProgramTrace, addr::Tuple, valtype::Type)
         else
             error("cannot propose $addr. there is no subtrace at $addrhead.")
         end
+    else
+        subtrace = t.subtraces[addrhead]
     end
     propose!(subtrace, addr[2:end], valtype)
 end
@@ -111,10 +117,16 @@ intervene!(t::ProgramTrace, addr, val) = intervene!(t, (addr,), val)
 
 
 """
-Delete an address from the trace.
+Delete an address from the trace, clearing any contraints, interventions, or
+proposals applied to the address.
+
+NOTE: Does not delete any subtraces in the trace hierarchy.
 """
 function Base.delete!(t::ProgramTrace, addr::Tuple)
-    # TODO what are the semantics of delete!
+    if addr == ()
+        t.return_value = nothing
+        t.intervened = false
+    end
     addrhead = addr[1]
     if haskey(t.subtraces, addrhead)
         element = t.subtraces[addrhead]
@@ -350,10 +362,15 @@ macro program(args, body)
 end
 
 function generate!(p::ProbabilisticProgram, args::Tuple, trace::ProgramTrace)
-    value = p.program(trace, args...)
+    val = p.program(trace, args...)
     score = finalize!(trace)
-    trace.return_value = value
-    (score, value)
+    # NOTE: intervention on the return value does not modify the score
+    if trace.intervened
+        val = trace.return_value
+    else
+        trace.return_value = val
+    end
+    (score, val)
 end
 
 # TODO make this true for all generators:

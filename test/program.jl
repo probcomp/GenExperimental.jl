@@ -116,7 +116,7 @@ end
     @test val == 2.3
 end
 
-@testset "intervening on trace" begin
+@testset "intervening on primitive generator invocation" begin
     foo = @program () begin @g(normal(0, 1), "x") end
     t = ProgramTrace()
     intervene!(t, "x", 2.3)
@@ -124,6 +124,20 @@ end
     @test score == 0.
     @test val == 2.3
 end
+
+@testset "intervening on probabilistic program invocation" begin
+    bar = @program () begin @g(normal(0, 1), "y") end
+    foo = @program () begin @g(bar(), "x") end
+    t = ProgramTrace()
+    # by default, interevne! will place an AtomicTrace at address "x", which will cause
+    # an error during generate! because the generator uses ProgramTraces.
+    set_subtrace!(t, "x", ProgramTrace())
+    intervene!(t, "x", "fixed")
+    score, val = @generate!(foo(), t)
+    @test score == 0.
+    @test val == "fixed"
+end
+
 
 @testset "proposing from trace" begin
     foo = @program () begin @g(normal(0, 1), "x") end
