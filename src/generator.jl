@@ -16,7 +16,7 @@ Base.getindex(t::Trace, addr::Tuple) = value(t, addr)
 Base.getindex(t::Trace, addr...) = t[addr]
 # NOTE: defining generic mappings from addr to (addr,) for caused infinite looping
 # when Type{val} does not match the method signature of constrain! implemented by the actual generator
-propose!(t::Trace, addr) = propose!(t, (addr,))
+propose!(t::Trace, addr, valtype::Type) = propose!(t, (addr,), valtype)
 
 abstract type Generator{T <: Trace} end
 
@@ -85,40 +85,47 @@ function Base.getindex(trace::AtomicTrace, addr::Tuple)
     addr == () ? get(trace) : atomic_addr_err(addr)
 end
 
-function constrain!(trace::AtomicTrace{T}, value::T) where {T}
+function _constrain!(trace::AtomicTrace{T}, value::T) where {T}
     trace.mode = constrain
     trace.value = Nullable{T}(value)
 end
 
-function constrain!(trace::AtomicTrace{T}, addr, value::T) where {T}
-    addr == () ? constrain!(trace, value) : atomic_addr_err(addr)
+function constrain!(trace::AtomicTrace{T}, addr::Tuple, value::T) where {T}
+    addr == () ? _constrain!(trace, value) : atomic_addr_err(addr)
 end
 
-function intervene!(trace::AtomicTrace{T}, value::T) where {T}
+function _intervene!(trace::AtomicTrace{T}, value::T) where {T}
     trace.mode = intervene
     trace.value = Nullable{T}(value)
 end
 
-function intervene!(trace::AtomicTrace{T}, addr, value::T) where {T}
-    addr == () ? intervene!(trace, value) : atomic_addr_err(addr)
+function intervene!(trace::AtomicTrace{T}, addr::Tuple, value::T) where {T}
+    addr == () ? _intervene!(trace, value) : atomic_addr_err(addr)
 end
 
-function propose!(trace::AtomicTrace)
+function _propose!(trace::AtomicTrace)
     trace.mode = propose
 end
 
-function propose!(trace::AtomicTrace, addr)
-    addr == () ? propose!(trace) : atomic_addr_err(addr)
+function propose!(trace::AtomicTrace{T}, addr::Tuple, valtype::Type{T}) where {T}
+    addr == () ? _propose!(trace) : atomic_addr_err(addr)
 end
 
-function Base.delete!(t::AtomicTrace{T}) where {T}
+function propose!(trace::AtomicTrace{T}, addr::Tuple, valtype::Type) where {T}
+    error("type $valtype does match trace type $T")
+end
+
+
+function _delete!(t::AtomicTrace{T}) where {T}
     trace.mode = record
     trace.value = Nullable{T}()
 end
 
 function Base.delete!(t::AtomicTrace, addr)
-    addr == () ? delete!(trace, value) : atomic_addr_err(addr)
+    addr == () ? _delete!(trace, value) : atomic_addr_err(addr)
 end
+
+Base.haskey(t::AtomicTrace, addr) = (addr == ())
 
 AtomicGenerator{T} = Generator{AtomicTrace{T}}
 

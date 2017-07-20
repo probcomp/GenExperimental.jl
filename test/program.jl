@@ -128,7 +128,7 @@ end
 @testset "proposing from trace" begin
     foo = @program () begin @g(normal(0, 1), "x") end
     t = ProgramTrace()
-    propose!(t, "x")
+    propose!(t, "x", Float64)
     score, val = @generate!(foo(), t)
     @test score == logpdf(Normal(), val, 0, 1)
 end
@@ -144,6 +144,9 @@ end
         end)
     end
     t = ProgramTrace()
+    for addr in ["foo", 1, 2, 3]
+        set_subtrace!(t, addr, ProgramTrace())
+    end
     constrain!(t, ("foo", "mu"), 4.)
     constrain!(t, ("foo", "std"), 1.)
     constrain!(t, (1, "x"), 4.5)
