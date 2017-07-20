@@ -135,6 +135,13 @@ register_primitive(:draw_crp, CRPDraw)
 make_exchangeable_generator(:CRPJointTrace, :CRPJointGenerator, :crp_joint,
     Tuple{Set,Float64}, CRPState, CRPDraw, Int)
 
+CRP_NEW_CLUSTER = -1
+# overload constrain to accept -1 as a token represneting 'the next empty cluster'
+function constrain!(trace::CRPJointTrace, addr::Tuple{Int}, value::Int)
+    value = (value == CRP_NEW_CLUSTER) ? new_cluster(trace.trace.state) : value
+    constrain!(trace.trace, addr, value)
+end
+
 # next new cluster relative to the currently constrained assignments
 new_cluster(trace::CRPJointTrace) = new_cluster(trace.trace.state)
 has_cluster(trace::CRPJointTrace, cluster::Int) = haskey(trace.trace.state.counts, cluster)
@@ -148,3 +155,4 @@ export get_clusters
 export logpdf
 export incorporate!
 export unincorporate!
+export CRP_NEW_CLUSTER

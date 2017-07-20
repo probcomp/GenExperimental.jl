@@ -133,7 +133,7 @@
         @test value(trace, 5) == a5
         @test value(trace, 9) == a9
 
-        # test that the score is for the contsrained values
+        # the score is for the constrained values only
         expected_score = log(1. * (1. / (1. + alpha)))
         @test isapprox(score, expected_score)
 
@@ -144,6 +144,14 @@
         @test values[5] == a5
         @test values[9] == a9
 
+        # the CRP_NEW_CLUSTER constraint feature
+        trace = CRPJointTrace()
+        c1 =  new_cluster(trace)
+        constrain!(trace, 1, CRP_NEW_CLUSTER)
+        @test trace[1] == c1
+        c2 =  new_cluster(trace)
+        constrain!(trace, 2, CRP_NEW_CLUSTER)
+        @test trace[2] == c2
     end
 
 end
