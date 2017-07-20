@@ -125,6 +125,10 @@ function Base.delete!(t::AtomicTrace, addr)
     addr == () ? _delete!(trace, value) : atomic_addr_err(addr)
 end
 
+function value(t::AtomicTrace, addr)
+    addr == () ? get(t.value) : atomic_addr_err(addr)
+end
+
 Base.haskey(t::AtomicTrace, addr) = (addr == ())
 
 AtomicGenerator{T} = Generator{AtomicTrace{T}}

@@ -8,19 +8,12 @@
 
 ## Trace types for probabilistic programs
 
-# TODO remove me:
-struct TraceElement
-    subtrace::Trace
-    value::Any
-end
-
-function Base.print(io::IO, element::TraceElement)
-    if isa(element.subtrace, AtomicTrace)
-        @assert get(element.subtrace) == element.value
+function Base.print(io::IO, subtrace::Trace)
+    if isa(subtrace, AtomicTrace)
         # Don't show the AtomicGenerator subtrace, which juts contains the value
-        print(io, element.value)
+        print(io, value(subtrace, ()))
     else
-        print(io, "($(element.value), $(element.subtrace)")
+        print(io, "$subtrace")
     end
 end
 
@@ -47,10 +40,13 @@ end
 mutable struct ProgramTrace <: Trace
 
     # key is a single element of an address (called `addr_head` in the code)
-    elements::Dict{Any, TraceElement}
+    elements::Dict{Any, Trace}
 
     # gets reset to 0. after each call to generate!
     score::Float64
+
+    # the return value addressed at () (initially is nothing)
+    return_value
 
     # a map from address head to a map from subaddress to Directive
     #directives::Dict{Any, Dict{Any, Directive}}
@@ -66,7 +62,7 @@ mutable struct ProgramTrace <: Trace
     #remaining_to_visit::Set
 end
 
-ProgramTrace() = ProgramTrace(Dict{Any, TraceElement}(), 0.)#, Dict(), Set(), Set())
+ProgramTrace() = ProgramTrace(Dict{Any, Trace}(), 0., nothing)#, Dict(), Set(), Set())
 
 
 #function add_directive!(trace::ProgramTrace, addr::Tuple, directive::Directive)
@@ -92,57 +88,60 @@ Constrains subtrace, if it already exists, otherwise records the constraint,
 which will be forwarded to the subtrace during program execution.
 """
 function constrain!(t::ProgramTrace, addr::Tuple, val)
+    if addr == ()
+        error("cannot constrain $addr")
+    end
     addrhead = addr[1]
-    if length(addr) == 1
-        subtrace = AtomicTrace(val)
-        constrain!(subtrace, (), val)
-        # we over-write any exisitng subtrace and value at addrhead
-        t.elements[addrhead] = TraceElement(subtrace, val)
-    else
-        if haskey(t, addrhead)
-            subtrace = t.elements[addrhead].subtrace
-            constrain!(subtrace, addr[2:end], val)
+    local subtrace::Trace
+    if !haskey(t.elements, addrhead)
+        if length(addr) == 1
+            subtrace = AtomicTrace(val)
+            t.elements[addrhead] = subtrace
         else
             error("cannot constrain $addr. there is no subtrace at $addrhead.")
         end
+    else
+        subtrace = t.elements[addrhead]
     end
+    constrain!(subtrace, addr[2:end], val)
 end
 
 function intervene!(t::ProgramTrace, addr::Tuple, val)
+    # TODO how do we make sure we enact this intervention during a call to generate!
+    # this should short circuit the entire execution
+    # add a switch statement to geneerate!(programtrace..)
+    if addr == ()
+        t.return_value = val
+        return
+    end
     addrhead = addr[1]
-    if length(addr) == 1
-        subtrace = AtomicTrace(val)
-        intervene!(subtrace, (), val)
-        # we over-write any exisitng subtrace and value at addrhead
-        t.elements[addrhead] = TraceElement(subtrace, val)
-    else
-        if haskey(t, addrhead)
-            subtrace = t.elements[addrhead].subtrace
-            intervene!(subtrace, addr[2:end], val)
+    local subtrace::Trace
+    if !haskey(t.elements, addrhead)
+        if length(addr) == 1
+            subtrace = AtomicTrace(val)
+            t.elements[addrhead] = subtrace
         else
             error("cannot intervene $addr. there is no subtrace at $addrhead.")
         end
     end
-    #add_directive!(t, addr, Intervention(val))
+    intervene!(subtrace, addr[2:end], val)
 end
 
 function propose!(t::ProgramTrace, addr::Tuple, valtype::Type)
+    if addr == ()
+        error("cannot propose $addr")
+    end
     addrhead = addr[1]
-    if length(addr) == 1
-        subtrace = AtomicTrace(valtype)
-        propose!(subtrace, (), valtype)
-        # we over-write any exisitng subtrace and value at addrhead
-        t.elements[addrhead] = TraceElement(subtrace, Nullable{valtype}())
-    else
-        if haskey(t, addrhead)
-            subtrace = t.elements[addrhead].subtrace
-            propose!(subtrace, addr[2:end], valtype) # TODO this is a change
+    local subtrace::Trace
+    if !haskey(t.elements, addrhead)
+        if length(addr) == 1
+            subtrace = AtomicTrace(valtype)
+            t.elements[addrhead] = subtrace
         else
             error("cannot propose $addr. there is no subtrace at $addrhead.")
         end
     end
-
-    #add_directive!(t, addr, Proposal())
+    propose!(subtrace, addr[2:end], valtype)
 end
 
 # syntactic sugars for addreses with a single element NOTE: it is importnt that
@@ -183,8 +182,8 @@ function Base.haskey(t::ProgramTrace, addr::Tuple)
     println("haskey, addr=$addr")
     addrhead = addr[1]
     if haskey(t.elements, addrhead)
-        element = t.elements[addrhead]
-        haskey(element.subtrace, addr[2:end])
+        subtrace = t.elements[addrhead]
+        haskey(subtrace, addr[2:end])
     else
         return false
     end
@@ -192,30 +191,24 @@ end
 
 "Retrieve the value at the given address"
 function value(t::ProgramTrace, addr::Tuple)
-    local element::TraceElement
+    if addr == ()
+        return t.return_value
+    end
+    local subtrace::Trace
     addrhead = addr[1]
     if haskey(t.elements, addrhead)
-        element = t.elements[addrhead]
+        subtrace = t.elements[addrhead]
     else
         error("address not found: $addr")
     end
-    if length(addr) == 1
-        # Q: why don't we forward the request for the value down to the subtrace at addr[2:end] even if length(addr) == 1?
-        # A: because values can be associated with composite sub-traces. we don't want to forward the address () to a composite subtrace
-        # (although that would be a natural address for the return value of a
-        # subtrace that might obviate the need for separate storage of value
-        # and subtrace) <--- TODO consider this.
-        element.value
-    else
-        value(element.subtrace, addr[2:end])
-    end
+    value(subtrace, addr[2:end])
 end
 
 "Return the subtrace at the given address element"
 function subtrace(t::ProgramTrace, addrhead)
     # NOTE: having a subtrace is not a part of the generic Trace interface
     if haskey(t.elements, addrhead)
-        t.elements[addrhead].subtrace
+        t.elements[addrhead]
     else
         error("address not found: $addr")
     end
@@ -227,11 +220,7 @@ Set the subtrace and value at the given address.
 Uses the existing value, if any, or `nothing` if there is none.
 "
 function set_subtrace!(t::ProgramTrace, addrhead, subtrace::Trace)
-    value = nothing
-    if haskey(t.elements, addrhead)
-        value = t.elements[addrhead].value
-    end
-    t.elements[addrhead] = TraceElement(subtrace, value)
+    t.elements[addrhead] = subtrace
 end
 
 # TODO introduce special syntax for accesing the subtrace (like [] for value but different)
@@ -313,7 +302,7 @@ function tagged!(t::ProgramTrace, generator::Generator{T}, args::Tuple, addr_hea
     if haskey(t, addr_head)
         # check if the sub-trace is the right type.
         # if it's not the right type, we need to recursively copy over all the directives.
-        subtrace = t.elements[addr_head].subtrace
+        subtrace = t.elements[addr_head]
     else
         subtrace = empty_trace(generator)
     end
@@ -325,29 +314,31 @@ function tagged!(t::ProgramTrace, generator::Generator{T}, args::Tuple, addr_hea
         #end
     #end
     # NOTE: if this was an atomic genreator and it was constrained, then value will be unchanged
-    (score, value) = generate!(generator, args, subtrace)
+    (score, val) = generate!(generator, args, subtrace)
     t.score += score
-    t.elements[addr_head] = TraceElement(subtrace, value)
+    t.elements[addr_head] = subtrace
+    println(value(subtrace, ()))
+    @assert value(subtrace, ()) == val
     # record it as visited
     #delete!(t.remaining_to_visit, addr_head)
-    value
+    val
 end
 
 # process a generic tagged value 
-function tagged!(trace::ProgramTrace, value, addr_head)
+function tagged!(trace::ProgramTrace, val, addr_head)
     # NOTE: it's not necessary to create an atomic trace here
     # this can be optimized out
     local subtrace::AtomicTrace
     if haskey(trace.elements, addr_head)
-        subtrace = trace.elements[addr_head].subtrace
+        subtrace = trace.elements[addr_head]
         if subtrace.mode == record
-            subtrace.value = value
+            subtrace.value = val
         elseif subtrace.mode == constrain || subtrace.mode == propose
             error("cannot constrain or propose a non-generator invocation at $addr_head")
         end
         # if the mode is intervene, then don't change the value in the subtrace
     else
-        subtrace = AtomicTrace(value)
+        subtrace = AtomicTrace(val)
     end
     #if haskey(trace.directives, addr_head)
         ## process the any interventions
@@ -359,9 +350,9 @@ function tagged!(trace::ProgramTrace, value, addr_head)
             #end
         #end
     #end
-    trace.elements[addr_head] = TraceElement(subtrace, subtrace.value)
+    trace.elements[addr_head] = subtrace
     #delete!(trace.remaining_to_visit, addr_head)
-    subtrace.value
+    value(subtrace, ())
 end
 
 
@@ -429,6 +420,7 @@ function generate!(p::ProbabilisticProgram, args::Tuple, trace::ProgramTrace)
     #trace.remaining_to_visit = trace.to_visit
     value = p.program(trace, args...)
     score = finalize!(trace)
+    trace.return_value = value
     (score, value)
 end
 
