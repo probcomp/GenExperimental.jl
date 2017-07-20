@@ -166,6 +166,7 @@ end
     @test value(t, "y") == 3
     @test score == 0.
     @test val == (2, 3)
+
 end
 
 @testset "proposing from trace" begin
@@ -174,6 +175,26 @@ end
     propose!(t, "x", Float64)
     score, val = @generate!(foo(), t)
     @test score == logpdf(Normal(), val, 0, 1)
+end
+
+@testset "different syntaxes for retrieving value from a trace" begin
+    bar = @program () begin @g(flip(0.5), "x") end
+    foo = @program () begin
+        x = @g(bar(), "bar")
+        y = @g(normal(0, 1), "y")
+    end
+
+    t = ProgramTrace()
+    score, val = @generate!(foo(), t)
+
+    # test a top-level address
+    @test t[("y",)] == value(t, "y")
+    @test t["y"] == value(t, "y")
+    @test value(t, "y") == value(t, ("y",))
+
+    # test a hierarchical address
+    @test t[("bar", "x")] == value(t, ("bar", "x"))
+    @test t["bar", "x"] == value(t, ("bar", "x"))
 end
 
 @testset "delete!" begin
@@ -254,4 +275,50 @@ end
     @test isapprox(expected_score, score)
 end
 
+@testset "scores" begin
 
+    model = @program () begin
+        cloudy = @g(flip(0.3), "cloudy")
+        sprinkler = @g(flip(cloudy ? 0.1 : 0.4), "sprinkler")
+        rain = @g(flip(cloudy ? 0.8 : 0.2), "rain")
+        wetgrass = @g(flip(
+            if sprinkler
+                rain ? 0.99 : 0.9
+            else
+                rain ? 0.9 : 0.01
+            end), "wetgrass")
+    end
+
+    # the score is the sum of constrained scores
+    t = ProgramTrace()
+    constrain!(t, "cloudy", true)
+    constrain!(t, "sprinkler", true)
+    constrain!(t, "rain", true)
+    constrain!(t, "wetgrass", true)
+    score, _ = @generate!(model(), t)
+    expected_score = log(0.3) + log(0.1) + log(0.8) + log(0.99)
+    @test isapprox(score, expected_score)
+
+    # an unconstrained choice is not scored
+    t = ProgramTrace()
+    constrain!(t, "sprinkler", true)
+    constrain!(t, "rain", true)
+    constrain!(t, "wetgrass", true)
+    score, _ = @generate!(model(), t)
+    sprinkler_score = t["cloudy"] ? log(0.1) : log(0.4)
+    rain_score = t["cloudy"] ? log(0.8) : log(0.2)
+    wetgrass_score = log(0.99)
+    expected_score = sprinkler_score + rain_score + wetgrass_score
+    @test isapprox(score, expected_score)
+
+    # a proposed choice is scored
+    t = ProgramTrace()
+    propose!(t, "sprinkler", Bool)
+    score, _ = @generate!(model(), t)
+    expected_score = if t["cloudy"]
+        t["sprinkler"] ? log(0.1) : log(0.9)
+    else
+        t["sprinkler"] ? log(0.4) : log(0.6)
+    end
+    @test isapprox(score, expected_score)
+end

@@ -141,7 +141,11 @@ function Base.haskey(t::ProgramTrace, addr::Tuple)
     end
 end
 
-"Retrieve the value at the given address"
+"""
+Retrieve the value recorded at a given address.
+
+NOTE: use `subtrace` to retrieve a subtrace at a given address.
+"""
 function value(t::ProgramTrace, addr::Tuple)
     if addr == ()
         return t.return_value
