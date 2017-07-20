@@ -106,7 +106,7 @@ register_primitive(:draw_nign, NIGNDraw)
 # NIGN joint Generator with custom subtrace #
 #############################################
 
-make_exchangeable_generator(:NIGNJointTrace, :NIGNJointGenerator,
+make_exchangeable_generator(:NIGNJointTrace, :NIGNJointGenerator, :nign_joint,
     Tuple{Set,NIGNParams}, NIGNState, NIGNDraw, Float64)
 
 

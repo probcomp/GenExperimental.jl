@@ -70,6 +70,8 @@ mutable struct AtomicTrace{T} <: Trace
     mode::SubtraceMode
 end
 
+value_type(::AtomicTrace{T}) where {T} = T
+
 "Construct an atomic trace with a missing value"
 AtomicTrace(::Type{T}) where {T} = AtomicTrace(Nullable{T}(), record)
 
@@ -151,6 +153,7 @@ end
 
 export AtomicTrace
 export AtomicGenerator
+export value_type
 
 
 ################################

@@ -24,9 +24,12 @@ mutable struct ProgramTrace <: Trace
     # if it is, then generate! still runs as usual and returns the same score as usual
     #, except that the return value is fixed to the intervened value
     intervened::Bool
+
+    # map from subtrace addr_head to a map from subaddres to alias
+    aliases::Dict{Any, Dict{Tuple, Any}}
 end
 
-ProgramTrace() = ProgramTrace(Dict{Any, Trace}(), 0., nothing, false)
+ProgramTrace() = ProgramTrace(Dict{Any, Trace}(), 0., nothing, false, Dict{Any, Dict{Any, Tuple}}())
 
 
 """
@@ -179,6 +182,50 @@ function set_subtrace!(t::ProgramTrace, addrhead, subtrace::Trace)
     t.subtraces[addrhead] = subtrace
 end
 
+function add_alias!(t::ProgramTrace, alias, addr::Tuple)
+    # cannot conflict with an existing subtrace address
+    if alias == ()
+        error("cannot create alias $alias")
+    end
+    addrhead = addr[1]
+    subaddr = addr[2:end]
+    if !haskey(t.aliases, addrhead)
+        t.aliases[addrhead] = Dict{Any, Tuple}()
+    end
+    if haskey(t.aliases[addrhead], subaddr)
+        existing = t.aliases[addrhead][subaddr]
+        error("cannot create alias $alias of address $addr because there is already an alias: $existing")
+    end
+    t.aliases[addrhead][subaddr] = alias
+end
+
+function alias_to_subtrace!(t::ProgramTrace, subtrace::Trace, subaddr::Tuple, alias)
+    # TODO what happens if it was already constrained? The alias overwrites the constraint?
+    # It depends on the subtrace implementation. We can make the subtrace specification
+    # require that an error be thrown if the same address is constrained, intervened, or proposed twice
+    # (without first using delete!)
+    if haskey(t.subtraces, alias)
+        # some directives were applied to this alias
+        alias_subtrace = t.subtraces[alias]
+        if alias_subtrace.mode == constrain
+            constrain!(subtrace, subaddr, value(alias_subtrace, ()))
+        elseif alias_subtrace.mode == intervene
+            intervene!(subtrace, subaddr, value(alias_subtrace, ()))
+        elseif alias_subtrace.mode == propose
+            propose!(subtrace, subaddr, value_type(alias_subtrace))
+        end
+    end
+end
+
+function subtrace_to_alias!(t::ProgramTrace, subtrace::Trace, subaddr::Tuple, alias)
+    val = value(subtrace, subaddr)
+    if !haskey(t.subtraces, alias)
+        t.subtraces[alias] = AtomicTrace(val)
+    else
+        t.subtraces[alias].value = Nullable(val)
+    end
+end
+
 # TODO introduce special syntax for accesing the subtrace (like [] for value but different)
 
 function Base.print(io::IO, trace::ProgramTrace)
@@ -186,12 +233,16 @@ function Base.print(io::IO, trace::ProgramTrace)
     println(io, "Trace(")
     indent = "  "
     for (addrhead, subtrace) in trace.subtraces
-        print(io, "$addrhead\t$subtrace\n")
+        subtrace_str = isa(subtrace, AtomicTrace) ? "$subtrace" : "$(typeof(subtrace))"
+        print(io, "$addrhead\t$subtrace_str\n")
     end
     println(io, ")")
 end
 
 function finalize!(t::ProgramTrace)
+    if !isempty(t.aliases)
+        error("not all aliases were visited")
+    end
     #if !isempty(t.remaining_to_visit)
     #    error("addresses not visited: $(t.remaining_to_visit)")
     #end
@@ -207,8 +258,9 @@ end
 
 empty_trace(::ProbabilisticProgram) = ProgramTrace()
 
-function tag_generator end
-function tag_expression end
+# this symbol is passed as the first argument to every probabilistic program
+# invocation, and each @g and @e macro expands into a function call on the trace
+trace_symbol = gensym()
 
 macro g(expr, addr)
     # NOTE: the purpose of this macro is the same as the purpose of the @generate! macro:
@@ -216,20 +268,29 @@ macro g(expr, addr)
     if expr.head == :call
         generator = expr.args[1]
         generator_args = expr.args[2:end]
-        # NOTE: tag() is defined in the macro call environment
-        Expr(:call, esc(:tag_generator),
+        Expr(:call, 
+            tagged!,
+            esc(trace_symbol),
             esc(generator),
             esc(Expr(:tuple, generator_args...)),
             esc(addr))
+
     else
         error("invalid application of @g, it is only used to address generator invocations")
     end
 end
 
 macro e(expr, addr)
-    Expr(:call, esc(:tag_expression), esc(expr), esc(addr))
+    Expr(:call, tagged!, esc(trace_symbol), esc(expr), esc(addr))
 end
 
+macro alias(alias, addr)
+        Expr(:call, 
+            add_alias!,
+            esc(trace_symbol),
+            esc(alias),
+            esc(addr))
+end
 
 
 function tagged!(t::ProgramTrace, generator::Generator{T}, args::Tuple, addr_head) where {T}
@@ -241,11 +302,28 @@ function tagged!(t::ProgramTrace, generator::Generator{T}, args::Tuple, addr_hea
     else
         subtrace = empty_trace(generator)
     end
+
+    # forward any aliases
+    if haskey(t.aliases, addr_head)
+        for (subaddr, alias) in t.aliases[addr_head]
+            alias_to_subtrace!(t, subtrace, subaddr, alias)
+        end
+    end
+
     # NOTE: if this was an atomic genreator and it was constrained, then value will be unchanged
     (score, val) = generate!(generator, args, subtrace)
     t.score += score
     t.subtraces[addr_head] = subtrace
     @assert value(subtrace, ()) == val
+
+    # copy back data from subtrace to aliases
+    if haskey(t.aliases, addr_head)
+        for (subaddr, alias) in t.aliases[addr_head]
+            subtrace_to_alias!(t, subtrace, subaddr, alias)
+        end
+        delete!(t.aliases, addr_head)
+    end
+
     # record it as visited
     #delete!(t.remaining_to_visit, addr_head)
     val
@@ -274,9 +352,6 @@ end
 
 # create a new probabilistic program
 macro program(args, body)
-
-    # generate new symbol for this execution trace
-    trace_symbol = gensym()
 
     # first argument is the trace
     new_args = Any[:($trace_symbol::ProgramTrace)]
@@ -309,21 +384,8 @@ macro program(args, body)
     end
     arg_tuple = Expr(:tuple, new_args...)
 
-    # overload the tag function to tag values in the correct trace
-    tag_overload_defs = quote
-
-        # tagged generator invocation
-        function tag_generator(gen::Generator, stuff::Tuple, name)
-            $(tagged!)($trace_symbol, gen, stuff, name)
-        end
-
-        # other tagged expressions
-        tag_expression(other, name) = $(tagged!)($trace_symbol, other, name)
-    end
-    new_body = quote $tag_overload_defs; $body end
-
     generator_expr = Expr(:call, ProbabilisticProgram, 
-                        Expr(:function, esc(arg_tuple), esc(new_body)))
+                        Expr(:function, esc(arg_tuple), esc(body)))
     if isnull(name)
         generator_expr
     else
@@ -333,6 +395,7 @@ macro program(args, body)
 end
 
 function generate!(p::ProbabilisticProgram, args::Tuple, trace::ProgramTrace)
+    @assert isempty(trace.aliases)
     val = p.program(trace, args...)
     score = finalize!(trace)
     # NOTE: intervention on the return value does not modify the procedure by
@@ -354,9 +417,9 @@ end
 export ProbabilisticProgram
 export ProgramTrace
 export @program
-export @tag
 export @g
 export @e
+export @alias
 export subtrace
 export set_subtrace!
 export tagged!

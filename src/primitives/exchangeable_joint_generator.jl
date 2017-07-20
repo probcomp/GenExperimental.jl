@@ -55,32 +55,62 @@ state(trace::ExchangeableJointTrace) = trace.state
 
 # TODO propose!, intervene!
 
-function constrain!(trace::ExchangeableJointTrace, addr, value)
-    if addr in trace.constrained 
+function constrain!(trace::ExchangeableJointTrace{S,D,V}, addr::Tuple, value::V) where {S,D,V}
+    local addrhead
+    if addr == ()
+        error("cannot constrain output")
+    elseif length(addr) > 1
+        error("address does not exist: $addr")
+    else
+        addrhead = addr[1]
+    end
+    if addrhead in trace.constrained 
         # it's okay to reconstrain (to a potentially different value)
         # TODO is there numerical instability introduced by repeatedly 
         # unincorporating and incorporating?
         unincorporate!(trace.state, value)
     else
-        push!(trace.constrained, addr)
+        push!(trace.constrained, addrhead)
     end
-    trace.values[addr] = value
+    trace.values[addrhead] = value
     incorporate!(trace.state, value)
 end
 
-function Base.delete!(trace::ExchangeableJointTrace, addr)
-    if !(addr in trace.constrained)
+function Base.delete!(trace::ExchangeableJointTrace, addr::Tuple)
+    local addrhead
+    if addr == ()
+        error("cannot delete output")
+    elseif length(addr) > 1
+        error("address does not exist: $addr")
+    else
+        addrhead = addr[1]
+    end
+    if !(addrhead in trace.constrained)
         error("cannot unconstrain $addr, it is not constrained")
     end
-    value = trace.values[addr]
-    delete!(trace.values, addr)
+    value = trace.values[addrhead]
+    delete!(trace.values, addrhead)
     unincorporate!(trace.state, value)
-    delete!(trace.constrained, addr)
+    delete!(trace.constrained, addrhead)
 end
 
 num_constrained(trace::ExchangeableJointTrace) = length(trace.constrained)
-Base.haskey(trace::ExchangeableJointTrace, addr) = haskey(trace.values, addr)
-value(trace::ExchangeableJointTrace, addr) = trace.values[addr]
+
+function Base.haskey(trace::ExchangeableJointTrace, addr::Tuple)
+    addr == () || (length(addr) == 1 && haskey(trace.values, addr[1]))
+end
+
+function value(trace::ExchangeableJointTrace, addr::Tuple)
+    if addr == ()
+        return trace.values
+    else
+        if length(addr) == 1
+            trace.values[addr[1]]
+        else
+            error("address does not exist: $addr")
+        end
+    end
+end
 
 type ExchangeableJointGenerator{T} <: Generator{T} end
 
@@ -136,7 +166,7 @@ export ExchangeableJointTrace
 export ExchangeableJointGenerator
 export num_constrained
 
-function make_exchangeable_generator(trace_type_name::Symbol, generator_type_name::Symbol,
+function make_exchangeable_generator(trace_type_name::Symbol, generator_type_name::Symbol, shortname::Symbol,
     generator_args_type::Type, state_type::Type, draw_type::Type, value_type::Type)
     eval(quote
     
@@ -145,7 +175,8 @@ function make_exchangeable_generator(trace_type_name::Symbol, generator_type_nam
         struct $trace_type_name <: Trace
             trace::ExchangeableJointTrace{$state_type, $draw_type, $value_type}
         end
-        constrain!(trace::$trace_type_name, addr, value) = constrain!(trace.trace, addr, value)
+        constrain!(trace::$trace_type_name, addr, value::$value_type) = constrain!(trace, (addr,), value)
+        constrain!(trace::$trace_type_name, addr::Tuple, value::$value_type) = constrain!(trace.trace, addr, value)
         Base.delete!(trace::$trace_type_name, addr) = delete!(trace.trace, addr)
         num_constrained(trace::$trace_type_name) = num_constrained(trace.trace)
         Base.haskey(trace::$trace_type_name, addr) = haskey(trace.trace, addr)
@@ -156,16 +187,19 @@ function make_exchangeable_generator(trace_type_name::Symbol, generator_type_nam
 
         struct $generator_type_name <: Generator{$trace_type_name} end
 
+        $shortname = $generator_type_name()
+
         function generate!(::$generator_type_name, args::$generator_args_type, trace::$trace_type_name)
             generator = ExchangeableJointGenerator{ExchangeableJointTrace{$state_type, $draw_type, $value_type}}()
             generate!(generator, (args[1], (args[2],)), trace.trace)
         end
 
-        #(::Type{$generator_type_name})(args...) = ($generator_type_name(), args)
-
+        empty_trace(::$generator_type_name) = $trace_type_name()
+        (g::$generator_type_name)(args...) = generate!(g, args, $trace_type_name())[2]
 
         export $trace_type_name
         export $generator_type_name
+        export $shortname
     end)
 end
 

@@ -132,7 +132,7 @@ register_primitive(:draw_crp, CRPDraw)
 
 # TODO the fact that its not a set is not enforced in the type
 
-make_exchangeable_generator(:CRPJointTrace, :CRPJointGenerator,
+make_exchangeable_generator(:CRPJointTrace, :CRPJointGenerator, :crp_joint,
     Tuple{Set,Float64}, CRPState, CRPDraw, Int)
 
 # next new cluster relative to the currently constrained assignments
