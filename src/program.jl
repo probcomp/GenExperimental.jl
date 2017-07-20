@@ -8,16 +8,6 @@
 
 ## Trace types for probabilistic programs
 
-function Base.print(io::IO, subtrace::Trace)
-    if isa(subtrace, AtomicTrace)
-        # Don't show the AtomicGenerator subtrace, which juts contains the value
-        print(io, value(subtrace, ()))
-    else
-        print(io, "$subtrace")
-    end
-end
-
-
 mutable struct ProgramTrace <: Trace
 
     # key is a single element of an address (called `addr_head` in the code)
@@ -192,29 +182,8 @@ function Base.print(io::IO, trace::ProgramTrace)
     # TODO make a nice table representaiton, and sort the keys
     println(io, "Trace(")
     indent = "  "
-    for (addrhead, element) in trace.subtraces
-        constrained = false
-        intervened = false
-        proposed = false
-        if addrhead in keys(trace.directives)
-            for (subaddr, directive) in trace.directives[addrhead]
-                if isa(directive, Constraint)
-                    constrained = true
-                end
-                if isa(directive, Intervention)
-                    intervened = true
-                end
-                if isa(directive, Proposal)
-                    proposed = true
-                end
-            end
-        end
-        constrained_str = constrained ? "*" : " "
-        intervened_str = intervened ? "!" : " "
-        proposed_str = proposed ? "+" : " "
-        mode_str = "$(constrained_str)$(intervened_str)$(proposed_str)"
-        println(io, "$mode_str\t$addrhead\t$element")
-        
+    for (addrhead, subtrace) in trace.subtraces
+        print(io, "$addrhead\t$subtrace\n")
     end
     println(io, ")")
 end

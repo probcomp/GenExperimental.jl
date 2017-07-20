@@ -135,6 +135,20 @@ AtomicGenerator{T} = Generator{AtomicTrace{T}}
 
 empty_trace(::AtomicGenerator{T}) where {T} = AtomicTrace(T)
 
+function Base.print(io::IO, trace::AtomicTrace)
+    prefix = if trace.mode == constrain 
+        "*"
+    elseif trace.mode == intervene
+        "!"
+    elseif trace.mode == propose
+        "+"
+    else
+        " "
+    end
+    valstring = isnull(trace.value) ? "" : "$(get(trace.value))"
+    print(io, "[$prefix]$(valstring)")
+end
+
 export AtomicTrace
 export AtomicGenerator
 
