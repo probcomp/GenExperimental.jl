@@ -1,11 +1,13 @@
 
 @testset "program tagging syntaxes" begin
 
+    # use the `bar = @program` definition syntax (this was once breaking)
     @program bar(mu::Float64) begin
         @tag(normal(mu, 1), "y")
         "something"
     end
 
+    # use the `@program foo` definition syntax
     @program foo() begin
 
         # untraced primitive generator invocatoin with syntax sugar
@@ -35,7 +37,6 @@
     @test haskey(t, 3)
     @test haskey(t, 6)
     @test haskey(t, 7)
-
 end
 
 @testset "program definition syntaxes" begin
@@ -73,6 +74,18 @@ end
     @test generate!(bar4, (1, 2), ProgramTrace()) == (0., (1, 2))
 end
 
+@testset "lexical scope" begin
+    x = 123
+
+    # using one definition syntax
+    foo = @program () begin x end
+    @test @generate!(foo(), ProgramTrace())[2] == x
+
+    # using the other definition syntax
+    @program bar() begin x end
+    @test @generate!(bar(), ProgramTrace())[2] == x
+end
+
 @testset "program generate! syntaxes" begin
 
     foo = @program (x) begin x end
@@ -82,4 +95,30 @@ end
 
     # the syntax sugar
     @test @generate!(foo("asdf"), ProgramTrace()) == (0., "asdf")
+end
+
+@testset "constraining trace" begin
+    foo = @program () begin @tag(normal(0, 1), "x") end
+    t = ProgramTrace()
+    constrain!(t, "x", 2.3)
+    score, val = @generate!(foo(), t)
+    @test score == logpdf(Normal(), 2.3, 0, 1)
+    @test val == 2.3
+end
+
+@testset "intervening on trace" begin
+    foo = @program () begin @tag(normal(0, 1), "x") end
+    t = ProgramTrace()
+    intervene!(t, "x", 2.3)
+    score, val = @generate!(foo(), t)
+    @test score == 0.
+    @test val == 2.3
+end
+
+@testset "proposing from trace" begin
+    foo = @program () begin @tag(normal(0, 1), "x") end
+    t = ProgramTrace()
+    propose!(t, "x")
+    score, val = @generate!(foo(), t)
+    @test score == logpdf(Normal(), val, 0, 1)
 end

@@ -97,8 +97,8 @@ function intervene!(t::ProgramTrace, addr::Tuple, val)
     add_directive!(t, addr, Intervention(val))
 end
 
-function propose!(t::ProgramTrace, addr::Tuple, val)
-    add_directive!(t, addr, Proposal(val))
+function propose!(t::ProgramTrace, addr::Tuple)
+    add_directive!(t, addr, Proposal())
 end
 
 """
@@ -347,16 +347,13 @@ macro program(args, body)
     end
     new_body = quote $prefix; $body end
 
-    # evaluates to a ProbabilisticProgram struct
+    generator_expr = Expr(:call, ProbabilisticProgram, 
+                        Expr(:function, esc(arg_tuple), esc(new_body)))
     if isnull(name)
-        Expr(:call, ProbabilisticProgram, 
-            Expr(:function, arg_tuple, new_body))
+        generator_expr
     else
-        function_name = Base.get(name)
-        Main.eval(quote
-            $function_name = $(Expr(:call, ProbabilisticProgram,
-                                Expr(:function, arg_tuple, new_body)))
-        end)
+        generator_symbol = Base.get(name)
+        Expr(Symbol("="), esc(generator_symbol), generator_expr)
     end
 end
 

@@ -16,7 +16,7 @@ Base.getindex(t::Trace, addr::Tuple) = value(t, addr)
 Base.getindex(t::Trace, addr...) = t[addr]
 constrain!(t::Trace, addr, val) = constrain!(t, (addr,), val)
 intervene!(t::Trace, addr, val) = intervene!(t, (addr,), val)
-propose!(t::Trace, addr, val) = propose!(t, (addr,), val)
+propose!(t::Trace, addr) = propose!(t, (addr,))
 
 abstract type Generator{T <: Trace} end
 
@@ -29,9 +29,6 @@ function generate! end
 @enum SubtraceMode record=1 propose=2 constrain=3 intervene=4
 
 macro generate!(generator_and_args, trace)
-    println("in generate! macro")
-    println(generator_and_args)
-    println(trace)
     if generator_and_args.head == :call 
         generator = generator_and_args.args[1]
         generator_args = generator_and_args.args[2:end]
@@ -111,7 +108,7 @@ function propose!(trace::AtomicTrace)
 end
 
 function propose!(trace::AtomicTrace, addr)
-    addr == () ? propose!(trace, addr) : atomic_addr_err(addr)
+    addr == () ? propose!(trace) : atomic_addr_err(addr)
 end
 
 function Base.delete!(t::AtomicTrace{T}) where {T}
