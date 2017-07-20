@@ -138,6 +138,35 @@ end
     @test val == "fixed"
 end
 
+@testset "tagging arbitrary expressions" begin
+    foo = @program () begin
+        
+        # a generator invocation labelled as an expression
+        x = @e(normal(0, 1), "x")
+
+        # an expression
+        y = @e(x + 1, "y")
+        
+        (x, y)
+    end
+    t = ProgramTrace()
+    
+    # test that values are recorded
+    score, val = @generate!(foo(), t)
+    @test haskey(t, "x")
+    @test haskey(t, "y")
+    @test score == 0.
+    @test val == (value(t, "x"), value(t, "y"))
+
+    # test intervention
+    intervene!(t, "x", 2.)
+    intervene!(t, "y", 3.)
+    score, val = @generate!(foo(), t)
+    @test value(t, "x") == 2
+    @test value(t, "y") == 3
+    @test score == 0.
+    @test val == (2, 3)
+end
 
 @testset "proposing from trace" begin
     foo = @program () begin @g(normal(0, 1), "x") end
@@ -145,6 +174,47 @@ end
     propose!(t, "x", Float64)
     score, val = @generate!(foo(), t)
     @test score == logpdf(Normal(), val, 0, 1)
+end
+
+@testset "delete!" begin
+
+    foo = @program () begin @g(normal(0, 1), "x") end
+    t = ProgramTrace()
+
+    # deleting a constraint
+    # the subtrace remains, but it is no longer constrained
+    # what happens to the value is undefined (its up to the trace type)
+    constrain!(t, "x", 1.1)
+    score, _ = @generate!(foo(), t)
+    @test value(t, "x") == 1.1
+    @test score != 0.
+    delete!(t, "x")
+    @test haskey(t, "x")
+    score, _ = @generate!(foo(), t)
+    @test score == 0.
+    @test value(t, "x") != 1.1
+    
+    # deleting an intervention
+    # the subtrace remains, but it is no longer constrained
+    # what happens to the value is undefined (its up to the trace type)
+    intervene!(t, "x", 1.1)
+    @generate!(foo(), t)
+    @test value(t, "x") == 1.1
+    delete!(t, "x")
+    @test haskey(t, "x")
+    @generate!(foo(), t)
+    @test value(t, "x") != 1.1
+
+    # deleting a proposal
+    # the subtrace remains, but it is no longer constrained
+    # what happens to the value is undefined (its up to the trace type
+    propose!(t, "x", Float64)
+    score, _ = @generate!(foo(), t)
+    @test score != 0.
+    delete!(t, "x")
+    @test haskey(t, "x")
+    score, _ = @generate!(foo(), t)
+    @test score == 0.
 end
 
 @testset "higher order probabilistic program" begin

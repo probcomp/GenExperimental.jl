@@ -17,7 +17,7 @@ mutable struct ProgramTrace <: Trace
     score::Float64
 
     # the return value addressed at () (initially is nothing)
-    # TODO would adding return type information to the trace constructor be useful?
+    # TODO would adding return type information to the trace constructor be useful for the compiler?
     return_value
     
     # only the return value with address () can be intervened on
@@ -119,8 +119,8 @@ function Base.delete!(t::ProgramTrace, addr::Tuple)
     end
     addrhead = addr[1]
     if haskey(t.subtraces, addrhead)
-        element = t.subtraces[addrhead]
-        delete!(element.subtrace, addr[2:end])
+        subtrace = t.subtraces[addrhead]
+        delete!(subtrace, addr[2:end])
     end
 end
 
@@ -132,7 +132,6 @@ function Base.haskey(t::ProgramTrace, addr::Tuple)
         # TODO should be true for all subtraces make it into a generaal trace interface?
         return true
     end
-    println("haskey, addr=$addr")
     addrhead = addr[1]
     if haskey(t.subtraces, addrhead)
         subtrace = t.subtraces[addrhead]
@@ -242,7 +241,6 @@ function tagged!(t::ProgramTrace, generator::Generator{T}, args::Tuple, addr_hea
     (score, val) = generate!(generator, args, subtrace)
     t.score += score
     t.subtraces[addr_head] = subtrace
-    println(value(subtrace, ()))
     @assert value(subtrace, ()) == val
     # record it as visited
     #delete!(t.remaining_to_visit, addr_head)
@@ -333,7 +331,11 @@ end
 function generate!(p::ProbabilisticProgram, args::Tuple, trace::ProgramTrace)
     val = p.program(trace, args...)
     score = finalize!(trace)
-    # NOTE: intervention on the return value does not modify the score
+    # NOTE: intervention on the return value does not modify the procedure by
+    # which the score is computed. semantics: the probabilistic model is still
+    # running, it is just disconnected from the output by the intervention.
+    # constraints or proposals to random choices within the program will still
+    # be scored
     if trace.intervened
         val = trace.return_value
     else

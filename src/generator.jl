@@ -117,12 +117,12 @@ end
 
 
 function _delete!(t::AtomicTrace{T}) where {T}
-    trace.mode = record
-    trace.value = Nullable{T}()
+    t.mode = record
+    t.value = Nullable{T}()
 end
 
 function Base.delete!(t::AtomicTrace, addr)
-    addr == () ? _delete!(trace, value) : atomic_addr_err(addr)
+    addr == () ? _delete!(t) : atomic_addr_err(addr)
 end
 
 function value(t::AtomicTrace, addr)
