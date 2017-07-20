@@ -235,6 +235,8 @@ empty_trace(::ProbabilisticProgram) = ProgramTrace()
 function tag end
 
 macro tag(expr, addr)
+    # NOTE: the purpose of this macro is the same as the purpose of the @generate! macro:
+    # to allow use of function call syntax generator(args...) while tracing
     if expr.head == :call && haskey(primitives, expr.args[1])
         generator_type = primitives[expr.args[1]]
         generator_args = vcat(expr.args[2:end])
@@ -294,41 +296,43 @@ end
 
 # create a new probabilistic program
 macro program(args, body)
+    #println("args: $args\nbody: $body")
 
     # generate new symbol for this execution trace
     trace_symbol = gensym()
 
     # first argument is the trace
-    new_args = [:($trace_symbol::ProgramTrace)]
+    new_args = Any[:($trace_symbol::ProgramTrace)]
 
     # remaining arguments are the original arguments
-    local name::Nullable{Symbol}
-    if args.head == :call
+    local name = Nullable{Symbol}()
+    if isa(args, Symbol)
+
+        # single untyped argument
+        push!(new_args, args)
+    elseif args.head == :call
     
         # @program name(args...)
-        name = args.args[1]
+        name = Nullable{Symbol}(args.args[1])
         for arg in args.args[2:end]
             push!(new_args, arg)
         end
     elseif args.head == :(::)
 
-        # single argument
+        # single typed argument
         push!(new_args, args)
-        name = Nullable{Symbol}()
     elseif args.head == :tuple
 
         # multiple arguments
         for arg in args.args
             push!(new_args, arg)
         end
-        name = Nullable{Symbol}()
     else
         error("invalid @program")
     end
     arg_tuple = Expr(:tuple, new_args...)
 
     # overload the tag function to tag values in the correct trace
-    # TODO Gen.tagged!
     prefix = quote
         tag(gen::Generator, stuff::Tuple, name) = $(tagged!)($trace_symbol, gen, stuff, name)
 
@@ -350,7 +354,7 @@ macro program(args, body)
     else
         function_name = Base.get(name)
         Main.eval(quote
-            $function_name = $(Expr(:call, ProbabilisticProgram,  # TODO Gen...
+            $function_name = $(Expr(:call, ProbabilisticProgram,
                                 Expr(:function, arg_tuple, new_body)))
         end)
     end
@@ -363,8 +367,10 @@ function generate!(p::ProbabilisticProgram, args::Tuple, trace::ProgramTrace)
     (score, value)
 end
 
-(p::ProbabilisticProgram)(args...) = (p, args)
+#(p::ProbabilisticProgram)(args...) = (p, args)
+(p::ProbabilisticProgram)(args...) = generate!(p, args, ProgramTrace())[2]
 
+export ProbabilisticProgram
 export ProgramTrace
 export @program
 export @tag

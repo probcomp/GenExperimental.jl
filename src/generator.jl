@@ -28,20 +28,36 @@ function generate! end
 # subtraces can be in one of several modes:
 @enum SubtraceMode record=1 propose=2 constrain=3 intervene=4
 
+macro generate!(generator_and_args, trace)
+    println("in generate! macro")
+    println(generator_and_args)
+    println(trace)
+    if generator_and_args.head == :call 
+        generator = generator_and_args.args[1]
+        generator_args = generator_and_args.args[2:end]
+        Expr(:call, generate!,
+            esc(generator),
+            esc(Expr(:tuple, generator_args...)),
+            esc(trace))
+    else
+        error("invalid use of @generate!")
+    end
+end
 # some generators overload generator(args) into (generator, args)
 # this function allows the syntax generate!(generator(args), trace)
-function generate!(generator_and_args::Tuple{Generator,Tuple}, trace)
-    generate!(generator_and_args[1], generator_and_args[2], trace)
-end
+#function generate!(generator_and_args::Tuple{Generator,Tuple}, trace)
+    #generate!(generator_and_args[1], generator_and_args[2], trace)
+#end
 
 export Generator
+export generate!
+export @generate!
 export Trace
 export SubtraceMode
 export value
 export constrain!
 export intervene!
 export propose!
-export generate!
 
 
 #####################

@@ -68,14 +68,14 @@ function constrain!(trace::ExchangeableJointTrace, addr, value)
     incorporate!(trace.state, value)
 end
 
-function delete!(trace::ExchangeableJointTrace, addr)
+function Base.delete!(trace::ExchangeableJointTrace, addr)
     if !(addr in trace.constrained)
         error("cannot unconstrain $addr, it is not constrained")
     end
     value = trace.values[addr]
-    Base.delete!(trace.values, addr)
+    delete!(trace.values, addr)
     unincorporate!(trace.state, value)
-    Base.delete!(trace.constrained, addr)
+    delete!(trace.constrained, addr)
 end
 
 num_constrained(trace::ExchangeableJointTrace) = length(trace.constrained)
@@ -109,7 +109,7 @@ function generate!(::ExchangeableJointGenerator, args::Tuple{Set, Tuple}, trace:
             # NOTE unconstrained draws are not persisted in the state between
             # calls to generate!  but they are persisted in trace.values
             if haskey(trace.values, addr)
-                Base.delete!(trace.values, addr)
+                delete!(trace.values, addr)
             end
             value = simulate(trace.draw_generator, trace.state, params...)
             incorporate!(trace.state, value)
@@ -161,7 +161,7 @@ function make_exchangeable_generator(trace_type_name::Symbol, generator_type_nam
             generate!(generator, (args[1], (args[2],)), trace.trace)
         end
 
-        (::Type{$generator_type_name})(args...) = ($generator_type_name(), args)
+        #(::Type{$generator_type_name})(args...) = ($generator_type_name(), args)
 
 
         export $trace_type_name
