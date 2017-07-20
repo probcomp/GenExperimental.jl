@@ -335,4 +335,20 @@ end
         t["sprinkler"] ? log(0.4) : log(0.6)
     end
     @test isapprox(score, expected_score)
+
+    # scoring works with sub-traces
+    toplevel = @program () begin
+        @g(model(), "sub")
+    end
+    t = ProgramTrace()
+    constrain!(t, "cloudy", true)
+    constrain!(t, "sprinkler", true)
+    constrain!(t, "rain", true)
+    constrain!(t, "wetgrass", true)
+    toplevel_trace = ProgramTrace()
+    set_subtrace!(toplevel_trace, "sub", t)
+    score, _ = @generate!(toplevel(), toplevel_trace)
+    expected_score = log(0.3) + log(0.1) + log(0.8) + log(0.99)
+    @test isapprox(score, expected_score)
 end
+
