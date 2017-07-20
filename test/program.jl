@@ -13,18 +13,12 @@
         # untraced primitive generator invocatoin with syntax sugar
         x1 = normal(0, 1)
 
-        # traced primitive generator invocation
-        x2 = tag_generator(Normal(), (0, 1), 2)
-
         # traced primitive generator invocation with syntax sugar
         x4 = @g(normal(0, 1), 3)
 
         # untraced generator invocation is identical to function invocation
         x5 = bar(0.5)
         @test x5 == "something"
-
-        # traced non-primitive generator invocation
-        x6 = tag_generator(bar, (0.5,), 6)
 
         # traced non-primitive generator invocation with syntax sugar
         x7 = @g(bar(0.5), 7)
@@ -41,9 +35,7 @@
 
     t = ProgramTrace()
     generate!(foo, (), t)
-    @test haskey(t, 2)
     @test haskey(t, 3)
-    @test haskey(t, 6)
     @test haskey(t, 7)
     @test haskey(t, 8)
     @test haskey(t, 9)
@@ -147,15 +139,7 @@ end
         # an expression
         y = @e(x + 1, "y")
 
-        # a generator invocation labelled as an expression
-        # using low-level syntax
-        z = tag_expression(normal(0, 1), "z")
-
-        # an expression
-        # using low-level syntax
-        w = tag_expression(x + 1, "w")
-
-        (x, y, z, w)
+        (x, y)
     end
     t = ProgramTrace()
     
@@ -163,24 +147,18 @@ end
     score, val = @generate!(foo(), t)
     @test haskey(t, "x")
     @test haskey(t, "y")
-    @test haskey(t, "z")
-    @test haskey(t, "w")
     @test score == 0.
-    @test val == (t["x"], t["y"], t["z"], t["w"])
-    @test t["w"] == t["x"] + 1
+    @test val == (t["x"], t["y"])
+    @test t["y"] == t["x"] + 1
 
     # test intervention
     intervene!(t, "x", 2.)
     intervene!(t, "y", 3.)
-    intervene!(t, "z", 2.)
-    intervene!(t, "w", 3.)
     score, val = @generate!(foo(), t)
     @test t["x"] == 2.
     @test t["y"] == 3.
-    @test t["z"] == 2.
-    @test t["w"] == 3.
     @test score == 0.
-    @test val == (2., 3., 2., 3.)
+    @test val == (2., 3.)
 end
 
 @testset "proposing from trace" begin
