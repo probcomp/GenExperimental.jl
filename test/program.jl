@@ -3,7 +3,7 @@
 
     # use the `bar = @program` definition syntax (this was once breaking)
     @program bar(mu::Float64) begin
-        @tag(normal(mu, 1), "y")
+        @g(normal(mu, 1), "y")
         "something"
     end
 
@@ -14,20 +14,28 @@
         x1 = normal(0, 1)
 
         # traced primitive generator invocation
-        x2 = tag(Normal(), (0, 1), 2)
+        x2 = tag_generator(Normal(), (0, 1), 2)
 
         # traced primitive generator invocation with syntax sugar
-        x4 = @tag(normal(0, 1), 3)
+        x4 = @g(normal(0, 1), 3)
 
         # untraced generator invocation is identical to function invocation
         x5 = bar(0.5)
         @test x5 == "something"
 
         # traced non-primitive generator invocation
-        x6 = tag(bar, (0.5,), 6)
+        x6 = tag_generator(bar, (0.5,), 6)
 
         # traced non-primitive generator invocation with syntax sugar
-        x7 = @tag(bar(0.5), 7)
+        x7 = @g(bar(0.5), 7)
+
+        # tracing a generator invocation as an expression evaluation
+        x8 = @e(bar(0.5), 8)
+
+        # tracing an expression as an expression evaluation
+        x9 = @e("asdf_$x8", 9)
+
+        # expres
         nothing
     end
 
@@ -37,6 +45,8 @@
     @test haskey(t, 3)
     @test haskey(t, 6)
     @test haskey(t, 7)
+    @test haskey(t, 8)
+    @test haskey(t, 9)
 end
 
 @testset "program definition syntaxes" begin
@@ -98,7 +108,7 @@ end
 end
 
 @testset "constraining trace" begin
-    foo = @program () begin @tag(normal(0, 1), "x") end
+    foo = @program () begin @g(normal(0, 1), "x") end
     t = ProgramTrace()
     constrain!(t, "x", 2.3)
     score, val = @generate!(foo(), t)
@@ -107,7 +117,7 @@ end
 end
 
 @testset "intervening on trace" begin
-    foo = @program () begin @tag(normal(0, 1), "x") end
+    foo = @program () begin @g(normal(0, 1), "x") end
     t = ProgramTrace()
     intervene!(t, "x", 2.3)
     score, val = @generate!(foo(), t)
@@ -116,9 +126,45 @@ end
 end
 
 @testset "proposing from trace" begin
-    foo = @program () begin @tag(normal(0, 1), "x") end
+    foo = @program () begin @g(normal(0, 1), "x") end
     t = ProgramTrace()
     propose!(t, "x")
     score, val = @generate!(foo(), t)
     @test score == logpdf(Normal(), val, 0, 1)
 end
+
+@testset "higher order probabilistic program" begin
+    foo = @program () begin
+        mu = @g(normal(0, 10), "mu")
+        std = @g(Gen.gamma(1., 1.), "std")
+
+        # return a probabilistic program
+        @program((), begin
+            @g(normal(mu, std), "x")
+        end)
+    end
+    t = ProgramTrace()
+    constrain!(t, ("foo", "mu"), 4.)
+    constrain!(t, ("foo", "std"), 1.)
+    constrain!(t, (1, "x"), 4.5)
+    constrain!(t, (2, "x"), 4.3)
+    constrain!(t, (3, "x"), 4.2)
+
+    (score, value) = generate!((@program () begin
+        sampler = @g(foo(), "foo")
+        x1 = @g(sampler(), 1)
+        x2 = @g(sampler(), 2)
+        x3 = @g(sampler(), 3)
+        (x1, x2, x3)
+    end), (), t)
+    @test value == (4.5, 4.3, 4.2)
+    expected_score = 0.
+    expected_score += logpdf(Normal(), 4., 0., 10.)
+    expected_score += logpdf(Gamma(), 1., 1., 1.)
+    expected_score += logpdf(Normal(), 4.5, 4.0, 1)
+    expected_score += logpdf(Normal(), 4.3, 4.0, 1)
+    expected_score += logpdf(Normal(), 4.2, 4.0, 1)
+    @test isapprox(expected_score, score)
+end
+
+

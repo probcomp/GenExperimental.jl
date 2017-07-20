@@ -45,7 +45,7 @@ forward!(d::Proposal, subaddr::Tuple, subtrace::Trace) = propose!(subtrace, suba
 
 mutable struct ProgramTrace <: Trace
 
-    # key is a single element of an address
+    # key is a single element of an address (called `addr_head` in the code)
     elements::Dict{Any, TraceElement}
 
     # gets reset to 0. after each call to generate!
@@ -56,7 +56,8 @@ mutable struct ProgramTrace <: Trace
 
     # a set of address elements (not complete hierarchical addresses) that must
     # be visited during a call to generate!
-    # this is not mutated during generate!, but by e.g. constrain! and delete!
+    # it is not mutated by generate!
+    # it is mutated by constrain! and delete!
     to_visit::Set
 
     # the set of addresses elements that have yet to be visited.
@@ -100,6 +101,14 @@ end
 function propose!(t::ProgramTrace, addr::Tuple)
     add_directive!(t, addr, Proposal())
 end
+
+# syntactic sugars for addreses with a single element NOTE: it is importnt that
+# the methods above accept all types for val the methods below can enter an
+# infinite recursion if the type of val does not match the method signatures
+# above above
+constrain!(t::ProgramTrace, addr, val) = constrain!(t, (addr,), val)
+intervene!(t::ProgramTrace, addr, val) = intervene!(t, (addr,), val)
+
 
 """
 Delete an address from the trace and from any directives.
@@ -232,23 +241,30 @@ end
 
 empty_trace(::ProbabilisticProgram) = ProgramTrace()
 
-function tag end
+function tag_generator end
+function tag_expression end
 
-macro tag(expr, addr)
+macro g(expr, addr)
     # NOTE: the purpose of this macro is the same as the purpose of the @generate! macro:
     # to allow use of function call syntax generator(args...) while tracing
-    if expr.head == :call && haskey(primitives, expr.args[1])
-        generator_type = primitives[expr.args[1]]
-        generator_args = vcat(expr.args[2:end])
+    if expr.head == :call
+        generator = expr.args[1]
+        generator_args = expr.args[2:end]
         # NOTE: tag() is defined in the macro call environment
-        Expr(:call, esc(:tag),
-            Expr(:call, generator_type),
+        Expr(:call, esc(:tag_generator),
+            esc(generator),
             esc(Expr(:tuple, generator_args...)),
             esc(addr))
     else
-        Expr(:call, esc(:tag), esc(expr), esc(addr))
+        error("invalid application of @g, it is only used to address generator invocations")
     end
 end
+
+macro e(expr, addr)
+    Expr(:call, esc(:tag_expression), esc(expr), esc(addr))
+end
+
+
 
 function tagged!(t::ProgramTrace, generator::Generator{T}, args::Tuple, addr_head) where {T}
     local subtrace::T
@@ -258,7 +274,7 @@ function tagged!(t::ProgramTrace, generator::Generator{T}, args::Tuple, addr_hea
         subtrace = empty_trace(generator)
     end
     if haskey(t.directives, addr_head)
-        # forward the directives
+        # forward the directives for this addr_head to the subtrace
         # in the future, this can be optimized to only be done once, not in every call to generate!
         for (subaddr, directive) in t.directives[addr_head]
             forward!(directive, subaddr, subtrace)
@@ -296,7 +312,6 @@ end
 
 # create a new probabilistic program
 macro program(args, body)
-    #println("args: $args\nbody: $body")
 
     # generate new symbol for this execution trace
     trace_symbol = gensym()
@@ -333,19 +348,17 @@ macro program(args, body)
     arg_tuple = Expr(:tuple, new_args...)
 
     # overload the tag function to tag values in the correct trace
-    prefix = quote
-        tag(gen::Generator, stuff::Tuple, name) = $(tagged!)($trace_symbol, gen, stuff, name)
+    tag_overload_defs = quote
 
-        # primitives overload invocation syntax () and expand into this:
-        #tag(gen_and_args::Tuple{Generator,Tuple}, name) = $(tagged!)($trace_symbol, gen_and_args[1], gen_and_args[2], name)
+        # tagged generator invocation
+        function tag_generator(gen::Generator, stuff::Tuple, name)
+            $(tagged!)($trace_symbol, gen, stuff, name)
+        end
 
-        # arbitrary non-generator tagged values
-        tag(other, name) = $(tagged!)($trace_symbol, other, name)
-
-        # tag((name, subname) => alias) adds an alias 
-        #tag(arg::Pair) = Gen.add_alias!($trace_symbol, arg[2], arg[1][1], arg[1][2])
+        # other tagged expressions
+        tag_expression(other, name) = $(tagged!)($trace_symbol, other, name)
     end
-    new_body = quote $prefix; $body end
+    new_body = quote $tag_overload_defs; $body end
 
     generator_expr = Expr(:call, ProbabilisticProgram, 
                         Expr(:function, esc(arg_tuple), esc(new_body)))
@@ -364,6 +377,7 @@ function generate!(p::ProbabilisticProgram, args::Tuple, trace::ProgramTrace)
     (score, value)
 end
 
+# TODO make this true for all generators
 #(p::ProbabilisticProgram)(args...) = (p, args)
 (p::ProbabilisticProgram)(args...) = generate!(p, args, ProgramTrace())[2]
 
@@ -371,4 +385,7 @@ export ProbabilisticProgram
 export ProgramTrace
 export @program
 export @tag
+export @g
+export @e
 export subtrace
+export tagged!

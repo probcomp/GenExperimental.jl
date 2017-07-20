@@ -14,8 +14,8 @@ Base.haskey(t::Trace, addr) = haskey(t, (addr,))
 value(t::Trace, addr) = value(t, (addr,))
 Base.getindex(t::Trace, addr::Tuple) = value(t, addr)
 Base.getindex(t::Trace, addr...) = t[addr]
-constrain!(t::Trace, addr, val) = constrain!(t, (addr,), val)
-intervene!(t::Trace, addr, val) = intervene!(t, (addr,), val)
+# NOTE: defining generic mappings from addr to (addr,) for caused infinite looping
+# when Type{val} does not match the method signature of constrain! implemented by the actual generator
 propose!(t::Trace, addr) = propose!(t, (addr,))
 
 abstract type Generator{T <: Trace} end

@@ -7,23 +7,22 @@ primitives = Dict{Symbol, Type}()
 function register_primitive(shortname::Symbol, generator_type::Type)
     primitives[shortname] = generator_type
 
-    # define a shorthand function for an untraced invocation of the generator
-    # that returns just the value 
     eval(quote
-        function $shortname(args...)
-            generator = $generator_type()
-            (score, value) = generate!(generator, args, empty_trace(generator))
-            value
-        end
+        # define singleton generator (e.g. normal)
+        $shortname = $generator_type()
+        
+        # override call syntax for the generator
+        (g::$generator_type)(args...) = generate!(g, args, empty_trace(g))[2]
     end)
+
 	eval(quote export $shortname end)
+
     # HACK to get 'export Normal' instead of 'export Gen.Normal'
 	eval(quote export $(Symbol(split(string(generator_type), '.')[2])) end)
 end
 
 
 include("simple.jl")
-
 include("exchangeable_joint_generator.jl")
 include("crp.jl")
 include("nign.jl")
