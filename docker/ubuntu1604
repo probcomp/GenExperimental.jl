@@ -23,11 +23,7 @@ RUN             cd /julia && \
      gunzip -c < "$JULIA_TGZ" | tar -x -f - --strip-components 1
 ENV             PATH="$PATH:/julia/bin"
 
-RUN             julia -e 'Pkg.add("DataStructures")'
-RUN             julia -e 'Pkg.add("Distributions")'
-RUN             julia -e 'Pkg.add("IJulia")'
-RUN             julia -e 'Pkg.add("SpecialFunctions")'
-
-RUN             echo 'push!(LOAD_PATH, "/probcomp")' > "$HOME"/.juliarc.jl
 ADD             . /probcomp/Gen.jl
+
+RUN             julia -e 'Pkg.clone("file:///probcomp/Gen.jl")'
 RUN             cd /probcomp/Gen.jl && julia test/runtests.jl
