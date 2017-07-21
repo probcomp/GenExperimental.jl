@@ -26,4 +26,4 @@ ENV             PATH="$PATH:/julia/bin"
 ADD             . /probcomp/Gen.jl
 
 RUN             julia -e 'Pkg.clone("file:///probcomp/Gen.jl")'
-RUN             cd /probcomp/Gen.jl && julia test/runtests.jl
+RUN             julia -e 'Pkg.test("Gen")'
