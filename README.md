@@ -2,11 +2,20 @@
 
 Gen is a featherweight embedded probabilistic programming language and compositional inference programming library.
 
-## Run tests
-
-
+## Intalling
+Gen.jl is not a a publicly registered Julia package.
+To use or develop Gen.jl, clone the repository with:
 ```
-julia test/runtests.jl
+julia> Pkg.clone("git@github.com:probcomp/Gen.jl.git")
+```
+You can find the location on your filesystem where Julia placed the clone using:
+```
+Pkg.dir("Gen")
+```
+
+## Run tests
+```
+julia> Pkg.test("Gen")
 
 ```
 
