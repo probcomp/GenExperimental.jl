@@ -396,3 +396,30 @@ end
     @test score == logpdf(normal, t[2], 0, 1)
 
 end
+
+@testset "autodiff on trace score" begin
+    
+    foo = @program () begin
+        # NOTE: these are local because the test is run in a local scope
+        # so they would otherwise overwrite the values outside of this function
+        local mu = @e(0., "mu")
+        local log_std = @e(0., "logstd")
+        @g(normal(mu, exp(log_std)), "x")
+    end
+
+    t = ProgramTrace()
+    x = 2.1
+    mu = 0.
+    std = 1.
+    constrain!(t, "x", x)
+    parametrize!(t, "mu", mu)
+    parametrize!(t, "logstd", log(std))
+    @generate!(foo(), t)
+
+    tape = Tape()
+    gen_mu = makeGenValue(mu, tape)
+    gen_std = makeGenValue(std, tape)
+    backprop(logpdf(normal, x, gen_mu, gen_std))
+    @test isapprox(partial(t["mu"]), partial(gen_mu))
+    @test isapprox(partial(t["logstd"]), partial(gen_std))
+end

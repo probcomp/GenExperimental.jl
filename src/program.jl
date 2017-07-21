@@ -14,7 +14,7 @@ mutable struct ProgramTrace <: Trace
     subtraces::Dict{Any, Trace}
 
     # gets reset to 0. after each call to generate!
-    score::Float64
+    score::GenScalar
 
     # the return value addressed at () (initially is nothing)
     # TODO would adding return type information to the trace constructor be useful for the compiler?
@@ -27,9 +27,19 @@ mutable struct ProgramTrace <: Trace
 
     # map from subtrace addr_head to a map from subaddres to alias
     aliases::Dict{Any, Dict{Tuple, Any}}
+
+    tape::Tape
 end
 
-ProgramTrace() = ProgramTrace(Dict{Any, Trace}(), 0., nothing, false, Dict{Any, Dict{Any, Tuple}}())
+function ProgramTrace()
+    subtraces = Dict{Any, Trace}()
+    return_value = nothing
+    intervened = false
+    aliases = Dict{Any, Dict{Any, Tuple}}()
+    tape = Tape()
+    score = GenScalar(0., tape)
+    ProgramTrace(subtraces, score, return_value, intervened, aliases, tape)
+end
 
 
 """
@@ -81,6 +91,12 @@ function intervene!(t::ProgramTrace, addr::Tuple, val)
     end
     intervene!(subtrace, addr[2:end], val)
 end
+
+# TODO is this general to all generators or just these programs?
+function parametrize!(t::ProgramTrace, addr::Tuple, val)
+    intervene!(t, addr, makeGenValue(val, t.tape))
+end
+parametrize!(t::ProgramTrace, addr, val) = parametrize!(t, (addr,), val)
 
 function propose!(t::ProgramTrace, addr::Tuple, valtype::Type)
     if addr == ()
@@ -243,11 +259,10 @@ function finalize!(t::ProgramTrace)
     if !isempty(t.aliases)
         error("not all aliases were visited")
     end
-    #if !isempty(t.remaining_to_visit)
-    #    error("addresses not visited: $(t.remaining_to_visit)")
-    #end
-    previous_score = t.score
-    t.score = 0.0
+    backprop(t.score)
+    previous_score = concrete(t.score)
+    t.tape = Tape()
+    t.score = GenScalar(0., t.tape)
     previous_score
 end
 
@@ -260,7 +275,7 @@ empty_trace(::ProbabilisticProgram) = ProgramTrace()
 
 # this symbol is passed as the first argument to every probabilistic program
 # invocation, and each @g and @e macro expands into a function call on the trace
-trace_symbol = gensym()
+const trace_symbol = gensym()
 
 macro g(expr, addr)
     # NOTE: the purpose of this macro is the same as the purpose of the @generate! macro:
@@ -423,3 +438,4 @@ export @alias
 export subtrace
 export set_subtrace!
 export tagged!
+export parametrize!
