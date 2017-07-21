@@ -55,11 +55,8 @@ const CRP_NEW_CLUSTER = -1
 function incorporate!(state::CRPState, cluster::Int)
     if cluster == CRP_NEW_CLUSTER
         next = new_cluster(state)
-        println("incorporate! got CRP_NEW_CLUSTER, recursing on next cluster: $next")
         return incorporate!(state, next)
     end
-    println("incorporate! got cluster=$cluster")
-    println("state: $state")
     if !haskey(state.counts, cluster)
         @assert cluster >= state.next_cluster || cluster in state.free
         if cluster in state.free
@@ -84,8 +81,6 @@ function incorporate!(state::CRPState, cluster::Int)
 end
 
 function unincorporate!(state::CRPState, cluster::Int)
-    println("unincorporate! from $cluster")
-    println("state: $state")
     @assert haskey(state.counts, cluster)
     @assert state.counts[cluster] > 0
     state.counts[cluster] -= 1
