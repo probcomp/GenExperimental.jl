@@ -27,7 +27,7 @@ type CRPState
     function CRPState()
         free = Set{Int}()
         push!(free, 1)
-        new(Dict{Int, Int}(), 0, free, 2)
+        new(OrderedDict{Int, Int}(), 0, free, 2)
     end
 end
 
