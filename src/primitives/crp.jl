@@ -38,7 +38,7 @@ function new_cluster(state::CRPState)
 end
 has_cluster(state::CRPState, cluster::Int) = haskey(state.counts, cluster)
 counts(state::CRPState, cluster::Int) = state.counts[cluster]
-clusters(state::CRPState) = keys(state.counts)
+get_clusters(state::CRPState) = keys(state.counts)
 
 # TODO unecessary type parameter
 function logpdf(state::CRPState, alpha::T) where {T}
@@ -50,7 +50,16 @@ function logpdf(state::CRPState, alpha::T) where {T}
     ll
 end
 
+const CRP_NEW_CLUSTER = -1
+
 function incorporate!(state::CRPState, cluster::Int)
+    if cluster == CRP_NEW_CLUSTER
+        next = new_cluster(state)
+        println("incorporate! got CRP_NEW_CLUSTER, recursing on next cluster: $next")
+        return incorporate!(state, next)
+    end
+    println("incorporate! got cluster=$cluster")
+    println("state: $state")
     if !haskey(state.counts, cluster)
         @assert cluster >= state.next_cluster || cluster in state.free
         if cluster in state.free
@@ -71,9 +80,12 @@ function incorporate!(state::CRPState, cluster::Int)
     end
     state.total_count += 1
     state.counts[cluster] += 1
+    return cluster
 end
 
 function unincorporate!(state::CRPState, cluster::Int)
+    println("unincorporate! from $cluster")
+    println("state: $state")
     @assert haskey(state.counts, cluster)
     @assert state.counts[cluster] > 0
     state.counts[cluster] -= 1
@@ -134,13 +146,6 @@ register_primitive(:draw_crp, CRPDraw)
 
 make_exchangeable_generator(:CRPJointTrace, :CRPJointGenerator, :crp_joint,
     Tuple{Set,Float64}, CRPState, CRPDraw, Int)
-
-CRP_NEW_CLUSTER = -1
-# overload constrain to accept -1 as a token represneting 'the next empty cluster'
-function constrain!(trace::CRPJointTrace, addr::Tuple{Int}, value::Int)
-    value = (value == CRP_NEW_CLUSTER) ? new_cluster(trace.trace.state) : value
-    constrain!(trace.trace, addr, value)
-end
 
 # next new cluster relative to the currently constrained assignments
 new_cluster(trace::CRPJointTrace) = new_cluster(trace.trace.state)
