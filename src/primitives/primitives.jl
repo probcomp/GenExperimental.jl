@@ -18,8 +18,18 @@ function register_primitive(shortname::Symbol, generator_type::Type)
 	eval(quote export $shortname end)
 
     # HACK to get 'export Normal' instead of 'export Gen.Normal'
-	eval(quote export $(Symbol(split(string(generator_type), '.')[2])) end)
+    type_str = split(string(generator_type), '.')
+    if length(type_str) > 1
+        # Gen.Normal (defined within Gen)
+	    eval(quote export $(Symbol(type_str[2])) end)
+    else
+        eval(quote export $(Symbol(type_str[1])) end)
+    end
+      
+    
 end
+
+export register_primitive
 
 
 include("simple.jl")

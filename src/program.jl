@@ -41,6 +41,12 @@ function ProgramTrace()
     ProgramTrace(subtraces, score, return_value, intervened, aliases, tape)
 end
 
+# serialization
+import JSON
+function JSON.lower(trace::ProgramTrace)
+    trace.subtraces
+end
+
 
 """
 Constrain an address of a generator invocation to a particular value.
