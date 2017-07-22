@@ -47,7 +47,6 @@ function simulate{M,N}(normal::Normal, mu::M, std::N)
 end
 
 register_primitive(:normal, Normal)
-#export Normal
 
 
 #######################

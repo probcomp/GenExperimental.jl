@@ -18,5 +18,8 @@ module Gen
 
     # built-in probabilistic primitives
     include("primitives/primitives.jl")
+   
+    # AIDE algorithm for measuring divergences
+    include("aide.jl")
 
 end
