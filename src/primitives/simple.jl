@@ -94,8 +94,6 @@ register_primitive(:uniform, UniformContinuous)
 
 struct UniformDiscrete <: AssessableAtomicGenerator{Int64} end
 
-import Distributions
-
 function logpdf(::UniformDiscrete, x::Int64, lower::Int, upper::Int)
     d = Distributions.DiscreteUniform(concrete(lower), concrete(upper)) 
     Distributions.logpdf(d, x)
@@ -106,6 +104,34 @@ function simulate(::UniformDiscrete, lower::Int, upper::Int)
 end
 
 register_primitive(:uniform_discrete, UniformDiscrete)
+
+
+###########################
+# Categorical in logspace #
+###########################
+
+# uniform discrete on the range [lower, lower + 1, ..., upper]
+# upper is inclusive
+
+struct CategoricalLog <: AssessableAtomicGenerator{Int64} end
+
+
+"""
+Sample an integer from the range of indices of scores.
+
+Scores are log probabilities, that do not have to be normalized
+"""
+function logpdf(::CategoricalLog, x::Int64, scores::Vector{Float64})
+    # TODO make differentiable: https://github.com/probcomp/Gen.jl/issues/65
+    (scores - logsumexp(scores))[x]
+end
+
+function simulate(::CategoricalLog, lower::Int, upper::Int)
+    probs = exp.(scores - logsumexp(scores))
+    rand(Distributions.Categorical(probs))
+end
+
+register_primitive(:categorical_log, CategoricalLog)
 
 
 ##########################################

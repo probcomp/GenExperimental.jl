@@ -52,7 +52,17 @@ end
     @test isapprox(logpdf(UniformDiscrete(), x, lower, upper), log(1./upper))
 end
 
+@testset "categorical log space" begin
+    x = 3
+    probs = [0.2, 0.3, 0.5]
+    unnormalized = probs * 5
+    log_unnormalized = log.(unnormalized)
+    @test isapprox(logpdf(CategoricalLog(), x, log_unnormalized), log(probs[x]))
+end
+
 @testset "nil" begin
     @test isapprox(logpdf(Nil(), Nil()), log(1.0))
     @test logpdf(Nil(), 5) == -Inf
 end
+
+
