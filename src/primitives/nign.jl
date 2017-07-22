@@ -23,6 +23,7 @@ function incorporate!(state::NIGNState, x::Float64)
     state.N += 1
     state.sum_x += x
     state.sum_x_sq += x*x
+    x
 end
 
 function unincorporate!(state::NIGNState, x::Float64)

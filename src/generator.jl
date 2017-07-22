@@ -8,10 +8,14 @@ function value end
 function constrain! end
 function intervene! end
 function propose! end
+function release! end
+function mode end
 
 Base.delete!(t::Trace, addr) = delete!(t, (addr,))
 Base.haskey(t::Trace, addr) = haskey(t, (addr,))
 value(t::Trace, addr) = value(t, (addr,))
+release!(t::Trace, addr) = release!(t, (addr,))
+mode(t::Trace, addr) = mode(t, (addr,))
 Base.getindex(t::Trace, addr::Tuple) = value(t, addr)
 Base.getindex(t::Trace, addr...) = t[addr]
 # NOTE: defining generic mappings from addr to (addr,) for caused infinite looping
@@ -52,9 +56,11 @@ export @generate!
 export Trace
 export SubtraceMode
 export value
+export mode
 export constrain!
 export intervene!
 export propose!
+export release!
 
 
 #####################
@@ -117,6 +123,13 @@ function propose!(trace::AtomicTrace{T}, addr::Tuple, valtype::Type) where {T}
     error("type $valtype does match trace type $T")
 end
 
+function _release!(t::AtomicTrace)
+    t.mode = record
+end
+
+function release!(t::AtomicTrace, addr::Tuple)
+    addr == () ? _release!(t) : atomic_addr_err(addr)
+end
 
 function _delete!(t::AtomicTrace{T}) where {T}
     t.mode = record
@@ -127,11 +140,21 @@ function Base.delete!(t::AtomicTrace, addr)
     addr == () ? _delete!(t) : atomic_addr_err(addr)
 end
 
+value(t::AtomicTrace) = get(t.value)
+
 function value(t::AtomicTrace, addr)
     addr == () ? get(t.value) : atomic_addr_err(addr)
 end
 
-Base.haskey(t::AtomicTrace, addr) = (addr == ())
+mode(t::AtomicTrace) = t.mode
+
+function mode(t::AtomicTrace, addr)
+    addr == () ? mode(t) : atomic_addr_err(addr)
+end
+
+function Base.haskey(t::AtomicTrace, addr)
+    addr == () ? !isnull(t.value) : atomic_addr_err(addr)
+end
 
 AtomicGenerator{T} = Generator{AtomicTrace{T}}
 
@@ -190,3 +213,52 @@ end
 export AssessableAtomicGenerator
 export simulate
 export logpdf
+
+#########################
+# Generator combinators #
+#########################
+
+# TODO: Alias = Tuple
+
+type PairedGenerator{U,V}
+    p::Generator{U}
+    q::Generator{V}
+
+    # mapping from q_address to (p_address, type)
+    mapping::Dict
+end
+
+function compose(p::Generator, q::Generator, mapping::Dict)
+    PairedGenerator(p, q, mapping)
+end
+
+# TODO what are the semantics of the score?
+# the trace is the same type as the trace of p
+# the distribution is different from that of p
+# the semantics of the score are that it is an unbiased estimate of the 
+function generate!(g::PairedGenerator{U}, args::Tuple, p_trace::U) where {U}
+    (p_args, q_args) = args
+    # NOTE: constraints on the mapped variables in the input trace are ignored
+    q_trace = empty_trace(g.q)
+    for (q_addr, (p_addr, value_type)) in g.mapping
+        propose!(q_trace, q_addr, value_type)
+    end
+    (q_score, _) = generate!(g.q, q_args, q_trace)
+    for (q_addr, (p_addr, _)) in g.mapping
+        constrain!(p_trace, p_addr, q_trace[q_addr])
+    end
+    (p_score, p_retval) = generate!(g.p, p_args, p_trace)
+    for (_, (p_addr, _)) in g.mapping
+        release!(p_trace, p_addr)
+    end
+    score = p_score - q_score
+    (score, p_retval)
+end
+
+# shorthand combinatorifor when the proposal is an AtomicGenerator
+function compose(p::Generator, q::AtomicGenerator{T}, p_addr::Tuple) where {T}
+    mapping = Dict([() => (p_addr, T)])
+    PairedGenerator(p, q, mapping)
+end
+
+export compose

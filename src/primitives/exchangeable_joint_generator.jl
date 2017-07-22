@@ -53,6 +53,14 @@ end
 
 state(trace::ExchangeableJointTrace) = trace.state
 
+# NOTE: incorporate! must return the new value, as it can differ from the provided value
+# (see CRP_NEW_CLUSTER in CRPJointGenerator)
+function incorporate! end
+function unincorporate! end
+export incorporate!
+export unincorporate!
+
+
 # TODO propose!, intervene!
 
 function constrain!(trace::ExchangeableJointTrace{S,D,V}, addr::Tuple, value::V) where {S,D,V}
@@ -72,8 +80,7 @@ function constrain!(trace::ExchangeableJointTrace{S,D,V}, addr::Tuple, value::V)
     else
         push!(trace.constrained, addrhead)
     end
-    trace.values[addrhead] = value
-    incorporate!(trace.state, value)
+    trace.values[addrhead] = incorporate!(trace.state, value)
 end
 
 function Base.delete!(trace::ExchangeableJointTrace, addr::Tuple)

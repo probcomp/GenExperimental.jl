@@ -153,6 +153,4 @@ export has_cluster
 export counts
 export get_clusters
 export logpdf
-export incorporate!
-export unincorporate!
 export CRP_NEW_CLUSTER

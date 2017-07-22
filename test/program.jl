@@ -39,6 +39,7 @@
     @test haskey(t, 7)
     @test haskey(t, 8)
     @test haskey(t, 9)
+    @test mode(t, 9) == Gen.record
 end
 
 @testset "program definition syntaxes" begin
@@ -106,6 +107,7 @@ end
     score, val = @generate!(foo(), t)
     @test score == logpdf(Normal(), 2.3, 0, 1)
     @test val == 2.3
+    @test mode(t, "x") == Gen.constrain
 end
 
 @testset "intervening on primitive generator invocation" begin
@@ -115,6 +117,7 @@ end
     score, val = @generate!(foo(), t)
     @test score == 0.
     @test val == 2.3
+    @test mode(t, "x") == Gen.intervene
 end
 
 @testset "intervening on probabilistic program invocation" begin
@@ -128,6 +131,7 @@ end
     score, val = @generate!(foo(), t)
     @test score == 0.
     @test val == "fixed"
+    @test mode(t, "x") == Gen.intervene
 end
 
 @testset "tagging arbitrary expressions" begin
@@ -161,12 +165,24 @@ end
     @test val == (2., 3.)
 end
 
-@testset "proposing from trace" begin
+# TODO test haskey
+# haskey does NOT check if there is a subtrace or not
+# it checks if there is a value at a particular atomic address
+
+@testset "proposing from atomic trace" begin
+    t = AtomicTrace(Float64)
+    propose!(t, (), Float64)
+    score, val = @generate!(normal(0, 1), t)
+    @test score == logpdf(normal, val, 0, 1)
+end
+
+@testset "proposing from program trace" begin
     foo = @program () begin @g(normal(0, 1), "x") end
     t = ProgramTrace()
     propose!(t, "x", Float64)
     score, val = @generate!(foo(), t)
     @test score == logpdf(Normal(), val, 0, 1)
+    @test mode(t, "x") == Gen.propose
 end
 
 @testset "different syntaxes for retrieving value from a trace" begin
@@ -189,45 +205,89 @@ end
     @test t["bar", "x"] == value(t, ("bar", "x"))
 end
 
+@testset "haskey" begin
+
+    # program trace
+    # NOTE: haskey returns false even if there is a subtrace at that address
+    # haskey indicates whether an atomic value is present at an address
+    foo = @program () begin @g(normal(0, 1), "x") end
+    t = ProgramTrace()
+    @test !haskey(t, "x")
+    set_subtrace!(t, "x", AtomicTrace(Float64))
+    @test !haskey(t, "x")
+    constrain!(t, "x", 1.2)
+    @test haskey(t, "x")
+
+    # atomic trace
+    t = AtomicTrace(Float64)
+    @test !haskey(t, ())
+    constrain!(t, (), 1.2)
+    @test haskey(t, ())
+end
+
+
+
 @testset "delete!" begin
+
+    foo = @program () begin @g(normal(0, 1), "x") end
+
+    # deleting a subtrace from a program trace
+    t = ProgramTrace()
+    @generate!(foo(), t)
+    delete!(t, "x")
+    @test !haskey(t, "x")
+
+    # deleting the value from an atomic trace
+    t = AtomicTrace(Float64)
+    @generate!(normal(0, 1), t)
+    @test haskey(t, ())
+    delete!(t, ())
+    @test !haskey(t, ())
+end
+
+
+@testset "release!" begin
 
     foo = @program () begin @g(normal(0, 1), "x") end
     t = ProgramTrace()
 
-    # deleting a constraint
+    # releasing a constraint
     # the subtrace remains, but it is no longer constrained
     # what happens to the value is undefined (its up to the trace type)
     constrain!(t, "x", 1.1)
     score, _ = @generate!(foo(), t)
     @test value(t, "x") == 1.1
     @test score != 0.
-    delete!(t, "x")
+    release!(t, "x")
     @test haskey(t, "x")
     score, _ = @generate!(foo(), t)
     @test score == 0.
     @test value(t, "x") != 1.1
+    @test mode(t, "x") == Gen.record
     
-    # deleting an intervention
+    # releasing an intervention
     # the subtrace remains, but it is no longer constrained
     # what happens to the value is undefined (its up to the trace type)
     intervene!(t, "x", 1.1)
     @generate!(foo(), t)
     @test value(t, "x") == 1.1
-    delete!(t, "x")
+    release!(t, "x")
     @test haskey(t, "x")
     @generate!(foo(), t)
     @test value(t, "x") != 1.1
+    @test mode(t, "x") == Gen.record
 
-    # deleting a proposal
+    # releasing a proposal
     # the subtrace remains, but it is no longer constrained
     # what happens to the value is undefined (its up to the trace type
     propose!(t, "x", Float64)
     score, _ = @generate!(foo(), t)
     @test score != 0.
-    delete!(t, "x")
+    release!(t, "x")
     @test haskey(t, "x")
     score, _ = @generate!(foo(), t)
     @test score == 0.
+    @test mode(t, "x") == Gen.record
 end
 
 @testset "higher order probabilistic program" begin

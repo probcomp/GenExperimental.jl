@@ -132,10 +132,7 @@ intervene!(t::ProgramTrace, addr, val) = intervene!(t, (addr,), val)
 
 
 """
-Delete an address from the trace, clearing any contraints, interventions, or
-proposals applied to the address.
-
-NOTE: Does not delete any subtraces in the trace hierarchy.
+Delete an address from the trace
 """
 function Base.delete!(t::ProgramTrace, addr::Tuple)
     if addr == ()
@@ -144,8 +141,21 @@ function Base.delete!(t::ProgramTrace, addr::Tuple)
     end
     addrhead = addr[1]
     if haskey(t.subtraces, addrhead)
+        if length(addr) == 1
+            # delete the subtrace completely
+            delete!(t.subtraces, addrhead)
+        else
+            subtrace = t.subtraces[addrhead]
+            delete!(subtrace, addr[2:end])
+        end
+    end
+end
+
+function release!(t::ProgramTrace, addr::Tuple)
+    addrhead = addr[1]
+    if haskey(t.subtraces, addrhead)
         subtrace = t.subtraces[addrhead]
-        delete!(subtrace, addr[2:end])
+        release!(subtrace, addr[2:end])
     end
 end
 
@@ -154,8 +164,7 @@ Check if value exists for a given address.
 """
 function Base.haskey(t::ProgramTrace, addr::Tuple)
     if addr == ()
-        # TODO should be true for all subtraces make it into a generaal trace interface?
-        return true
+        return t.return_value != nothing
     end
     addrhead = addr[1]
     if haskey(t.subtraces, addrhead)
@@ -183,6 +192,21 @@ function value(t::ProgramTrace, addr::Tuple)
         error("address not found: $addr")
     end
     value(subtrace, addr[2:end])
+end
+
+function mode(t::ProgramTrace, addr::Tuple)
+    if addr == ()
+        # the output is either intervened or recorded
+        return t.intervened ? intervene : record
+    end
+    local subtrace::Trace
+    addrhead = addr[1]
+    if haskey(t.subtraces, addrhead)
+        subtrace = t.subtraces[addrhead]
+    else
+        error("address not found: $addr")
+    end
+    mode(subtrace, addr[2:end])
 end
 
 "Return the subtrace at the given address element"
@@ -225,7 +249,7 @@ function alias_to_subtrace!(t::ProgramTrace, subtrace::Trace, subaddr::Tuple, al
     # TODO what happens if it was already constrained? The alias overwrites the constraint?
     # It depends on the subtrace implementation. We can make the subtrace specification
     # require that an error be thrown if the same address is constrained, intervened, or proposed twice
-    # (without first using delete!)
+    # (without first using release!)
     if haskey(t.subtraces, alias)
         # some directives were applied to this alias
         alias_subtrace = t.subtraces[alias]
@@ -316,7 +340,7 @@ end
 
 function tagged!(t::ProgramTrace, generator::Generator{T}, args::Tuple, addr_head) where {T}
     local subtrace::T
-    if haskey(t, addr_head)
+    if haskey(t.subtraces, addr_head)
         # check if the sub-trace is the right type.
         # if it's not the right type, we need to recursively copy over all the directives.
         subtrace = t.subtraces[addr_head]
@@ -345,8 +369,6 @@ function tagged!(t::ProgramTrace, generator::Generator{T}, args::Tuple, addr_hea
         delete!(t.aliases, addr_head)
     end
 
-    # record it as visited
-    #delete!(t.remaining_to_visit, addr_head)
     val
 end
 
@@ -445,3 +467,4 @@ export subtrace
 export set_subtrace!
 export tagged!
 export parametrize!
+export SubtraceMode
