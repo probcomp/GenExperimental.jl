@@ -126,7 +126,7 @@ function logpdf(::CategoricalLog, x::Int64, scores::Vector{Float64})
     (scores - logsumexp(scores))[x]
 end
 
-function simulate(::CategoricalLog, lower::Int, upper::Int)
+function simulate(::CategoricalLog, scores::Vector{Float64})
     probs = exp.(scores - logsumexp(scores))
     rand(Distributions.Categorical(probs))
 end
