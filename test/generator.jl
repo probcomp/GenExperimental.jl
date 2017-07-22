@@ -39,3 +39,80 @@
     @test isapprox(score, expected_score)
 
 end
+
+@testset "encapsulate a probabilistic program" begin
+
+    inner_generator = @program () begin
+        mu = @g(normal(0, 1), "mu")
+        @g(normal(mu, 1), "x")
+    end
+
+    generator = encapsulate(inner_generator, Dict([("x",) => Float64]))
+
+    # record
+    t = AtomicTrace(Dict)
+    (score, val) = generate!(generator, (), t)
+    @test val[("x",)] == value(t)[("x",)]
+
+    # constrain
+    # NOTE: it's not obvious how to test the score, since we don't have access to mu
+    t = AtomicTrace(Dict)
+    constrain!(t, (), Dict([("x",) => 0.123]))
+    (score, val) = generate!(generator, (), t)
+    @test val[("x",)] == 0.123
+    @test value(t)[("x",)] == 0.123
+    @test score != 0.
+
+    # propose 
+    # NOTE: it's not obvious how to test the score, since we don't have access to mu
+    t = AtomicTrace(Dict)
+    propose!(t, (), Dict)
+    (score, val) = generate!(generator, (), t)
+    @test score != 0.
+    @test haskey(value(t, ()), ("x",))
+    @test haskey(val, ("x",))
+end
+
+
+@testset "replicated atomic generator" begin
+    run_count = 0
+    inner_generator = encapsulate(
+        (@program () begin
+            run_count += 1
+            mu = @g(normal(0, 1), "mu")
+            @g(normal(mu, 1), "x")
+        end),
+        Dict([("x",) => Float64]))
+    generator = replicate(inner_generator, 4)
+
+    # record
+    t = AtomicTrace(Dict)
+    (score, val) = generate!(generator, (), t)
+    @test val[("x",)] == value(t)[("x",)]
+    # NOTE: if we don't require the score, there is no need to run more than once
+    @test run_count == 1
+
+    # constrain
+    # NOTE: it's not obvious how to test the score, since we don't have access to mu
+    run_count = 0
+    t = AtomicTrace(Dict)
+    constrain!(t, (), Dict([("x",) => 0.123]))
+    (score, val) = generate!(generator, (), t)
+    @test val[("x",)] == 0.123
+    @test value(t)[("x",)] == 0.123
+    @test score != 0.
+    @test run_count == 4
+
+    # propose 
+    # NOTE: it's not obvious how to test the score, since we don't have access to mu
+    run_count = 0
+    t = AtomicTrace(Dict)
+    propose!(t, (), Dict)
+    (score, val) = generate!(generator, (), t)
+    @test score != 0.
+    @test haskey(value(t, ()), ("x",))
+    @test haskey(val, ("x",))
+    @test run_count == 4
+
+end
+

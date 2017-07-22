@@ -457,6 +457,58 @@ end
 # TODO make this true for all generators:
 (p::ProbabilisticProgram)(args...) = generate!(p, args, ProgramTrace())[2]
 
+#################################################
+# Encapsulate a program into an AtomicGenerator #
+#################################################
+
+# There are many ways to encapsulate a program into a generator.
+# This is just one default encapsulator that produces an atomic generator whose
+# value is a dictionary mapping addresses to sub-values
+
+struct EncapsulatedProbabilisticProgram <: AtomicGenerator{Dict}
+    program::ProbabilisticProgram
+    address_to_type::Dict
+end
+
+encapsulate(program, address_to_type::Dict) = EncapsulatedProbabilisticProgram(program, address_to_type)
+
+function generate!(g::EncapsulatedProbabilisticProgram, args::Tuple, trace::AtomicTrace{Dict})
+    program_trace = ProgramTrace()
+    if trace.mode == intervene
+        # TODO implement this
+        error("not yet implemented")
+    end
+    local val::Dict
+    if !haskey(trace, ())
+        @assert (trace.mode == record) || (trace.mode == propose)
+        val = Dict()
+        trace.value = Nullable(val)
+    else
+        val = get(trace.value)
+    end
+    if trace.mode != record
+        for (addr, addr_type) in g.address_to_type
+            if trace.mode == constrain
+                constrain!(program_trace, addr, val[addr])
+            elseif trace.mode == propose
+                propose!(program_trace, addr, addr_type)
+            end
+        end
+    end
+    (score, _) = generate!(g.program, args, program_trace)
+
+    # copy over data from inner program trace to atomic trace
+    if (trace.mode == propose) || (trace.mode == record)
+        for addr in keys(g.address_to_type)
+            val[addr] = value(program_trace, addr)
+        end
+    end
+    (score, value(trace))
+end
+
+#(p::EncapsulatedProbabilisticProgram)(args...) = generate!(p, args, ProgramTrace())[2]
+
+
 export ProbabilisticProgram
 export ProgramTrace
 export @program
@@ -468,3 +520,4 @@ export set_subtrace!
 export tagged!
 export parametrize!
 export SubtraceMode
+export encapsulate

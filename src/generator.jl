@@ -214,9 +214,9 @@ export AssessableAtomicGenerator
 export simulate
 export logpdf
 
-#########################
-# Generator combinators #
-#########################
+#########################################
+# Generator nested inference combinator #
+#########################################
 
 # TODO: Alias = Tuple
 
@@ -262,3 +262,38 @@ function compose(p::Generator, q::AtomicGenerator{T}, p_addr::Tuple) where {T}
 end
 
 export compose
+
+###################################
+# Generator replicator combinator #
+###################################
+
+# NOTE: this is an atomic genreator
+struct ReplicatedAtomicGenerator{T} <: AtomicGenerator{T}
+    inner_generator::AtomicGenerator{T}
+    num::Int
+end
+
+replicate(generator::AtomicGenerator, num::Int) = ReplicatedAtomicGenerator(generator, num)
+
+# TODO permit AD on the score?
+function generate!(g::ReplicatedAtomicGenerator{T}, args::Tuple, trace::AtomicTrace{T}) where {T}
+    if trace.mode == record
+        (score, val) = generate!(g.inner_generator, args, trace)
+        @assert score == 0.
+        @assert val == value(trace)
+        return (score, val)
+    elseif trace.mode == intervene
+        return generate!(g.inner_generator, args, trace)
+    end
+    scores = Vector{Float64}(g.num)
+    (scores[1], _) = generate!(g.inner_generator, args, trace)
+    for i=2:g.num
+        supplementary_trace = AtomicTrace(T)
+        constrain!(supplementary_trace, (), value(trace))
+        (scores[i], _) = generate!(g.inner_generator, args, supplementary_trace)
+    end
+    score = logsumexp(scores) - log(g.num)
+    (score, value(trace))
+end
+
+export replicate
