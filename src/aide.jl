@@ -7,12 +7,9 @@ https://arxiv.org/abs/1705.07224
 """
 function aide(p::AtomicGenerator{T}, p_args::Tuple,
               q::AtomicGenerator{T}, q_args::Tuple) where {T}
-    trace = AtomicTrace(T)
-    propose!(trace, (), T)
-    (p_log_weight, _) = generate!(p, p_args, trace)
-    constrain!(trace, (), trace[()])
-    (q_log_weight, _) = generate!(q, q_args, trace)
-    p_log_weight - q_log_weight
+    generator = compose(q, p, ())
+    (score, _) = generate!(generator, (q_args, p_args), AtomicTrace(T))
+    -score
 end
 
 export aide
