@@ -22,4 +22,7 @@ module Gen
     # AIDE algorithm for measuring divergences
     include("aide.jl")
 
+    # sampling importance sampling
+    include("sir.jl")
+
 end

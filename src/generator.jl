@@ -221,8 +221,8 @@ export logpdf
 
 # TODO: Alias = Tuple
 
-type PairedGenerator{U}
-    p::Generator{U}
+type PairedGenerator{T} <: Generator{T}
+    p::Generator{T}
     q::Generator
 
     # mapping from q_address to (p_address, type)
