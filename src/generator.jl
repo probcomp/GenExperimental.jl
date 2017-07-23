@@ -214,15 +214,16 @@ export AssessableAtomicGenerator
 export simulate
 export logpdf
 
+
 #########################################
 # Generator nested inference combinator #
 #########################################
 
 # TODO: Alias = Tuple
 
-type PairedGenerator{U,V}
+type PairedGenerator{U}
     p::Generator{U}
-    q::Generator{V}
+    q::Generator
 
     # mapping from q_address to (p_address, type)
     mapping::Dict
@@ -238,19 +239,43 @@ end
 # the semantics of the score are that it is an unbiased estimate of the 
 function generate!(g::PairedGenerator{U}, args::Tuple, p_trace::U) where {U}
     (p_args, q_args) = args
-    # NOTE: constraints on the mapped variables in the input trace are ignored
+
+    # populate q's trace with proposal or constraint directives
+    proposed_from_q = Set()
     q_trace = empty_trace(g.q)
     for (q_addr, (p_addr, value_type)) in g.mapping
-        propose!(q_trace, q_addr, value_type)
+        m = haskey(p_trace, p_addr) ? mode(p_trace, p_addr) : record
+        if m == constrain
+            constrain!(q_trace, q_addr, p_trace[p_addr])
+        elseif m == propose
+            error("cannot handle proposal at address $p_addr")
+        elseif m == intervene
+            error("cannot handle intervention at address $p_addr")
+        else
+            # m == record, propose from q
+            push!(proposed_from_q, q_addr)
+            propose!(q_trace, q_addr, value_type)
+        end
     end
+
+    # generate q
     (q_score, _) = generate!(g.q, q_args, q_trace)
-    for (q_addr, (p_addr, _)) in g.mapping
+
+    # populate p's trace with new constraints generated from q
+    for q_addr in proposed_from_q
+        (p_addr, _) = g.mapping[q_addr]
         constrain!(p_trace, p_addr, q_trace[q_addr])
     end
+
+    # generate p
     (p_score, p_retval) = generate!(g.p, p_args, p_trace)
-    for (_, (p_addr, _)) in g.mapping
+
+    # release constraints on p's trace for values proposed from q
+    for q_addr in proposed_from_q
+        (p_addr, _) = g.mapping[q_addr]
         release!(p_trace, p_addr)
     end
+
     score = p_score - q_score
     (score, p_retval)
 end

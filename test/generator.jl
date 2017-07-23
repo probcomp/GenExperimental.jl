@@ -31,6 +31,8 @@
     @test g_retval == x
     # should not be constrained afterwards
     @test mode(t, "mu") == Gen.record
+    # should still be constrained
+    @test mode(t, "x") == Gen.constrain
     # score = log(p(mu, x) / q(x)) for mu ~ p(mu)
     expected_score = (
         logpdf(normal, t["mu"], 0., 1.) +
@@ -38,6 +40,27 @@
         logpdf(normal, t["mu"], 3., 4.))
     @test isapprox(score, expected_score)
 
+    # constraining the shared choice
+    t = ProgramTrace()
+    x = 1.123
+    mu = 2.1
+    constrain!(t, "x", x)
+    constrain!(t, "mu", mu)
+    (score, g_retval) = generate!(g, ((), (3., 4.)), t)
+    # return value is the return value of p
+    @test g_retval == x
+    # should still be constrained
+    @test mode(t, "mu") == Gen.constrain
+    @test mode(t, "x") == Gen.constrain
+    @test t["x"] == x
+    @test t["mu"] == mu
+    # score = log(p(mu, x) / q(x)) 
+    expected_score = (
+        logpdf(normal, mu, 0., 1.) +
+        logpdf(normal, x, mu, 2.) -
+        logpdf(normal, mu, 3., 4.))
+    @test isapprox(score, expected_score)
+    
 end
 
 @testset "encapsulate a probabilistic program" begin
