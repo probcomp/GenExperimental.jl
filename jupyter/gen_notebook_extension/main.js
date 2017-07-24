@@ -5,14 +5,10 @@ define(['require'], function(require) {
     }
 
     function find_choice(trace, name) {
-        if (name in trace.recorded) {
-            return { value: trace.recorded[name], where: "recorded" }
-        } else if (name in trace.interventions) {
-            return { value: trace.interventions[name], where: "interventions"}
-        } else if (name in trace.constraints) {
-            return { value: trace.constraints[name], where: "constraints"}
+        if (name in trace) {
+            return { value: trace[name].value, where: trace[name].mode };
         } else {
-            return null
+            return null;
         }
     }
 
@@ -35,8 +31,8 @@ define(['require'], function(require) {
         load_ipython_extension: load_ipython_extension,
         find_choice: find_choice,
         register_jupyter_renderer: register_jupyter_renderer,
-        recorded: "recorded",
-        interventions: "interventions",
-        constraints: "constraints"
+        recorded: "record",
+        interventions: "intervene",
+        constraints: "constrain"
     };
 });

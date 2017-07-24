@@ -1,3 +1,7 @@
+#######################################################
+# Sufficient statistics normal inverse gamma - normal #
+#######################################################
+
 # parametric to allow for AD with respect to parameters
 struct NIGNParams{T,U,V,W}
 	m::T
@@ -7,7 +11,7 @@ struct NIGNParams{T,U,V,W}
 end
 
 # sufficient statistic for NIGN
-mutable struct NIGNState <: Gen.Module{Float64}
+mutable struct NIGNState
     N::Int
     sum_x::Float64
     sum_x_sq::Float64
@@ -19,6 +23,7 @@ function incorporate!(state::NIGNState, x::Float64)
     state.N += 1
     state.sum_x += x
     state.sum_x_sq += x*x
+    x
 end
 
 function unincorporate!(state::NIGNState, x::Float64)
@@ -69,40 +74,47 @@ function sample_parameters(params::NIGNParams)
 	(mu, rho)
 end
 
-function joint_log_density(state::NIGNState, params::NIGNParams)
+function logpdf(state::NIGNState, params::NIGNParams)
     post_params = posterior_params(state, params)
     Z0 = log_z(params.r, params.s, params.nu)
     ZN = log_z(post_params.r, post_params.s, post_params.nu)
 	-(state.N/2.) * log(2 * pi) + ZN - Z0
 end
 
-# draw_nign -------------------------------------------------------
 
-# NOTE: this module does not mutate the NIGN state
+#########################################
+# Generator for drawing from NIG-normal #
+#########################################
 
+# NOTE: this does not mutate the NIGN state
 
-struct NIGNDraw <: Gen.Module{Float64} end
+struct NIGNDraw <: AssessableAtomicGenerator{Float64} end
 
-function regenerate(::NIGNDraw, x::Float64, state::NIGNState, params::NIGNParams)
+function logpdf(::NIGNDraw, x::Float64, state::NIGNState, params::NIGNParams)
 	predictive_logp(x, state, params)
 end
 
-function simulate(normal::NIGNDraw, state::NIGNState, params::NIGNParams)
+function simulate(::NIGNDraw, state::NIGNState, params::NIGNParams)
 	post_params = posterior_params(state, params)
 	(mu, rho) = sample_parameters(post_params)
-	x = rand(Distributions.Normal(mu, 1./sqrt(rho)))
-	(x, predictive_logp(x, state, params))
+    rand(Distributions.Normal(mu, 1./sqrt(rho)))
 end
 
-register_module(:draw_nign, NIGNDraw())
+register_primitive(:draw_nign, NIGNDraw)
 
-draw_nign(state::NIGNState, params::NIGNParams) = simulate(NIGNDraw(), state, params)[1]
+
+#############################################
+# NIGN joint Generator with custom subtrace #
+#############################################
+
+make_exchangeable_generator(:NIGNJointTrace, :NIGNJointGenerator, :nign_joint,
+    Tuple{Set,NIGNParams}, NIGNState, NIGNDraw, Float64)
+
 
 export NIGNParams
 export NIGNState
 export NIGNDraw
 export incorporate!
 export unincorporate!
-export joint_log_density
+export logpdf
 export posterior_params
-export draw_nign

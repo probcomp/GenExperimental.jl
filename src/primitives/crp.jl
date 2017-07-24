@@ -1,7 +1,9 @@
-import DataStructures.Stack
+######################################################
+# Sufficient stastics for Chinese restaurant process #
+######################################################
+
+import DataStructures.Queue
 import DataStructures.OrderedDict
-import Gen.simulate
-import Gen.regenerate
 
 # data structure for storing sufficient statistics for CRP
 
@@ -13,27 +15,34 @@ type CRPState
     # sum of values(counts)
     total_count::Int
 
-    # reuse ids for the new clusters by pushing them onto a stack
+    # reuse ids for the new clusters by pushing them into a set
+    # and only increment next_cluster when the set is empty
     # this is necessary because we may do billions of Gibbs sweeps
-    free::Stack{Int}
+    free::Set{Int}
 
     # the next cluster id to allocate, after free stack is empty
     next_cluster::Int
 
     # create an empty CRP state
     function CRPState()
-        free = Stack(Int)
+        free = Set{Int}()
         push!(free, 1)
-        new(Dict{Int, Int}(), 0, free, 2)
+        new(OrderedDict{Int, Int}(), 0, free, 2)
     end
 end
 
-next_new_cluster(state::CRPState) = DataStructures.top(state.free)
+function new_cluster(state::CRPState)
+    cluster = next(state.free, start(state.free))[1]
+    @assert !haskey(state.counts, cluster)
+    cluster
+end
 has_cluster(state::CRPState, cluster::Int) = haskey(state.counts, cluster)
 counts(state::CRPState, cluster::Int) = state.counts[cluster]
-clusters(state::CRPState) = keys(state.counts)
+get_clusters(state::CRPState) = keys(state.counts)
 
-function joint_log_probability(state::CRPState, alpha::T) where {T}
+# TODO unecessary type parameter
+function logpdf(state::CRPState, alpha::T) where {T}
+    # alpha may be concrete or differentaible value
     N = state.total_count
     ll = length(state.counts) * log(alpha)
     ll += sum(lgamma.(collect(values(state.counts))))
@@ -41,15 +50,25 @@ function joint_log_probability(state::CRPState, alpha::T) where {T}
     ll
 end
 
+const CRP_NEW_CLUSTER = -1
+
 function incorporate!(state::CRPState, cluster::Int)
-    @assert !haskey(state.counts, next_new_cluster(state))
-    @assert (cluster == next_new_cluster(state)) || haskey(state.counts, cluster)
-    if cluster == next_new_cluster(state)
+    if cluster == CRP_NEW_CLUSTER
+        next = new_cluster(state)
+        return incorporate!(state, next)
+    end
+    if !haskey(state.counts, cluster)
+        @assert cluster >= state.next_cluster || cluster in state.free
+        if cluster in state.free
+            Base.delete!(state.free, cluster)
+        end
         # allocate a new cluster
         state.counts[cluster] = 0
-        pop!(state.free)
         if isempty(state.free)
-            @assert !haskey(state.counts, state.next_cluster)
+            # add a new cluster to the free set
+            while haskey(state.counts, state.next_cluster)
+                state.next_cluster += 1
+            end
             push!(state.free, state.next_cluster)
             state.next_cluster += 1
         end
@@ -58,27 +77,41 @@ function incorporate!(state::CRPState, cluster::Int)
     end
     state.total_count += 1
     state.counts[cluster] += 1
+    return cluster
 end
 
 function unincorporate!(state::CRPState, cluster::Int)
-    @assert !haskey(state.counts, next_new_cluster(state))
+    @assert haskey(state.counts, cluster)
+    @assert state.counts[cluster] > 0
     state.counts[cluster] -= 1
     if state.counts[cluster] == 0
-        # free the empyt cluster
-        delete!(state.counts, cluster)
+        # free the empty cluster
+        Base.delete!(state.counts, cluster)
         push!(state.free, cluster)
     end
     state.total_count -= 1
 end
 
-# draw_crp -------------------------------------------------------
 
-# NOTE: this module does not mutate the CRP state
+##################################
+# Generator for drawing from CRP #
+##################################
 
-struct CRPDraw <: Gen.Module{Int} end
+# NOTE: does not mutate the CRP state
 
-function simulate(::CRPDraw, state::CRPState, alpha::T) where {T}
-    # NOTE: does not incorporate the cluster draw into the CRP state
+import Distributions
+
+struct CRPDraw <: AssessableAtomicGenerator{Int} end
+
+function logpdf(::CRPDraw, cluster::Int, state::CRPState, alpha)
+    if cluster == new_cluster(state)
+        log(alpha) - log(state.total_count + alpha)
+    else
+        log(state.counts[cluster]) - log(state.total_count + alpha)
+    end
+end
+
+function simulate(::CRPDraw, state::CRPState, alpha)
     clusters = collect(keys(state.counts))
     probs = Array{Float64,1}(length(clusters) + 1)
     for (j, cluster) in enumerate(clusters)
@@ -86,37 +119,38 @@ function simulate(::CRPDraw, state::CRPState, alpha::T) where {T}
     end
     probs[end] = alpha
     probs = probs / sum(probs)
-    j = rand(Categorical(probs))
+    j = rand(Distributions.Categorical(probs))
+    
+    # return the drawn cluster
     if (j == length(clusters) + 1)
         # new cluster
-        cluster = next_new_cluster(state)
+        new_cluster(state)
     else
-        cluster = clusters[j]
-    end
-    (cluster, log(probs[j]))
-end
-
-function regenerate(::CRPDraw, cluster::Int, state::CRPState, alpha::T) where {T}
-    new_cluster = next_new_cluster(state)
-    if cluster == new_cluster
-        log(alpha) - log(state.total_count + alpha)
-    else
-        log(state.counts[cluster]) - log(state.total_count + alpha)
+        clusters[j]
     end
 end
 
-register_module(:draw_crp, CRPDraw())
-function draw_crp(state::CRPDraw, alpha::T) where {T}
-    simulate(CRPDraw(), state, alpha)[1]
-end
+register_primitive(:draw_crp, CRPDraw)
+
+
+############################################
+# CRP joint Generator with custom subtrace #
+############################################
+
+# TODO the fact that its not a set is not enforced in the type
+
+make_exchangeable_generator(:CRPJointTrace, :CRPJointGenerator, :crp_joint,
+    Tuple{Set,Float64}, CRPState, CRPDraw, Int)
+
+# next new cluster relative to the currently constrained assignments
+new_cluster(trace::CRPJointTrace) = new_cluster(trace.trace.state)
+has_cluster(trace::CRPJointTrace, cluster::Int) = haskey(trace.trace.state.counts, cluster)
+get_clusters(trace::CRPJointTrace) = keys(trace.trace.state.counts)
 
 export CRPState
-export next_new_cluster
+export new_cluster
 export has_cluster
 export counts
-export clusters
-export joint_log_probability
-export incorporate!
-export unincorporate!
-export CRPDraw
-export draw_crp
+export get_clusters
+export logpdf
+export CRP_NEW_CLUSTER

@@ -10,7 +10,7 @@
     params = NIGNParams(m, r, nu, s)
 
     nign = NIGNState()
-    actual = joint_log_density(nign, params)
+    actual = logpdf(nign, params)
     @test abs(actual) < 1e-15
 
     # test posterior
@@ -38,7 +38,7 @@
     # should go back to empty again
     unincorporate!(nign, x1)
     unincorporate!(nign, x2)
-    actual = joint_log_density(nign, params)
+    actual = logpdf(nign, params)
     @test abs(actual) < 1e-15
 
     @testset "draw from NIGN" begin
@@ -55,18 +55,55 @@
         x3 = -0.4
 
         # check that the density of regenerate matches the value computed using
-        # joint_log_density. these take different code paths.
+        # logpdf. these take different code paths.
 
-        # compute the expected value using joint_log_density
-        log_density_before = joint_log_density(nign, params)
+        # compute the expected value using logpdf
+        log_density_before = logpdf(nign, params)
         incorporate!(nign, x3)
-        expected = joint_log_density(nign, params) - log_density_before
+        expected = logpdf(nign, params) - log_density_before
         unincorporate!(nign, x3)
 
-        actual = regenerate(NIGNDraw(), x3, nign, params)
+        actual = logpdf(NIGNDraw(), x3, nign, params)
         @test isapprox(actual, expected)
     
     end
+
+    @testset "NIGN generator" begin
+        params = NIGNParams(1., 2., 3., 4.)
+        trace = NIGNJointTrace()
+
+        # test that the correct values were generated and that the 
+        # the constrained values were not modified
+        n = 10
+        constrain!(trace, 5, 5.3)
+        a5 = value(trace, 5)
+        constrain!(trace, 9, 6.2)
+        a9 = value(trace, 9)
+        (score, values) = generate!(NIGNJointGenerator(), (Set(1:n), params), trace)
+        for i=1:n
+            @test haskey(trace, i)
+            @test value(trace, i) == values[i]
+        end
+        @test !haskey(trace, n+1)
+        @test value(trace, 5) == a5
+        @test value(trace, 9) == a9
+
+        # test that the score is for the contsrained values
+        state = NIGNState()
+        incorporate!(state, a5)
+        incorporate!(state, a9)
+        expected_score = logpdf(state, params)
+        @test isapprox(score, expected_score)
+
+        # generate again and check that the score hasn't changed
+        # (this checks that the sufficient statistics were correctly reverted)
+        (score, values) = generate!(NIGNJointGenerator(), (Set(1:n), params), trace)
+        @test isapprox(score, expected_score)
+        @test values[5] == a5
+        @test values[9] == a9
+
+    end
+
 
 end
 

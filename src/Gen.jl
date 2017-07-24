@@ -7,13 +7,22 @@ module Gen
     # basic math operations
     include("math.jl")
 
-    # trace interface and probabilistic programming
-    include("trace.jl")
+    # simple trace and generator types
+    include("generator.jl")
+
+    # probabilistic program trace and generator types
+    include("program.jl")
 
     # custom features for jupyter notebooks
     include("notebook.jl")
 
     # built-in probabilistic primitives
     include("primitives/primitives.jl")
+   
+    # AIDE algorithm for measuring divergences
+    include("aide.jl")
+
+    # sampling importance sampling
+    include("sir.jl")
 
 end
