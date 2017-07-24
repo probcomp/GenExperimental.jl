@@ -13,14 +13,28 @@
 struct SIRGenerator{T} <: AtomicGenerator{T}
     # target trace type is T
     target::Generator{T}
-    mapping::Dict
     composition::Generator{T}
+    inferred_addresses::Set
+end
+
+function get_inferred_addresses(mapping::Dict)
+    # the values in the mapping are (addr, type) tuples
+    Set(map(v -> v[1], values(mapping)))
 end
 
 function SIRGenerator(target::Generator, proposal::Generator, mapping::Dict)
     composition = compose(target, proposal, mapping)
-    SIRGenerator(target, mapping, composition)
+    inferred_addresses = get_inferred_addresses(mapping)
+    SIRGenerator(target, composition, inferred_addresses)
 end
+
+function SIRGenerator(target::Generator, proposal::Generator, mapping::Dict, resimulation_addresses::Set)
+    composition = compose(target, proposal, mapping)
+    inferred_addresses = get_inferred_addresses(mapping)
+    union!(inferred_addresses, resimulation_addresses)
+    SIRGenerator(target, composition, inferred_addresses)
+end
+
 
 function generate!(g::SIRGenerator{T}, args::Tuple{Int, Tuple, Tuple, T}, trace::AtomicTrace{T}) where {T}
     (num, target_args, proposal_args, constraints) = args
@@ -43,7 +57,8 @@ function generate!(g::SIRGenerator{T}, args::Tuple{Int, Tuple, Tuple, T}, trace:
         chosen = categorical_log(scores)
 
         # p(x_k, constraints), which is needed for the score
-        for (_, (p_addr, _)) in g.mapping
+        #for (_, (p_addr, _)) in g.mapping # TODO
+        for p_addr in g.inferred_addresses
             constrain!(traces[chosen], p_addr, traces[chosen][p_addr])
         end
         (chosen_joint_score, _) = generate!(g.target, target_args, traces[chosen])

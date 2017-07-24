@@ -3,11 +3,14 @@
     num_runs = 0
     model = @program () begin
         num_runs += 1
+        std = @g(Gen.gamma(1., 1.), "std")
         mu = @g(normal(0., 1.), "mu")
         @g(normal(mu, 2.), "x")
     end
 
-    sir = SIRGenerator(model, model, Dict(["mu" => ("mu", Float64)]))
+    # propose mu from the proposal program
+    # propose std using resimulation
+    sir = SIRGenerator(model, model, Dict(["mu" => ("mu", Float64)]), Set(["std"]))
 
     constraints = ProgramTrace()
     x_constraint = 1.123
@@ -17,6 +20,8 @@
         # the latents are constrained
         @test haskey(val, "mu")
         @test mode(val, "mu") == Gen.constrain
+        @test haskey(val, "std")
+        @test mode(val, "std") == Gen.constrain
 
         # the data remains constrained
         @test haskey(val, "x")
@@ -50,6 +55,7 @@
     constrained_trace = ProgramTrace()
     constrain!(constrained_trace, "x", x_constraint)
     constrain!(constrained_trace, "mu", 0.123)
+    constrain!(constrained_trace, "std", 0.321)
     constrain!(sir_trace, (), constrained_trace)
     num_runs = 0
     (score, val) = generate!(sir, (10, (), (), constraints), sir_trace)
@@ -58,9 +64,7 @@
     check_output(val)
     check_output(value(sir_trace))
     @test val["mu"] == 0.123
-
-    # TODO test that the score for the N = 1 case matches the score for the prior.
-
+    @test val["std"] == 0.321
 end
 
 @testset "SIR score for N=1 special case" begin
