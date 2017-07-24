@@ -10,7 +10,7 @@
 
     # propose mu from the proposal program
     # propose std using resimulation
-    sir = SIRGenerator(model, model, Dict(["mu" => ("mu", Float64)]), Set(["std"]))
+    sir = SIRGenerator(model, model, Dict(["mu" => ("mu", Float64), "std" => ("std", Float64)]))
 
     constraints = ProgramTrace()
     x_constraint = 1.123
@@ -67,6 +67,35 @@
     @test val["std"] == 0.321
 end
 
+@testset "SIR crash test for resimulation" begin
+    model = @program () begin
+        mu = @g(normal(0., 1.), "mu")
+        @g(normal(mu, 2.), "x")
+    end
+    sir = SIRGenerator(model, model, Dict(["mu" => ("mu", Float64)]))
+
+    # observations
+    constraints = ProgramTrace()
+    x_constraint = 1.123
+    constrain!(constraints, "x", x_constraint)
+
+    # propose
+    sir_trace = AtomicTrace(ProgramTrace)
+    propose!(sir_trace, (), ProgramTrace)
+    (score, val) = generate!(sir, (1, (), (), constraints), sir_trace)
+    @test isapprox(score, logpdf(normal, val["mu"], 0., 1.))
+
+    # constrain
+    sir_trace = AtomicTrace(ProgramTrace)
+    constrained_trace = ProgramTrace()
+    constrain!(constrained_trace, "x", x_constraint)
+    constrain!(constrained_trace, "mu", 0.123)
+    constrain!(sir_trace, (), constrained_trace)
+    (score, val) = generate!(sir, (1, (), (), constraints), sir_trace)
+    @test val["mu"] == 0.123
+    @test isapprox(score, logpdf(normal, val["mu"], 0., 1.))
+end
+
 @testset "SIR score for N=1 special case" begin
 
     # the score should just be the log proposal density
@@ -104,16 +133,3 @@ end
     @test isapprox(score, logpdf(normal, val["mu"], 1., 1.))
 
 end
-
-
-
-
-
-
-
-
-
-
-
-
-

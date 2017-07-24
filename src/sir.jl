@@ -28,14 +28,6 @@ function SIRGenerator(target::Generator, proposal::Generator, mapping::Dict)
     SIRGenerator(target, composition, inferred_addresses)
 end
 
-function SIRGenerator(target::Generator, proposal::Generator, mapping::Dict, resimulation_addresses::Set)
-    composition = compose(target, proposal, mapping)
-    inferred_addresses = get_inferred_addresses(mapping)
-    union!(inferred_addresses, resimulation_addresses)
-    SIRGenerator(target, composition, inferred_addresses)
-end
-
-
 function generate!(g::SIRGenerator{T}, args::Tuple{Int, Tuple, Tuple, T}, trace::AtomicTrace{T}) where {T}
     (num, target_args, proposal_args, constraints) = args
     traces = Vector{T}(num)
@@ -57,7 +49,6 @@ function generate!(g::SIRGenerator{T}, args::Tuple{Int, Tuple, Tuple, T}, trace:
         chosen = categorical_log(scores)
 
         # p(x_k, constraints), which is needed for the score
-        #for (_, (p_addr, _)) in g.mapping # TODO
         for p_addr in g.inferred_addresses
             constrain!(traces[chosen], p_addr, traces[chosen][p_addr])
         end
@@ -70,25 +61,31 @@ function generate!(g::SIRGenerator{T}, args::Tuple{Int, Tuple, Tuple, T}, trace:
     #### Run conditional SIR ####
     elseif trace.mode == constrain
 
-        # k ~ uniform(1..num)
-        chosen = uniform_discrete(1, num)
-
         # NOTE: the given trace must have hypothesis AND observations already constrained
         # TODO: we do not check this---behavior depends on the given output trace's constraints
-        traces[chosen] = value(trace, ())
-        (chosen_joint_score, _) = generate!(g.target, target_args, traces[chosen])
+        output_trace = value(trace, ())
+        for p_addr in g.inferred_addresses
+            if mode(output_trace, p_addr) != constrain
+                error("inferred address $p_addr not constrained in trace")
+            end
+        end
+
+        # p(proposed, constraints)
+        (chosen_joint_score, _) = generate!(g.target, target_args, output_trace)
+
+        # k ~ uniform(1..num)
+        chosen = uniform_discrete(1, num)
     
+        traces[chosen] = output_trace
         for i=1:num
             if i != chosen
                 traces[i] = deepcopy(constraints)
             end
 
-            # score_i = p(x_i, constraints) / q(x_i)
-            # if chosen: for x_i and constraints fixed
-            # if not chosen: for x_i ~ q(x)
+            # if not chosen, then we sample: proposed ~ q()
+            # score = p(proposed, constraints) / q(proposed)
             (scores[i], _) = generate!(g.composition, ((target_args, proposal_args)), traces[i])
         end
-
 
     else
         error("mode not implemented: $(trace.mode)")
