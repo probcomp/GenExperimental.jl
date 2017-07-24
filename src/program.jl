@@ -472,6 +472,8 @@ end
 
 encapsulate(program, address_to_type::Dict) = EncapsulatedProbabilisticProgram(program, address_to_type)
 
+empty_trace(::EncapsulatedProbabilisticProgram) = AtomicTrace(Dict)
+
 function generate!(g::EncapsulatedProbabilisticProgram, args::Tuple, trace::AtomicTrace{Dict})
     program_trace = ProgramTrace()
     if trace.mode == intervene
