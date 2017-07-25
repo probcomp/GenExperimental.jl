@@ -8,6 +8,7 @@ makedocs(
     sitename = "Gen.jl",
     pages = [
         "Home" => "index.md"
+        "Inference Programming" => "inference.md"
     ]
 )
 
