@@ -8,6 +8,9 @@
 
 ## Trace types for probabilistic programs
 
+"""
+Trace of a `ProbabilisticProgram`.
+"""
 mutable struct ProgramTrace <: Trace
 
     # key is a single element of an address (called `addr_head` in the code)
@@ -49,7 +52,7 @@ end
 
 
 """
-Constrain an address of a generator invocation to a particular value.
+Constrain an address corresponding to a generator invocation to a particular value.
 
 Whether or not the address is of a generator invocation is not will be verified
 during the call to `generate!`.  A constrained address must be guaranteed to be
@@ -297,6 +300,9 @@ function finalize!(t::ProgramTrace)
 end
 
 
+"""
+A generative process represented by a Julia function and constructed with `@program`.
+"""
 struct ProbabilisticProgram <: Generator{ProgramTrace}
     program::Function
 end
@@ -307,6 +313,12 @@ empty_trace(::ProbabilisticProgram) = ProgramTrace()
 # invocation, and each @g and @e macro expands into a function call on the trace
 const trace_symbol = gensym()
 
+"""
+Annotate an invocation of a `Generator` within a `@program` with an address.
+
+The address should uniquely identify this point in the dynamic execution of the program.
+The program can process `constrain!`, `propose!`, and `intervene!` requests for this address that are present in the trace passed to `generate!`.
+"""
 macro g(expr, addr)
     # NOTE: the purpose of this macro is the same as the purpose of the @generate! macro:
     # to allow use of function call syntax generator(args...) while tracing
@@ -325,6 +337,11 @@ macro g(expr, addr)
     end
 end
 
+"""
+Annotate an arbitrary expression within a `@program` with an address.
+
+The program can process `intervene!` requests for this address that are present in the trace passed to `generate!`.
+"""
 macro e(expr, addr)
     Expr(:call, tagged!, esc(trace_symbol), esc(expr), esc(addr))
 end
@@ -393,7 +410,9 @@ function tagged!(trace::ProgramTrace, val, addr_head)
 end
 
 
-# create a new probabilistic program
+"""
+Define a probabilisic program
+"""
 macro program(args, body)
 
     # first argument is the trace

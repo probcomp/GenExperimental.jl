@@ -2,13 +2,45 @@
 # Generic generators  and traces #
 ##################################
 
+"""
+Record of a generative process.
+"""
 abstract type Trace end
 
+"""
+    value(trace::Trace, addr::Tuple)
+
+Retrieve the value at a particular address of a trace.
+"""
 function value end
+
+"""
+    constrain!(trace::Trace, addr::Tuple, value)
+
+Constrain an address of a trace to a particular value.
+"""
 function constrain! end
+
+"""
+    intervene!(trace::Trace, addr::Tuple, value)
+
+Modify the behavior of a `Generator` recording to this trace by fixing the value at the given address.
+"""
 function intervene! end
+
+"""
+    propose!(trace::Trace, addr:Tuple, t::Type)
+"""
 function propose! end
+
+"""
+    release!(trace::Trace, addr::Tuple)
+"""
 function release! end
+
+"""
+    mode(trace::Trace, addr::Tuple)
+"""
 function mode end
 
 Base.delete!(t::Trace, addr) = delete!(t, (addr,))
@@ -22,10 +54,18 @@ Base.getindex(t::Trace, addr...) = t[addr]
 # when Type{val} does not match the method signature of constrain! implemented by the actual generator
 propose!(t::Trace, addr, valtype::Type) = propose!(t, (addr,), valtype)
 
+"""
+Generative process that can record values into a `Trace`.
+
+Each `Generator` type can record values into a paticular `Trace` type `T`.
+"""
 abstract type Generator{T <: Trace} end
 
 """
-    (score, value) = generate!(generator::Geneerator{T}, trace::T)
+    (score, value) = generate!(generator::Generator{T}, args::Tuple, trace::T)
+
+Record a generative process, which takes arguments, in a trace.
+Return a score describing how this realization of the generative process interacted with the constraints and proposals in the trace, and the return value of the process.
 """
 function generate! end
 
@@ -68,10 +108,11 @@ export empty_trace
 # Atomic generators #
 #####################
 
-# These are generators with traces that are an atomic value (i.e. there is only
-# one 'address' in the trace) these correspond to 'probabilistic modules' of
-# https://arxiv.org/abs/1612.04759
+"""
+A trace that can contains a single value, of type `T`, at address `()`.
 
+    AtomicTrace{T} <: Trace
+"""
 mutable struct AtomicTrace{T} <: Trace
     value::Nullable{T}
     mode::SubtraceMode
@@ -157,6 +198,9 @@ function Base.haskey(t::AtomicTrace, addr)
     addr == () ? !isnull(t.value) : atomic_addr_err(addr)
 end
 
+"""
+A generator that generates values for a single address.
+"""
 AtomicGenerator{T} = Generator{AtomicTrace{T}}
 
 empty_trace(::AtomicGenerator{T}) where {T} = AtomicTrace(T)
