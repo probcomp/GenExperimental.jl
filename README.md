@@ -2,6 +2,8 @@
 
 Gen is a featherweight embedded probabilistic programming language and compositional inference programming library.
 
+WARNING: Gen is unsupported and highly unstable research software.
+
 ## Installing
 Gen.jl is not a a publicly registered Julia package.
 To use or develop Gen.jl, clone the repository with:
@@ -27,8 +29,3 @@ a simple API for Javascript-based trace renderings in Jupyter noteoboks, use:
 $ cd jupyter/
 $ ./install_notebook_extensions.sh
 ```
-
-
-## Getting started
-
-Examples can be found in the [gen-examples repository](https://github.com/probcomp/gen-examples).
