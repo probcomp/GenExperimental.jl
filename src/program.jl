@@ -101,7 +101,15 @@ function intervene!(t::ProgramTrace, addr::Tuple, val)
     intervene!(subtrace, addr[2:end], val)
 end
 
-# TODO is this general to all generators or just these programs?
+"""
+Intervene on an expression and give it an address and a value.
+
+The value will be boxed in a `GenValue` type, which is recorded on the automatic-differentiation tape.
+
+After `generate!` has returned, the gradient with respect to this value can be obtained with:
+
+    partial(trace[addr])
+"""
 function parametrize!(t::ProgramTrace, addr::Tuple, val)
     intervene!(t, addr, makeGenValue(val, t.tape))
 end
@@ -302,6 +310,8 @@ end
 
 """
 A generative process represented by a Julia function and constructed with `@program`.
+
+    ProbabilisticProgram <: Generator{ProgramTrace}
 """
 struct ProbabilisticProgram <: Generator{ProgramTrace}
     program::Function
@@ -411,7 +421,9 @@ end
 
 
 """
-Define a probabilisic program
+Define a probabilisic program.
+
+The body of the program is just the body of a regular Julia function, except that the annotation macros [`@g`](@ref) and [`@e`](@ref) can be used.
 """
 macro program(args, body)
 

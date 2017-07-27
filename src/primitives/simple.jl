@@ -1,9 +1,14 @@
 import Distributions
 
-####################
-# Flip (Bernoulli) #
-####################
+"""
+Bernoulli generator, with singleton `flip`
 
+    generate!(flip, (prob,), trace::AtomicTrace{Bool})
+
+    flip(prob)
+
+Score is differentiable with respect to `prob`
+"""
 struct Flip <: AssessableAtomicGenerator{Bool} end
 
 simulate{T}(::Flip, prob::T) = rand() < prob
@@ -12,10 +17,19 @@ logpdf{T}(::Flip, value::Bool, prob::T) = value ? log(prob) : log(1.0 - prob)
 register_primitive(:flip, Flip)
 
 
-#########
-# Gamma #
-#########
+"""
+Gamma generator, with singleton `gamma`.
 
+    generate!(gamma, (k, S), trace::AtomicTrace{Float64})
+
+    gamma(k, S)
+
+`k` is the shape parameter, `s` is the scale parameter.
+
+Score is differentiable with respect to `k` and `s` and output
+
+NOTE: `gamma` conflicts with `Base.gamma`. Use `Gen.gamma`
+"""
 struct Gamma <: AssessableAtomicGenerator{Float64} end
 
 # k = shape, s = scale
@@ -30,10 +44,15 @@ end
 register_primitive(:gamma, Gamma)
 
 
-##########
-# Normal #
-##########
+"""
+Univariate normal generator, with singleton `normal`.
 
+    generate!(normal, (mu, std), trace::AtomicTrace{Float64})
+
+    normal(mu, std)
+
+Score is differentiable with respect to `mu` and `std` and output
+"""
 struct Normal <: AssessableAtomicGenerator{Float64} end
 
 function logpdf{M,N,O}(::Normal, x::M, mu::N, std::O)
@@ -49,10 +68,15 @@ end
 register_primitive(:normal, Normal)
 
 
-#######################
-# Multivariate normal #
-#######################
+"""
+Multivariate normal generator, with singleton `mvnormal`.
 
+    generate!(normal, (mu::Vector{Float64}, sigma::Matrix{Float64}), trace::AtomicTrace{Vector{Float64}})
+
+    mvnormal(mu, sigma)
+
+Score is not (yet) differentiable with respect to `mu` and `std` and output [#53](https://github.com/probcomp/Gen.jl/issues/53).
+"""
 struct MultivariateNormal <: AssessableAtomicGenerator{Vector{Float64}} end
 
 function logpdf(::MultivariateNormal, x::Vector{Float64}, mu::Vector{Float64}, std::Matrix{Float64})
@@ -67,10 +91,15 @@ end
 register_primitive(:mvnormal, MultivariateNormal)
 
 
-######################
-# Uniform continuous #
-######################
+"""
+Uniform continuous generator, with singleton `uniform`.
 
+    generate!(uniform, (lower::Real, upper::Real), trace::AtomicTrace{Float64})
+
+    uniform(lower, upper)
+
+Score is not differentiable.
+"""
 struct UniformContinuous <: AssessableAtomicGenerator{Float64} end
 
 function logpdf(::UniformContinuous, x::Float64, lower::Real, upper::Real)
@@ -84,13 +113,17 @@ end
 register_primitive(:uniform, UniformContinuous)
 
 
-####################
-# Uniform discrete #
-####################
+"""
+Uniform discrete generator, with singleton `uniform_discrete`.
 
-# uniform discrete on the range [lower, lower + 1, ..., upper]
-# upper is inclusive
+    generate!(uniform_discrete, (lower::Int, upper::Int), trace::AtomicTrace{Int})
 
+    uniform_discrete(lower, upper)
+
+Return value is uniformly distributed integer in the set `[lower, lower + 1, ..., upper]` (i.e. upper limit is inclusive).
+
+Score is not differentiable.
+"""
 struct UniformDiscrete <: AssessableAtomicGenerator{Int64} end
 
 function logpdf(::UniformDiscrete, x::Int64, lower::Int, upper::Int)
@@ -105,23 +138,20 @@ end
 register_primitive(:uniform_discrete, UniformDiscrete)
 
 
-###########################
-# Categorical in logspace #
-###########################
+"""
+Categorical generator with log-space probability vector argument, with singleton `categoriceal_log`.
 
-# uniform discrete on the range [lower, lower + 1, ..., upper]
-# upper is inclusive
+    generate!(categorical_log, (scores::Vector{Float64}), trace::AtomicTrace{Int})
 
+    categorical_log(scores)
+
+Return value is sampled from categorical distribution on the set `[1, ..., length(scores)]`, where `scores` is the possibly unnormalized vector of log-probabilities.
+
+Score is not (yet) differentiable [#65](https://github.com/probcomp/Gen.jl/issues/65)
+"""
 struct CategoricalLog <: AssessableAtomicGenerator{Int64} end
 
-
-"""
-Sample an integer from the range of indices of scores.
-
-Scores are log probabilities, that do not have to be normalized
-"""
 function logpdf(::CategoricalLog, x::Int64, scores::Vector{Float64})
-    # TODO make differentiable: https://github.com/probcomp/Gen.jl/issues/65
     (scores - logsumexp(scores))[x]
 end
 
@@ -133,9 +163,17 @@ end
 register_primitive(:categorical_log, CategoricalLog)
 
 
-##########################################
-# Nil (degenerate discrete distribution) #
-##########################################
+"""
+Degenerate generator  with singleton `nil`.
+
+    generate!(nil, (), trace::AtomicTrace{Nil})
+
+    nil()
+
+Sample from a degenerate distribution which places all mass on the singleton value `Nil()`.
+
+Score is not differentiable.
+"""
 
 struct Nil <: AssessableAtomicGenerator{Float64} end
 

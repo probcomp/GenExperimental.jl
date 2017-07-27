@@ -1,6 +1,6 @@
-##################################
-# Generic generators  and traces #
-##################################
+#################################
+# Generic generators and traces #
+#################################
 
 """
 Record of a generative process.
@@ -66,6 +66,10 @@ abstract type Generator{T <: Trace} end
 
 Record a generative process, which takes arguments, in a trace.
 Return a score describing how this realization of the generative process interacted with the constraints and proposals in the trace, and the return value of the process.
+
+There is also a macro that allows for a function-call syntax to be used with generators:
+
+    (score, value) = @generate!(generator::Generator{T}(args::Tuple), trace::T)
 """
 function generate! end
 
@@ -84,11 +88,6 @@ macro generate!(generator_and_args, trace)
         error("invalid use of @generate!")
     end
 end
-# some generators overload generator(args) into (generator, args)
-# this function allows the syntax generate!(generator(args), trace)
-#function generate!(generator_and_args::Tuple{Generator,Tuple}, trace)
-    #generate!(generator_and_args[1], generator_and_args[2], trace)
-#end
 
 export Generator
 export generate!
@@ -224,16 +223,13 @@ export AtomicGenerator
 export value_type
 
 
-################################
-# Assessable atomic generators #
-################################
+"""
+A generator defined in terms of its sampler function (`simulate`) and its exact log density evaulator function (`logpdf`).
 
-# These are stochastic computations whose log density can be computed:
-# They should implement two methods:
-#
-# simulate(args...)::T
-# logpdf(value::T, args...)::Any
+    simulate(g::AssessableAtomicGenerator{T}, args...)
 
+    logpdf(g::AssessableAtomicGenerator{T}, value::T, args...)
+"""
 abstract type AssessableAtomicGenerator{T} <: AtomicGenerator{T} end
 
 function simulate end
@@ -264,9 +260,10 @@ export logpdf
 # Generator nested inference combinator #
 #########################################
 
-# TODO: Alias = Tuple
-
-type PairedGenerator{T} <: Generator{T}
+"""
+A generator that returns log importance weights for its score.
+"""
+struct PairedGenerator{T} <: Generator{T}
     p::Generator{T}
     q::Generator
 
@@ -274,14 +271,19 @@ type PairedGenerator{T} <: Generator{T}
     mapping::Dict
 end
 
+"""
+Construct a `PairedGenerator` from two generators.
+
+The `mapping` maps addresses of `q` to tuples `(p_addr, value_type)` where `p_addr` is an address of `p` and `value_type` is the type of that address (which must be consistent between `p` and `q`).
+
+The resulting generator inherits the trace type of `p` and address space of `p`.
+
+The score is a log importance weight in which the target density is the unnormalized joint density of `p`, which may be constrained, and the importance distribution is `q`.
+"""
 function compose(p::Generator, q::Generator, mapping::Dict)
     PairedGenerator(p, q, mapping)
 end
 
-# TODO what are the semantics of the score?
-# the trace is the same type as the trace of p
-# the distribution is different from that of p
-# the semantics of the score are that it is an unbiased estimate of the 
 function generate!(g::PairedGenerator{U}, args::Tuple, p_trace::U) where {U}
     (p_args, q_args) = args
 
@@ -331,21 +333,34 @@ function compose(p::Generator, q::AtomicGenerator{T}, p_addr::Tuple) where {T}
     PairedGenerator(p, q, mapping)
 end
 
+export PairedGenerator
 export compose
 
 ###################################
 # Generator replicator combinator #
 ###################################
 
-# NOTE: this is an atomic genreator
+"""
+A generator that wraps another generator with more accurate scores.
+"""
 struct ReplicatedAtomicGenerator{T} <: AtomicGenerator{T}
     inner_generator::AtomicGenerator{T}
     num::Int
 end
 
+"""
+Construct a `ReplicatedAtomicGenerator`.
+
+The resulting generator inherits the trace type, address space, and sampling distribution of the `generator` argument.
+
+The generator has the same forward sampling distribution as the innter generator, but the scores are more accurate estimates of the log density of constraints and proposals.
+
+As `num` increases, the scores become more accurate estimates.
+
+Score is not (yet) differentaible [#65](https://github.com/probcomp/Gen.jl/issues/65)
+"""
 replicate(generator::AtomicGenerator, num::Int) = ReplicatedAtomicGenerator(generator, num)
 
-# TODO permit AD on the score?
 function generate!(g::ReplicatedAtomicGenerator{T}, args::Tuple, trace::AtomicTrace{T}) where {T}
     if trace.mode == record
         (score, val) = generate!(g.inner_generator, args, trace)
@@ -366,4 +381,5 @@ function generate!(g::ReplicatedAtomicGenerator{T}, args::Tuple, trace::AtomicTr
     (score, value(trace))
 end
 
+export ReplicatedAtomicGenerator
 export replicate

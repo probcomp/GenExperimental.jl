@@ -7,8 +7,10 @@ makedocs(
     format = :html,
     sitename = "Gen.jl",
     pages = [
-        "Home" => "index.md"
-        "Inference Programming" => "inference.md"
+        "Gen.jl" => "index.md",
+        "Inference Programming" => "inference.md",
+        "Automatic Differentiation" => "ad.md",
+        "Built-in Generators" => "builtin_generators.md"
     ]
 )
 

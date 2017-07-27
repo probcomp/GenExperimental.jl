@@ -3,8 +3,8 @@
 
 !!! warning
 
-    This is unreleased research software provided for educational purposes.
-    The core interfaces and syntaxes are rapidly changing and very unstable.
+    This is unsupported research software provided for educational purposes.
+    The interfaces and syntax are very unstable.
 
 Gen is an extensible, low-level Julia library for probabilistic modeling and inference.
 Gen facilitates construction of high-performance implementations of custom hybrid approximate inference algorithms, using new probabilistic programming abstractions and compositions.
@@ -106,11 +106,14 @@ ProbabilisticProgram
 @program
 ```
 
+Within a probabilistic program, we annotate random choices produced by `Generator` invocations with the `@g` macro.
+Only random choices annotated as such can be used as constraints (i.e. observed data), as targets of custom inference proposals, or as proposed values themselves (when the program being written is a proposal program).
+
 ```@docs
 @g
 ```
 
-In additon to annotating generator invocations, we can annote arbitary other expressions using the [`@e`](@ref) macro.
+In addition to annotating generator invocations, we can annote arbitary other expressions using the [`@e`](@ref) macro.
 This is useful for recording arbitrary program state for [Trace Rendering](@ref).
 Addresses annotated with `@e` cannot be constrained or proposed.
 
@@ -118,7 +121,6 @@ Addresses annotated with `@e` cannot be constrained or proposed.
 @e
 ```
 
-## Behavior of `generate!` score
 The score returned by [`generate!`](@ref) for a `ProbabilisticProgram` is computed recursively from the scores returned by generator invocations annotated with `@g`.
 Specifically, `constrain!` and `propose!` operations on the trace are propagated to the sub-traces of sub-generators.
 The score returned by `generate!` is the sum of the scores returned by the recursive calls to `generate!` that are created for each generator invocation encountered during the program's execution that was annotated with `@g`.
@@ -146,7 +148,6 @@ AtomicGenerator
 AtomicTrace
 ```
 
-## Behavior of `generate!` score
 The score returend by [`generate!`](@ref) for a `AtomicGenerator` follows the specification given in:
 [Cusumano-Towner, Mansinghka. 2016.](https://arxiv.org/abs/1612.04759)
 Specifically, let $Z$ denote the output of the generator, and let $X$ denote the parameters of the generator and $x$ denote particular values of the parameters (e.g. arguments).
@@ -173,4 +174,39 @@ Equivalently, for some density on the internals $u$ and parameterized by $z$, de
 
 ```math
 \log s(u, x, z) = \frac{p(u, z; x)}{q(u; z, x)} \mbox{ for } u, z \sim p(u, z; x)
+```
+
+# Assessable Atomic Generators
+
+Sometimes, the output density of stochastic computation can be computed exactly and efficiently.
+Such a generator can be implemented as an `AssessableAtomicGenerator`:
+
+```@docs
+AssessableAtomicGenerator
+```
+
+# Generator Combinators
+
+Given one Generator, we can construct another generator with the same forward sampling distribution, but with scores that are more accurate estimates of the log probability density of the constrained or proposed addresses.
+
+There are currently two built-in mechanisms for this:
+
+## Nested inference
+
+```@docs
+PairedGenerator
+```
+
+```@docs
+compose
+```
+
+## Replication
+
+```@docs
+ReplicatedAtomicGenerator
+```
+
+```@docs
+replicate
 ```
