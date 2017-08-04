@@ -274,7 +274,17 @@ function Base.next(t::AddressTrie, state::AddressTrieIteratorState)
     return (item, state)
 end
 
+function disjoint(t1::AddressTrie, t2::AddressTrie)
+    for addr in t1
+        if addr in t2
+            return false
+        end
+    end
+    return true
+end
+
 export AddressTrie
+export disjoint
 
 # test cases
 using Base.Test
@@ -328,7 +338,7 @@ end
 end
 
 
-@testset "AddressTrie shorthand for single-element addresses" begin
+@testset "shorthand for single-element addresses" begin
 
     t = AddressTrie()
     push!(t, "foo")
@@ -364,7 +374,7 @@ end
     @test ("foo", 1) in t
 end
 
-@testset "AddressTrie iterator" begin
+@testset "iterator" begin
 
     t = AddressTrie()
     push!(t, "foo")
@@ -434,7 +444,7 @@ end
 
 end
 
-@testset "AddressTree iterator for .. in .. " begin
+@testset "iterator for .. in .. " begin
 
     t = AddressTrie()
     push!(t, "foo")
@@ -452,4 +462,18 @@ end
     @test arr[3] == ("foo", 2)
     @test arr[4] == ("bar", "x", "y", "z")
     
+end
+
+@testset "disjoint" begin
+
+    t1 = AddressTrie()
+    push!(t1, "foo")
+    push!(t1, ("foo", 1))
+
+    t2 = AddressTrie()
+    push!(t2, "bar")
+    @test disjoint(t1, t2)
+
+    push!(t2, ("foo", 1))
+    @test !disjoint(t1, t2)
 end
