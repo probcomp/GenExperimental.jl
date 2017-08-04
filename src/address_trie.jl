@@ -364,7 +364,7 @@ end
     @test ("foo", 1) in t
 end
 
-@testset "AddressTrie Iterator" begin
+@testset "AddressTrie iterator" begin
 
     t = AddressTrie()
     push!(t, "foo")
@@ -431,4 +431,25 @@ end
     item, state = next(t, state)
     @test done(t, state)
     @test item == ("foo", 1)
+
+end
+
+@testset "AddressTree iterator for .. in .. " begin
+
+    t = AddressTrie()
+    push!(t, "foo")
+    push!(t, ("foo", 1))
+    push!(t, ("foo", 2))
+    push!(t, ("bar", "x", "y", "z"))
+
+    arr = []
+    for addr in t
+        push!(arr, addr)
+    end
+    @test length(arr) == 4
+    @test arr[1] == ("foo",)
+    @test arr[2] == ("foo", 1)
+    @test arr[3] == ("foo", 2)
+    @test arr[4] == ("bar", "x", "y", "z")
+    
 end
