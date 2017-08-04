@@ -23,11 +23,6 @@ mutable struct ProgramTrace <: Trace
     # TODO would adding return type information to the trace constructor be useful for the compiler?
     return_value
     
-    # only the return value with address () can be intervened on
-    # if it is, then generate! still runs as usual and returns the same score as usual
-    #, except that the return value is fixed to the intervened value
-    intervened::Bool
-
     # map from subtrace addr_head to a map from subaddres to alias
     aliases::Dict{Any, Dict{Tuple, Any}}
 
@@ -37,11 +32,10 @@ end
 function ProgramTrace()
     subtraces = Dict{Any, Trace}()
     return_value = nothing
-    intervened = false
     aliases = Dict{Any, Dict{Any, Tuple}}()
     tape = Tape()
     score = GenScalar(0., tape)
-    ProgramTrace(subtraces, score, return_value, intervened, aliases, tape)
+    ProgramTrace(subtraces, score, return_value, aliases, tape)
 end
 
 # serialization
@@ -49,97 +43,6 @@ import JSON
 function JSON.lower(trace::ProgramTrace)
     trace.subtraces
 end
-
-
-"""
-Constrain an address corresponding to a generator invocation to a particular value.
-
-Whether or not the address is of a generator invocation is not will be verified
-during the call to `generate!`.  A constrained address must be guaranteed to be
-visited during executions of the program.
-
-Constrains subtrace, if it already exists, otherwise records the constraint, 
-which will be forwarded to the subtrace during program execution.
-"""
-function constrain!(t::ProgramTrace, addr::Tuple, val)
-    if addr == ()
-        error("cannot constrain $addr")
-    end
-    addrhead = addr[1]
-    local subtrace::Trace
-    if !haskey(t.subtraces, addrhead)
-        if length(addr) == 1
-            subtrace = AtomicTrace(val)
-            t.subtraces[addrhead] = subtrace
-        else
-            error("cannot constrain $addr. there is no subtrace at $addrhead.")
-        end
-    else
-        subtrace = t.subtraces[addrhead]
-    end
-    constrain!(subtrace, addr[2:end], val)
-end
-
-function intervene!(t::ProgramTrace, addr::Tuple, val)
-    if addr == ()
-        t.intervened = true
-        t.return_value = val
-        return
-    end
-    addrhead = addr[1]
-    local subtrace::Trace
-    if !haskey(t.subtraces, addrhead)
-        if length(addr) == 1
-            subtrace = AtomicTrace(val)
-            t.subtraces[addrhead] = subtrace
-        else
-            error("cannot intervene $addr. there is no subtrace at $addrhead.")
-        end
-    else
-        subtrace = t.subtraces[addrhead]
-    end
-    intervene!(subtrace, addr[2:end], val)
-end
-
-"""
-Intervene on an expression and give it an address and a value.
-
-The value will be boxed in a `GenValue` type, which is recorded on the automatic-differentiation tape.
-
-After `generate!` has returned, the gradient with respect to this value can be obtained with:
-
-    partial(trace[addr])
-"""
-function parametrize!(t::ProgramTrace, addr::Tuple, val)
-    intervene!(t, addr, makeGenValue(val, t.tape))
-end
-parametrize!(t::ProgramTrace, addr, val) = parametrize!(t, (addr,), val)
-
-function propose!(t::ProgramTrace, addr::Tuple, valtype::Type)
-    if addr == ()
-        error("cannot propose $addr")
-    end
-    addrhead = addr[1]
-    local subtrace::Trace
-    if !haskey(t.subtraces, addrhead)
-        if length(addr) == 1
-            subtrace = AtomicTrace(valtype)
-            t.subtraces[addrhead] = subtrace
-        else
-            error("cannot propose $addr. there is no subtrace at $addrhead.")
-        end
-    else
-        subtrace = t.subtraces[addrhead]
-    end
-    propose!(subtrace, addr[2:end], valtype)
-end
-
-# syntactic sugars for addreses with a single element NOTE: it is importnt that
-# the methods above accept all types for val the methods below can enter an
-# infinite recursion if the type of val does not match the method signatures
-# above above
-constrain!(t::ProgramTrace, addr, val) = constrain!(t, (addr,), val)
-intervene!(t::ProgramTrace, addr, val) = intervene!(t, (addr,), val)
 
 
 """
@@ -159,14 +62,6 @@ function Base.delete!(t::ProgramTrace, addr::Tuple)
             subtrace = t.subtraces[addrhead]
             delete!(subtrace, addr[2:end])
         end
-    end
-end
-
-function release!(t::ProgramTrace, addr::Tuple)
-    addrhead = addr[1]
-    if haskey(t.subtraces, addrhead)
-        subtrace = t.subtraces[addrhead]
-        release!(subtrace, addr[2:end])
     end
 end
 
@@ -203,21 +98,6 @@ function value(t::ProgramTrace, addr::Tuple)
         error("address not found: $addr")
     end
     value(subtrace, addr[2:end])
-end
-
-function mode(t::ProgramTrace, addr::Tuple)
-    if addr == ()
-        # the output is either intervened or recorded
-        return t.intervened ? intervene : record
-    end
-    local subtrace::Trace
-    addrhead = addr[1]
-    if haskey(t.subtraces, addrhead)
-        subtrace = t.subtraces[addrhead]
-    else
-        error("address not found: $addr")
-    end
-    mode(subtrace, addr[2:end])
 end
 
 "Return the subtrace at the given address element"
@@ -317,11 +197,15 @@ struct ProbabilisticProgram <: Generator{ProgramTrace}
     program::Function
 end
 
+# TOOD pass args in
 empty_trace(::ProbabilisticProgram) = ProgramTrace()
 
 # this symbol is passed as the first argument to every probabilistic program
 # invocation, and each @g and @e macro expands into a function call on the trace
 const trace_symbol = gensym()
+const output_symbol = gensym()
+const condition_symbol = gensym()
+const execution_mode_symbol = gensym()
 
 """
 Annotate an invocation of a `Generator` within a `@program` with an address.
@@ -338,6 +222,9 @@ macro g(expr, addr)
         Expr(:call, 
             tagged!,
             esc(trace_symbol),
+            esc(output_symbol),
+            esc(condition_symbol),
+            esc(execution_mode_symbol),
             esc(generator),
             esc(Expr(:tuple, generator_args...)),
             esc(addr))
@@ -353,6 +240,7 @@ Annotate an arbitrary expression within a `@program` with an address.
 The program can process `intervene!` requests for this address that are present in the trace passed to `generate!`.
 """
 macro e(expr, addr)
+    # TODO?
     Expr(:call, tagged!, esc(trace_symbol), esc(expr), esc(addr))
 end
 
@@ -365,14 +253,15 @@ macro alias(alias, addr)
 end
 
 
-function tagged!(t::ProgramTrace, generator::Generator{T}, args::Tuple, addr_head) where {T}
+function tagged!(t::ProgramTrace, output::AddressTrie, condition::AddressTrie,
+                 is_simulating::Bool, generator::Generator{T}, args::Tuple, addr_head) where {T}
     local subtrace::T
     if haskey(t.subtraces, addr_head)
         # check if the sub-trace is the right type.
         # if it's not the right type, we need to recursively copy over all the directives.
         subtrace = t.subtraces[addr_head]
     else
-        subtrace = empty_trace(generator)
+        subtrace = empty_trace(generator) # TODO pass args in
     end
 
     # forward any aliases
@@ -383,7 +272,13 @@ function tagged!(t::ProgramTrace, generator::Generator{T}, args::Tuple, addr_hea
     end
 
     # NOTE: if this was an atomic genreator and it was constrained, then value will be unchanged
-    (score, val) = generate!(generator, args, subtrace)
+    sub_output = output[addr_head]
+    sub_condition = condition[addr_head]
+    if is_simulating
+        (score, val) = simulate!(generator, args, sub_output, sub_condition, subtrace)
+    else
+        (score, val) = regenerate!(generator, args, sub_output, sub_condition, subtrace)
+    end
     t.score += score
     t.subtraces[addr_head] = subtrace
     @assert value(subtrace, ()) == val
@@ -428,7 +323,12 @@ The body of the program is just the body of a regular Julia function, except tha
 macro program(args, body)
 
     # first argument is the trace
-    new_args = Any[:($trace_symbol::ProgramTrace)]
+    new_args = Any[
+        :($trace_symbol::ProgramTrace),
+        :($output_symbol::AddressTrie),
+        :($condition_symbol::AddressTrie),
+        :($execution_mode_symbol::Bool)
+    ]
 
     # remaining arguments are the original arguments
     local name = Nullable{Symbol}()
@@ -468,9 +368,11 @@ macro program(args, body)
     end
 end
 
-function generate!(p::ProbabilisticProgram, args::Tuple, trace::ProgramTrace)
+function regenerate!(p::ProbabilisticProgram, args::Tuple, output::AddressTrie,
+                     condition::AddressTrie, trace::ProgramTrace)
     @assert isempty(trace.aliases)
-    val = p.program(trace, args...)
+    # first argument to the program is the 'is_simulating::Bool'
+    val = p.program(false, trace, output, condition, args...)
     score = finalize!(trace)
     # NOTE: intervention on the return value does not modify the procedure by
     # which the score is computed. semantics: the probabilistic model is still
@@ -484,6 +386,29 @@ function generate!(p::ProbabilisticProgram, args::Tuple, trace::ProgramTrace)
     end
     (score, val)
 end
+
+function simulate!(p::ProbabilisticProgram, args::Tuple, output::AddressTrie,
+                     condition::AddressTrie, trace::ProgramTrace)
+     # TODO
+end
+
+
+#function generate!(p::ProbabilisticProgram, args::Tuple, trace::ProgramTrace)
+    #@assert isempty(trace.aliases)
+    #val = p.program(trace, args...)
+    #score = finalize!(trace)
+    ## NOTE: intervention on the return value does not modify the procedure by
+    ## which the score is computed. semantics: the probabilistic model is still
+    ## running, it is just disconnected from the output by the intervention.
+    ## constraints or proposals to random choices within the program will still
+    ## be scored
+    #if trace.intervened
+        #val = trace.return_value
+    #else
+        #trace.return_value = val
+    #end
+    #(score, val)
+#end
 
 # TODO make this true for all generators:
 (p::ProbabilisticProgram)(args...) = generate!(p, args, ProgramTrace())[2]
@@ -503,7 +428,8 @@ end
 
 encapsulate(program, address_to_type::Dict) = EncapsulatedProbabilisticProgram(program, address_to_type)
 
-empty_trace(::EncapsulatedProbabilisticProgram) = AtomicTrace(Dict)
+# TODO pass args in
+empty_trace(::EncapsulatedProbabilisticProgram) = AtomicTrace(Dict) 
 
 function generate!(g::EncapsulatedProbabilisticProgram, args::Tuple, trace::AtomicTrace{Dict})
     program_trace = ProgramTrace()
