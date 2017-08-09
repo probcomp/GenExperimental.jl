@@ -55,14 +55,50 @@ using Base.Test
 
 @testset "Markov chain" begin
 
-    d = DAG()
-    add_node!(d, "x-1", String[])
+    dag = DAG()
+    add_node!(dag, "x-1", String[])
     for i=2:10
-        add_node!(d, "x-$i", String["x-$(i-1)"])
+        add_node!(dag, "x-$i", String["x-$(i-1)"])
     end
-    order = execution_order(d, Set(["x-5"]))
+    order = execution_order(dag, Set(["x-5"]))
     for i=1:5
         @test pop!(order) == "x-$i"
     end
     @test isempty(order)
+end
+
+@testset "Complicated" begin
+
+    dag = DAG()
+    add_node!(dag, "a", String[])
+    add_node!(dag, "b", String[])
+    add_node!(dag, "c", String["a"])
+    add_node!(dag, "d", String["b"])
+    add_node!(dag, "e", String["a", "d"])
+    add_node!(dag, "f", String["b"])
+    add_node!(dag, "g", String["f"])
+    add_node!(dag, "h", String["g", "c"])
+
+    ordering = Dict{String,Int}()
+    for (i, addr) in enumerate(execution_order(dag, Set(["h"])))
+        ordering[addr] = i
+    end
+
+    @test ordering["a"] < ordering["c"]
+    @test ordering["b"] < ordering["f"]
+    @test ordering["f"] < ordering["g"]
+    @test ordering["g"] < ordering["h"]
+
+    # not necessary to visit these
+    @test !haskey(ordering, "e")
+    @test !haskey(ordering, "d")
+
+    # an empty query
+    @test isempty(execution_order(dag, Set{String}()))
+
+    # a query for a node with no parents
+    order = execution_order(dag, Set(["a"]))
+    @test pop!(order) == "a"
+    @test isempty(order)
+    
 end
