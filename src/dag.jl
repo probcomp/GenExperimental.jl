@@ -3,15 +3,18 @@ import DataStructures.PriorityQueue
 import DataStructures.enqueue!
 import DataStructures.dequeue!
 
-mutable struct DAG
+"""
+`T` is the type of the address (e.g. String)
+"""
+mutable struct DAG{T}
     next::Int
-    priorities::Dict{String,Int}
-    parents::Dict{String,Vector{String}}
+    priorities::Dict{T,Int}
+    parents::Dict{T,Vector{T}}
 end
 
-DAG() = DAG(0, Dict{String,Int}(), Dict{String,Vector{String}}())
+DAG(::Type{T}) where {T} = DAG(0, Dict{T,Int}(), Dict{T,Vector{T}}())
 
-function add_node!(dag::DAG, addr::String, parents::Vector{String})
+function add_node!(dag::DAG{T}, addr::T, parents::Vector{T}) where {T}
     if haskey(dag.priorities, addr)
         error("Node $addr already exists")
     end
@@ -25,8 +28,8 @@ function add_node!(dag::DAG, addr::String, parents::Vector{String})
     dag.next += 1
 end
 
-function execution_order(dag::DAG, request::Set{String}, conditions::Set{String})
-    pq = PriorityQueue(String, Int, Base.Order.Reverse)
+function execution_order(dag::DAG{T}, request::Set{T}, conditions::Set{T}) where {T}
+    pq = PriorityQueue(T, Int, Base.Order.Reverse)
     for addr in request
         if !haskey(dag.priorities, addr)
             error("Node $addr does not exist")
@@ -63,7 +66,7 @@ using Base.Test
 
 @testset "Markov chain" begin
 
-    dag = DAG()
+    dag = DAG(String)
     add_node!(dag, "x-1", String[])
     for i=2:10
         add_node!(dag, "x-$i", String["x-$(i-1)"])
@@ -87,7 +90,7 @@ end
 
 @testset "Complicated" begin
 
-    dag = DAG()
+    dag = DAG(String)
     add_node!(dag, "a", String[])
     add_node!(dag, "b", String[])
     add_node!(dag, "c", String["a"])
