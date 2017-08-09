@@ -1,4 +1,6 @@
 
+none = AddressTrie()
+
 @testset "program tagging syntaxes" begin
 
     # use the `bar = @program` definition syntax (this was once breaking)
@@ -34,47 +36,46 @@
     end
 
     t = ProgramTrace()
-    generate!(foo, (), t)
+    simulate!(foo, (), none, none, t)
     @test haskey(t, 3)
     @test haskey(t, 7)
     @test haskey(t, 8)
     @test haskey(t, 9)
-    @test mode(t, 9) == Gen.record
 end
 
 @testset "program definition syntaxes" begin
 
     # anonymous, no arguments
     foo1 = @program () begin nothing end
-    @test generate!(foo1, (), ProgramTrace()) == (0., nothing)
+    @test simulate!(foo1, (), none, none, ProgramTrace()) == (0., nothing)
 
     # anonymous, single typed argument
     foo2 = @program (x::Int) begin x end
-    @test generate!(foo2, (1,), ProgramTrace()) == (0., 1)
+    @test simulate!(foo2, (1,), none, none, ProgramTrace()) == (0., 1)
 
     # anonymous, single untyped argument
     foo3 = @program (x) begin x end
-    @test generate!(foo3, (1,), ProgramTrace()) == (0., 1)
+    @test simulate!(foo3, (1,), none, none, ProgramTrace()) == (0., 1)
 
     # anonymous, multiple argument with one untyped
     foo4 = @program (x::Int, y) begin x, y end
-    @test generate!(foo4, (1, 2), ProgramTrace()) == (0., (1, 2))
+    @test simulate!(foo4, (1, 2), none, none, ProgramTrace()) == (0., (1, 2))
 
     # anonymous, no arguments
     @program bar1() begin nothing end
-    @test generate!(bar1, (), ProgramTrace()) == (0., nothing)
+    @test simulate!(bar1, (), none, none, ProgramTrace()) == (0., nothing)
 
     # anonymous, single typed argument
     @program bar2(x::Int) begin x end
-    @test generate!(bar2, (1,), ProgramTrace()) == (0., 1)
+    @test simulate!(bar2, (1,), none, none, ProgramTrace()) == (0., 1)
 
     # anonymous, single untyped argument
     @program bar3(x) begin x end
-    @test generate!(bar3, (1,), ProgramTrace()) == (0., 1)
+    @test simulate!(bar3, (1,), none, none, ProgramTrace()) == (0., 1)
 
     # anonymous, multiple argument with one untyped
     @program bar4(x::Int, y) begin x, y end
-    @test generate!(bar4, (1, 2), ProgramTrace()) == (0., (1, 2))
+    @test simulate!(bar4, (1, 2), none, none, ProgramTrace()) == (0., (1, 2))
 end
 
 @testset "lexical scope" begin

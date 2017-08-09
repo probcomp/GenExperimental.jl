@@ -9,6 +9,7 @@ module Gen
 
     # simple trace and generator types
     include("generator.jl")
+    include("address_trie.jl")
 
     # probabilistic program trace and generator types
     include("program.jl")

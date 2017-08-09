@@ -57,16 +57,31 @@ Each `Generator` type can record values into a paticular `Trace` type `T`.
 abstract type Generator{T <: Trace} end
 
 """
+TODO: Explain
+
     (score, value) = simulate!(generator::Generator{T}, outputs, conditions, args::Tuple, trace::T)
+
+`outputs` and `conditions` must implement `in`, `haskey`, `getindex`, and `isempty` methods that match the behavior of `AddressTrie`.
+
+The return value is the value at the empty address `()` in the trace.
 """
 function simulate! end
 
 """
+TODO: Explain
+
     (score, value) = regenerate!(generator::Generator{T}, outputs, conditions, args::Tuple, trace::T)
+
+`outputs` and `conditions` must implement `in`, `haskey`, `getindex`, and `isempty` methods that match the behavior of `AddressTrie`.
+
+The return value is the value at the empty address `()` in the trace.
 """
 function simulate! end
 
+
 """
+Return an empty trace that is compatible with the given generator.
+
     trace::T = empty_trace(generator::Generator{T})
 """
 function empty_trace end
@@ -233,11 +248,11 @@ const EMPTY_QUERY = 3
 function parse_query(outputs, conditions)
     # TODO check for other addresses and error if there are any
     # Any query not one of the above forms is technically an error.
-    if () in outputs and !(() in conditions)
+    if () in outputs && !(() in conditions)
         return OUTPUT_QUERY 
-    elseif () in conditions and !(() in outputs)
+    elseif () in conditions && !(() in outputs)
         return CONDITION_QUERY
-    elseif !(() in conditions) and !(() in outputs)
+    elseif !(() in conditions) && !(() in outputs)
         return EMPTY_QUERY
     else
         error("Invalid query. The address () was contained in both outputs and conditions")
