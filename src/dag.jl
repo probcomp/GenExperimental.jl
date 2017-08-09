@@ -25,13 +25,21 @@ function add_node!(dag::DAG, addr::String, parents::Vector{String})
     dag.next += 1
 end
 
-function execution_order(dag::DAG, request::Set{String})
+function execution_order(dag::DAG, request::Set{String}, conditions::Set{String})
     pq = PriorityQueue(String, Int, Base.Order.Reverse)
     for addr in request
         if !haskey(dag.priorities, addr)
             error("Node $addr does not exist")
         end
+        if addr in conditions
+            error("Node $addr cannot be a condition and a request")
+        end
         enqueue!(pq, addr, dag.priorities[addr])
+    end
+    for addr in conditions
+        if !haskey(dag.priorities, addr)
+            error("Node $addr does not exist")
+        end
     end
     order = Stack(String)
     while !isempty(pq)
@@ -40,7 +48,7 @@ function execution_order(dag::DAG, request::Set{String})
         addr = dequeue!(pq) 
 
         for parent_addr in dag.parents[addr]
-            if !haskey(pq, parent_addr) # TODO also check if its a condition
+            if !haskey(pq, parent_addr) && !(parent_addr in conditions)
                 enqueue!(pq, parent_addr, dag.priorities[parent_addr])
             end
         end
@@ -60,11 +68,21 @@ using Base.Test
     for i=2:10
         add_node!(dag, "x-$i", String["x-$(i-1)"])
     end
-    order = execution_order(dag, Set(["x-5"]))
+
+    # without a condition
+    order = execution_order(dag, Set(["x-5"]), Set{String}())
     for i=1:5
         @test pop!(order) == "x-$i"
     end
     @test isempty(order)
+
+    # with a condition
+    order = execution_order(dag, Set(["x-5"]), Set(["x-2"]))
+    for i=3:5
+        @test pop!(order) == "x-$i"
+    end
+    @test isempty(order)
+
 end
 
 @testset "Complicated" begin
@@ -80,7 +98,7 @@ end
     add_node!(dag, "h", String["g", "c"])
 
     ordering = Dict{String,Int}()
-    for (i, addr) in enumerate(execution_order(dag, Set(["h"])))
+    for (i, addr) in enumerate(execution_order(dag, Set(["h"]), Set{String}()))
         ordering[addr] = i
     end
 
@@ -94,11 +112,20 @@ end
     @test !haskey(ordering, "d")
 
     # an empty query
-    @test isempty(execution_order(dag, Set{String}()))
+    @test isempty(execution_order(dag, Set{String}(), Set{String}()))
 
     # a query for a node with no parents
-    order = execution_order(dag, Set(["a"]))
+    order = execution_order(dag, Set(["a"]), Set{String}())
     @test pop!(order) == "a"
+    @test isempty(order)
+
+    # with a condition that causes a to not be visited
+    order = execution_order(dag, Set(["h"]), Set(["c"]))
+    @test pop!(order) == "b"
+    @test pop!(order) == "f"
+    @test pop!(order) == "g"
+    @test pop!(order) == "h"
     @test isempty(order)
     
 end
+
