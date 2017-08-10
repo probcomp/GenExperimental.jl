@@ -377,3 +377,34 @@ end
     expected_score = log(0.3) + log(0.1) + log(0.8) + log(0.99)
     @test isapprox(score, expected_score)
 end
+
+
+@testset "autodiff on trace score" begin
+    
+    foo = @program () begin
+        # NOTE: these are local because the test is run in a local scope
+        # so they would otherwise overwrite the values outside of this function
+        local mu = @e(0., "mu")
+        local log_std = @e(0., "logstd")
+        @g(normal(mu, exp(log_std)), "x")
+    end
+
+    trace = ProgramTrace()
+	tape1 = Tape()
+    x = 2.1
+	trace["x"] = x
+	trace["mu"] = GenScalar(0., tape1)
+	trace["logstd"] = GenScalar(0., tape1)
+	conditions = AddressTrie()
+	push!(conditions, "mu")
+	push!(conditions, "logstd")
+    (score, _) = regenerate!(foo, (), AddressTrie("x"), conditions, trace)
+	backprop(score)
+
+    tape2 = Tape()
+	mu = GenScalar(0., tape2)
+	logstd = GenScalar(0., tape2)
+    backprop(logpdf(normal, x, mu, exp(logstd)))
+    @test isapprox(partial(trace["mu"]), partial(mu))
+    @test isapprox(partial(trace["logstd"]), partial(logstd))
+end

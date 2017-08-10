@@ -13,14 +13,13 @@ Subtraces can be accessed, deleted, and mutated, using a separate set of methods
 An address cannot be set with `setindex!` until the relevant subtrace has been created, with the exception of a single-element address, in which case an `AtomicTrace` subtrace of the appropriate type will be created.
 
 The empty address `()` is only a concrete address, and does not identify a subtrace.
+
+`S` is the type of score.
 """
 mutable struct ProgramTrace <: Trace
 
     # key is a single element of an address (called `addr_first` in the code)
     subtraces::Dict{Any, Trace}
-
-    # gets reset to 0. after each call to generate!
-    score::Float64
 
     # the value for address ()
     has_empty_address_value::Bool
@@ -30,9 +29,9 @@ end
 function ProgramTrace()
     subtraces = Dict{Any, Trace}()
     empty_address_value = nothing
-    score = 0.
-    ProgramTrace(subtraces, score, false, empty_address_value)
+    ProgramTrace(subtraces, false, empty_address_value)
 end
+
 
 # serialization to JSON does not include the score or the empty address value
 import JSON
@@ -144,10 +143,35 @@ function Base.print(io::IO, trace::ProgramTrace)
     println(io, ")")
 end
 
-function finalize!(t::ProgramTrace)
-    previous_score = t.score
-    t.score = 0.
-    previous_score
+mutable struct Score
+    value::Float64
+    gen_value::Nullable{GenScalar}
+end
+
+Score() = Score(0., Nullable())
+
+function increment!(score::Score, increment::Real)
+    score.value += increment
+    if !isnull(score.gen_value)
+        score.gen_value
+    end
+end
+
+function increment!(score::Score, increment::GenScalar)
+    score.value += concrete(increment)
+    if isnull(score.gen_value)
+        score.gen_value = score.value + increment
+    else
+        score.gen_value += increment
+    end
+end
+
+function Base.get(score::Score)
+    if !isnull(score.gen_value)
+        return get(score.gen_value)
+    else
+        return score.value
+    end
 end
 
 
@@ -173,6 +197,7 @@ const trace_symbol = gensym()
 const output_symbol = gensym()
 const condition_symbol = gensym()
 const method_symbol = gensym()
+const score_symbol = gensym()
 
 """
 Annotate an invocation of a `Generator` within a `@program` with an address.
@@ -194,6 +219,7 @@ macro g(expr, addr_first)
             esc(output_symbol),
             esc(condition_symbol),
             esc(method_symbol),
+            esc(score_symbol),
             esc(generator),
             esc(Expr(:tuple, generator_args...)),
             esc(addr_first))
@@ -216,7 +242,7 @@ const METHOD_REGENERATE = 2
 
 # process a tagged generator invocation
 function tagged!(t::ProgramTrace, outputs, conditions,
-                 method::Int, generator::Generator{T}, args::Tuple, addr_first) where {T}
+                 method::Int, score, generator::Generator{T}, args::Tuple, addr_first) where {T}
     local subtrace::T
     if haskey(t.subtraces, addr_first)
         subtrace = t.subtraces[addr_first]
@@ -235,14 +261,14 @@ function tagged!(t::ProgramTrace, outputs, conditions,
 
     # recursively query the tagged generator
     if method == METHOD_SIMULATE
-        (score, value) = simulate!(generator, args, sub_outputs, sub_conditions, subtrace)
+        (increment, value) = simulate!(generator, args, sub_outputs, sub_conditions, subtrace)
     elseif method == METHOD_REGENERATE
-        (score, value) = regenerate!(generator, args, sub_outputs, sub_conditions, subtrace)
+        (increment, value) = regenerate!(generator, args, sub_outputs, sub_conditions, subtrace)
     else
         # there are no other methods
         @assert false
     end
-    t.score += score
+    increment!(score, increment)
     t.subtraces[addr_first] = subtrace
 
     # According to the generator specification, the return value is the value at address `()`.
@@ -285,7 +311,8 @@ macro program(args, body)
         :($trace_symbol::ProgramTrace),
         :($output_symbol),
         :($condition_symbol),
-        :($method_symbol::Int)
+        :($method_symbol::Int),
+        :($score_symbol)
     ]
 
     # remaining arguments are the original arguments
@@ -339,10 +366,10 @@ function _simulate_or_regenerate!(p::ProbabilisticProgram, args::Tuple, outputs,
             return (0., trace[()])
         end
     else
-        value = p.program(trace, outputs, conditions, method, args...)
-        score = finalize!(trace)
+        score = Score()
+        value = p.program(trace, outputs, conditions, method, score, args...)
         trace[()] = value
-        return (score, value)
+        return (get(score), value)
     end
 end
 
@@ -368,6 +395,3 @@ export has_subtrace
 export get_subtrace
 export set_subtrace!
 export delete_subtrace!
-
-# TODO this should ideally not be exported; it is not part of the Gen API
-export tagged!
