@@ -7,7 +7,7 @@ An address ("foo", "bar", 2) has two meanings:
     1. It is a concrete terminal address
 
     2. It is the prefix of all addresses of the form ("foo, "bar", 2, ...)
-       It is also the prefix of the adddress ("foo", "bar", 2), i.e. the prefix
+       It is also the prefix of the address ("foo", "bar", 2), i.e. the prefix
        of itself interpreted as a concrete address
 """
 
@@ -17,6 +17,14 @@ mutable struct AddressTrie
 end
 
 AddressTrie() = AddressTrie(OrderedDict{Any, AddressTrie}(), false)
+
+function AddressTrie(addresses...)
+    trie = AddressTrie()
+    for addr in addresses
+        push!(trie, addr)
+    end
+    return trie
+end
 
 
 """

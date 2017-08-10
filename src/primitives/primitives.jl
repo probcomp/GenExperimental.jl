@@ -12,7 +12,7 @@ function register_primitive(shortname::Symbol, generator_type::Type)
         $shortname = $generator_type()
         
         # override call syntax for the generator
-        (g::$generator_type)(args...) = generate!(g, args, empty_trace(g))[2]
+        (g::$generator_type)(args...) = simulate!(g, args, AddressTrie(), AddressTrie(), empty_trace(g))[2]
     end)
 
 	eval(quote export $shortname end)

@@ -187,3 +187,11 @@ end
     push!(t2, ("foo", 1))
     @test !disjoint(t1, t2)
 end
+
+@testset "constructor" begin
+
+    t = AddressTrie("foo", ("bar", 1), (5,))
+    @test ("foo",) in t
+    @test ("bar", 1) in t
+    @test (5,) in t
+end

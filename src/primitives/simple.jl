@@ -11,7 +11,7 @@ Score is differentiable with respect to `prob`
 """
 struct Flip <: AssessableAtomicGenerator{Bool} end
 
-Gen.rand{T}(::Flip, prob::T) = rand() < prob
+Base.rand{T}(::Flip, prob::T) = rand() < prob
 Gen.logpdf{T}(::Flip, value::Bool, prob::T) = value ? log(prob) : log(1.0 - prob)
 
 register_primitive(:flip, Flip)
@@ -37,7 +37,7 @@ function Gen.logpdf{M,N,O}(::Gamma, x::M, k::N, s::O)
     (k - 1.0) * log(x) - (x / s) - k * log(s) - lgamma(k)
 end
 
-function Gen.rand{M,N}(gamma::Gamma, k::M, s::N)
+function Base.rand{M,N}(gamma::Gamma, k::M, s::N)
     rand(Distributions.Gamma(k, s))
 end
 
@@ -61,7 +61,7 @@ function Gen.logpdf{M,N,O}(::Normal, x::M, mu::N, std::O)
     -(diff * diff)/ (2.0 * var) - 0.5 * log(2.0 * pi * var)
 end
 
-function Gen.rand{M,N}(normal::Normal, mu::M, std::N)
+function Base.rand{M,N}(normal::Normal, mu::M, std::N)
     rand(Distributions.Normal(concrete(mu), concrete(std)))
 end
 
@@ -84,7 +84,7 @@ function Gen.logpdf(::MultivariateNormal, x::Vector{Float64}, mu::Vector{Float64
     Distributions.logpdf(d, x)
 end
 
-function Gen.rand(::MultivariateNormal, mu::Vector{Float64}, std::Matrix{Float64})
+function Base.rand(::MultivariateNormal, mu::Vector{Float64}, std::Matrix{Float64})
     rand(Distributions.MvNormal(concrete(mu), concrete(std)))
 end
 
@@ -106,7 +106,7 @@ function Gen.logpdf(::UniformContinuous, x::Float64, lower::Real, upper::Real)
     x < lower || x > upper ? -Inf : -log(upper - lower)
 end
 
-function Gen.rand(::UniformContinuous, lower::Real, upper::Real)
+function Base.rand(::UniformContinuous, lower::Real, upper::Real)
     rand() * (upper - lower) + lower
 end
 
@@ -131,7 +131,7 @@ function Gen.logpdf(::UniformDiscrete, x::Int64, lower::Int, upper::Int)
     Distributions.logpdf(d, x)
 end
 
-function Gen.rand(::UniformDiscrete, lower::Int, upper::Int)
+function Base.rand(::UniformDiscrete, lower::Int, upper::Int)
     rand(Distributions.DiscreteUniform(concrete(lower), concrete(upper)))
 end
 
@@ -155,7 +155,7 @@ function Gen.logpdf(::CategoricalLog, x::Int64, scores::Vector{Float64})
     (scores - logsumexp(scores))[x]
 end
 
-function Gen.rand(::CategoricalLog, scores::Vector{Float64})
+function Base.rand(::CategoricalLog, scores::Vector{Float64})
     probs = exp.(scores - logsumexp(scores))
     rand(Distributions.Categorical(probs))
 end
@@ -179,6 +179,6 @@ struct Nil <: AssessableAtomicGenerator{Float64} end
 
 Gen.logpdf{T}(::Nil, x::T) = x == Nil() ? 0.0 : -Inf
 
-Gen.rand(::Nil) = Nil()
+Base.rand(::Nil) = Nil()
 
 register_primitive(:nil, Nil)

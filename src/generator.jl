@@ -25,29 +25,29 @@ Retrieve a value from the trace at the given address, if one exists.
 
 Set a value at in the trace at the given address.
 
-    Base.setindex!(t::Trace, addr::Tuple, value)
+    Base.setindex!(t::Trace, value, addr::Tuple)
 """
 abstract type Trace end
 
 """
 Syntactic sugar for `Base.haskey` with a single-element address
 """
-Base.haskey(t::Trace, addr_element) = haskey(t, (addr,))
+Base.haskey(t::Trace, addr_element) = haskey(t, (addr_element,))
 
 """
 Syntactic sugar for `Base.delete!` with a single-element address
 """
-Base.delete!(t::Trace, addr_element) = delete!(t, (addr,))
+Base.delete!(t::Trace, addr_element) = delete!(t, (addr_element,))
 
 """
 Syntactic sugar for `Base.getindex` with a single-element address
 """
-Base.getindex(t::Trace, addr_element) = t[(addr,)]
+Base.getindex(t::Trace, addr_element) = t[(addr_element,)]
 
 """
 Syntactic sugar for `Base.setindex!` with a single-element address
 """
-Base.setindex!(t::Trace, addr_element, value) = begin t[(addr,)] = value end
+Base.setindex!(t::Trace, value, addr_element) = begin t[(addr_element,)] = value end
 
 """
 Generative process that can record values into a `Trace`
@@ -141,13 +141,18 @@ function Base.getindex(t::AtomicTrace, addr::Tuple)
     addr == () ? get(t) : atomic_addr_err(addr)
 end
 
-function Base.setindex!(t::AtomicTrace{T}, addr::Tuple, value::T) where {T}
+function Base.setindex!(t::AtomicTrace{T}, value::T, addr::Tuple) where {T}
     if addr == ()
         t.value = Nullable(value)
     else
         atomic_addr_err(addr)
     end
 end
+
+function Base.setindex!(t::AtomicTrace{T}, value, addr::Tuple) where {T}
+    error("Wrong type for value, got type $(typeof(value)), expected type $T")
+end
+
 
 """
 A generator that generates values for a single address.
@@ -230,7 +235,6 @@ Equivalent to `simulate!` with the same arguments.
 """
 abstract type AssessableAtomicGenerator{T} <: AtomicGenerator{T} end
 
-function rand end
 function logpdf end
 
 # outputs: ()
@@ -264,12 +268,14 @@ function simulate!(g::AssessableAtomicGenerator{T}, args::Tuple, outputs, condit
     query_type = parse_query(outputs, conditions)
     if query_type == OUTPUT_QUERY
         value = rand(g, args...)
+        trace[()] = value
         score = logpdf(g, value, args...)
     elseif query_type == CONDITION_QUERY
         value = trace[()]
         score = 0.
     elseif query_type == EMPTY_QUERY
         value = rand(g, args...)
+        trace[()] = value
         score = 0.
     end
     (score, value)
@@ -286,11 +292,11 @@ function regenerate!(g::AssessableAtomicGenerator{T}, args::Tuple, outputs, cond
         score = 0.
     elseif query_type == EMPTY_QUERY
         value = rand(g, args...)
+        trace[()] = value
         score = 0.
     end
     (score, value)
 end
 
 export AssessableAtomicGenerator
-export simulate
 export logpdf

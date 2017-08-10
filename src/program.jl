@@ -86,7 +86,7 @@ function Base.getindex(t::ProgramTrace, addr::Tuple)
     end
 end
 
-function Base.setindex!(t::ProgramTrace, addr::Tuple, value)
+function Base.setindex!(t::ProgramTrace, value, addr::Tuple)
     if addr == ()
         t.empty_address_value = value
         t.has_empty_address_value = true
@@ -208,7 +208,7 @@ Annotate an arbitrary expression within a `@program` with an address.
 The program can process `intervene!` requests for this address that are present in the trace passed to `generate!`.
 """
 macro e(expr, addr_first)
-    Expr(:call, tagged!, esc(trace_symbol), esc(expr), esc(addr_first))
+    Expr(:call, tagged!, esc(trace_symbol), esc(expr), esc(addr_first), esc(condition_symbol))
 end
 
 const METHOD_SIMULATE = 1
@@ -230,14 +230,14 @@ function tagged!(t::ProgramTrace, outputs, conditions,
     # different from forward simulation. For now, we do not verify this.
 
     # retrieve all outputs and conditions with the prefix addr_first
-    sub_output = output[addr_first]
-    sub_condition = condition[addr_first]
+    sub_outputs = outputs[addr_first]
+    sub_conditions = conditions[addr_first]
 
     # recursively query the tagged generator
     if method == METHOD_SIMULATE
-        (score, value) = simulate!(generator, args, sub_output, sub_condition, subtrace)
+        (score, value) = simulate!(generator, args, sub_outputs, sub_conditions, subtrace)
     elseif method == METHOD_REGENERATE
-        (score, value) = regenerate!(generator, args, sub_output, sub_condition, subtrace)
+        (score, value) = regenerate!(generator, args, sub_outputs, sub_conditions, subtrace)
     else
         # there are no other methods
         @assert false
@@ -252,12 +252,16 @@ function tagged!(t::ProgramTrace, outputs, conditions,
 end
 
 # process a tagged expression that is not a generator invocation
-function tagged!(trace::ProgramTrace, value, addr_first)
+function tagged!(trace::ProgramTrace, value, addr_first, conditions)
     local subtrace::AtomicTrace
     if haskey(trace.subtraces, addr_first)
         subtrace = trace.subtraces[addr_first]
 
         # if the addr_first is in conditions, use the given value
+        # TODO: this is not really correct, since there may have been
+        # no distribution on the expression for us to condition
+        # this capability should be handled by a separate intervention feature, which should
+        # be implemented as a mutation of the generator, not a condition
         if !(addr_first in conditions)
             subtrace.value = value
         end
@@ -281,7 +285,7 @@ macro program(args, body)
         :($trace_symbol::ProgramTrace),
         :($output_symbol),
         :($condition_symbol),
-        :($method_symbol::Bool)
+        :($method_symbol::Int)
     ]
 
     # remaining arguments are the original arguments
@@ -322,39 +326,38 @@ macro program(args, body)
     end
 end
 
-function regenerate!(p::ProbabilisticProgram, args::Tuple, output, condition, trace::ProgramTrace)
-    if () in condition
-        if !isempty(output)
+function _simulate_or_regenerate!(p::ProbabilisticProgram, args::Tuple, outputs, conditions,
+                                  trace::ProgramTrace, method::Int)
+    if () in outputs
+        error("Invalid query. () cannot be an output")
+    end
+    if () in conditions
+        if !isempty(outputs)
             # TODO also check that there are no other conditions
             error("Invalid query. Can only condition on () if there are no outputs.")
         else
             return (0., trace[()])
         end
     else
-        value = p.program(trace, output, condition, METHOD_REGENERATE, args...)
+        value = p.program(trace, outputs, conditions, method, args...)
         score = finalize!(trace)
+        trace[()] = value
         return (score, value)
     end
 end
 
-function simulate!(p::ProbabilisticProgram, args::Tuple, output, condition, trace::ProgramTrace)
-    if () in condition
-        if !isempty(output)
-            # TODO also check that there are no other conditions
-            error("Invalid query. Can only condition on () if there are no outputs.")
-        else
-            return (0., trace[()])
-        end
-    else
-        value = p.program(trace, output, condition, METHOD_REGENERATE, args...)
-        score = finalize!(trace)
-        return (score, value)
-    end
+function simulate!(p::ProbabilisticProgram, args::Tuple, outputs, conditions, trace::ProgramTrace)
+    _simulate_or_regenerate!(p, args, outputs, conditions, trace, METHOD_SIMULATE)
+end
+
+function regenerate!(p::ProbabilisticProgram, args::Tuple, outputs, conditions, trace::ProgramTrace)
+    _simulate_or_regenerate!(p, args, outputs, conditions, trace, METHOD_REGENERATE)
 end
 
 
-# TODO make this true for all generators:
-(p::ProbabilisticProgram)(args...) = generate!(p, args, ProgramTrace())[2]
+# NOTE: this is not generic for all Generators, because Generator is an abstract type
+# and abstract types and https://github.com/JuliaLang/julia/issues/14919
+(p::ProbabilisticProgram)(args...) = simulate!(p, args, AddressTrie(), AddressTrie(), ProgramTrace())[2]
 
 export ProbabilisticProgram
 export ProgramTrace
