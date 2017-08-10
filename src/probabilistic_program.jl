@@ -2,147 +2,6 @@
 # Probabilistic programs #
 ##########################
 
-"""
-A generic `Trace` type for storing values under hierarchical addresses using subtraces.
-
-A concrete address is resolved by removing the first element from the address, accessing the subtrace identified by that first address element, and resolving the remainder of the address relative to the subtrace.
-
-Each top-level address element (the first element of an address) idenfities a subtrace.
-Subtraces can be accessed, deleted, and mutated, using a separate set of methods from the core `Trace` interface methods, which are concerned with access and mutation of concrete values at concrete addresses, and not subtraces.
-
-An address cannot be set with `setindex!` until the relevant subtrace has been created, with the exception of a single-element address, in which case an `AtomicTrace` subtrace of the appropriate type will be created.
-
-The empty address `()` is only a concrete address, and does not identify a subtrace.
-
-`S` is the type of score.
-"""
-mutable struct ProgramTrace <: Trace
-
-    # key is a single element of an address (called `addr_first` in the code)
-    subtraces::Dict{Any, Trace}
-
-    # the value for address ()
-    has_empty_address_value::Bool
-    empty_address_value
-end
-
-function ProgramTrace()
-    subtraces = Dict{Any, Trace}()
-    empty_address_value = nothing
-    ProgramTrace(subtraces, false, empty_address_value)
-end
-
-
-# serialization to JSON does not include the score or the empty address value
-import JSON
-JSON.lower(trace::ProgramTrace) = trace.subtraces
-
-
-function Base.haskey(t::ProgramTrace, addr::Tuple)
-    if addr == ()
-        return t.has_empty_address_value
-    end
-    addr_first = addr[1]
-    if haskey(t.subtraces, addr_first)
-        subtrace = t.subtraces[addr_first]
-        return haskey(subtrace, addr[2:end])
-    else
-        return false
-    end
-end
-
-function Base.delete!(t::ProgramTrace, addr::Tuple)
-    if addr == ()
-        t.empty_address_value = nothing
-        t.has_empty_address_value = false
-        return
-    end
-    addr_first = addr[1]
-    if haskey(t.subtraces, addr_first)
-
-        # NOTE: Does not remove a subtrace from the trace, even if the address is a single-element address.
-        # For a single-element address, it forwards the delete request to the subtrace, with address ()
-        # It is not possible to delete a subtrace.
-        subtrace = t.subtraces[addr_first]
-        delete!(subtrace, addr[2:end])
-    end
-end
-
-function Base.getindex(t::ProgramTrace, addr::Tuple)
-    if addr == ()
-        if t.has_empty_address_value
-            return t.empty_address_value
-        else
-            error("Address not found: $addr")
-        end
-    end
-    addr_first = addr[1]
-    if haskey(t.subtraces, addr_first)
-        subtrace = t.subtraces[addr_first]
-        return subtrace[addr[2:end]]
-    else
-        error("Address not found: $addr")
-    end
-end
-
-function Base.setindex!(t::ProgramTrace, value, addr::Tuple)
-    if addr == ()
-        t.empty_address_value = value
-        t.has_empty_address_value = true
-        return
-    end
-    addr_first = addr[1]
-    if haskey(t.subtraces, addr_first)
-        subtrace = t.subtraces[addr_first]
-        subtrace[addr[2:end]] = value
-    else
-        if length(addr) == 1
-
-            # if there is a single element address, and no subtrace has been
-            # created, we create an AtomicTrace of the appropriate type
-            t.subtraces[addr_first] = AtomicTrace(value)
-        else
-            error("Address not found: $addr")
-        end
-    end
-end
-
-
-"""
-Check if a subtrace exists at a given address prefix.
-"""
-has_subtrace(t::Trace, addr_first) = haskey(t.subtraces, addr_first)
-
-
-"""
-Retrieve a subtrace at a given address prefix.
-"""
-get_subtrace(t::Trace, addr_first) = t.subtraces[addr_first]
-
-
-"""
-Set the subtrace at a given address prefix.
-"""
-set_subtrace!(t::Trace, addr_first, subtrace::Trace) = begin t.subtraces[addr_first] = subtrace end
-
-
-"""
-Delete the subtrace at a given address prefix.
-"""
-delete_subtrace!(t::Trace, addr_first) = begin delete!(t.subtraces, addr_first) end
-
-
-function Base.print(io::IO, trace::ProgramTrace)
-    # TODO make a nice table representaiton, and sort the keys
-    println(io, "Trace(")
-    indent = "  "
-    for (addr_first, subtrace) in trace.subtraces
-        subtrace_str = isa(subtrace, AtomicTrace) ? "$subtrace" : "$(typeof(subtrace))"
-        print(io, "$addr_first\t$subtrace_str\n")
-    end
-    println(io, ")")
-end
-
 mutable struct Score
     value::Float64
     gen_value::Nullable{GenScalar}
@@ -178,19 +37,19 @@ end
 """
 A generative process represented by a Julia function and constructed with `@program`.
 
-    ProbabilisticProgram <: Generator{ProgramTrace}
+    ProbabilisticProgram <: Generator{DictTrace}
 
 The output address `()` can never be included in the outputs in a query.
 
 The output address `()` may be included in the conditions, provided that the outputs is empty, and that there are no other conditions.
 In this case, the auxiliary structure is empty, the score is zero, and the returned value is the value given in the trace.
 """
-struct ProbabilisticProgram <: Generator{ProgramTrace}
+struct ProbabilisticProgram <: Generator{DictTrace}
     program::Function
 end
 
 # TOOD pass args in
-empty_trace(::ProbabilisticProgram) = ProgramTrace()
+empty_trace(::ProbabilisticProgram) = DictTrace()
 
 # these symbols are passed as the first arguments to every probabilistic program
 const trace_symbol = gensym()
@@ -241,7 +100,7 @@ const METHOD_SIMULATE = 1
 const METHOD_REGENERATE = 2
 
 # process a tagged generator invocation
-function tagged!(t::ProgramTrace, outputs, conditions,
+function tagged!(t::DictTrace, outputs, conditions,
                  method::Int, score, generator::Generator{T}, args::Tuple, addr_first) where {T}
     local subtrace::T
     if haskey(t.subtraces, addr_first)
@@ -278,7 +137,7 @@ function tagged!(t::ProgramTrace, outputs, conditions,
 end
 
 # process a tagged expression that is not a generator invocation
-function tagged!(trace::ProgramTrace, value, addr_first, conditions)
+function tagged!(trace::DictTrace, value, addr_first, conditions)
     local subtrace::AtomicTrace
     if haskey(trace.subtraces, addr_first)
         subtrace = trace.subtraces[addr_first]
@@ -308,7 +167,7 @@ macro program(args, body)
 
     # first argument is the trace
     new_args = Any[
-        :($trace_symbol::ProgramTrace),
+        :($trace_symbol::DictTrace),
         :($output_symbol),
         :($condition_symbol),
         :($method_symbol::Int),
@@ -354,7 +213,7 @@ macro program(args, body)
 end
 
 function _simulate_or_regenerate!(p::ProbabilisticProgram, args::Tuple, outputs, conditions,
-                                  trace::ProgramTrace, method::Int)
+                                  trace::DictTrace, method::Int)
     if () in outputs
         error("Invalid query. () cannot be an output")
     end
@@ -373,25 +232,20 @@ function _simulate_or_regenerate!(p::ProbabilisticProgram, args::Tuple, outputs,
     end
 end
 
-function simulate!(p::ProbabilisticProgram, args::Tuple, outputs, conditions, trace::ProgramTrace)
+function simulate!(p::ProbabilisticProgram, args::Tuple, outputs, conditions, trace::DictTrace)
     _simulate_or_regenerate!(p, args, outputs, conditions, trace, METHOD_SIMULATE)
 end
 
-function regenerate!(p::ProbabilisticProgram, args::Tuple, outputs, conditions, trace::ProgramTrace)
+function regenerate!(p::ProbabilisticProgram, args::Tuple, outputs, conditions, trace::DictTrace)
     _simulate_or_regenerate!(p, args, outputs, conditions, trace, METHOD_REGENERATE)
 end
 
 
 # NOTE: this is not generic for all Generators, because Generator is an abstract type
 # and abstract types and https://github.com/JuliaLang/julia/issues/14919
-(p::ProbabilisticProgram)(args...) = simulate!(p, args, AddressTrie(), AddressTrie(), ProgramTrace())[2]
+(p::ProbabilisticProgram)(args...) = simulate!(p, args, AddressTrie(), AddressTrie(), DictTrace())[2]
 
 export ProbabilisticProgram
-export ProgramTrace
 export @program
 export @g
 export @e
-export has_subtrace
-export get_subtrace
-export set_subtrace!
-export delete_subtrace!

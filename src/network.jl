@@ -1,7 +1,7 @@
 """
 TODO: handle non-atomic generators, and sub-traces.
 """
-mutable struct GeneratorNetwork{T} <: Generator{ProgramTrace{T}}
+mutable struct GeneratorNetwork{T} <: Generator{DictTrace{T}}
     generators::Dict{T, AtomicGenerator}
     preludes::Dict{T, Function}
     dag::DAG
@@ -29,7 +29,7 @@ end
 
 # TODO in both, check that conditions do not cause forward simulation to no longer be the conditional distribution.
 # TODO in both, check that all of the conditions and none of the outputs are given in the trace
-function regenerate!(network::GeneratorNetwork{T}, args::Tuple, outputs, conditions, trace::ProgramTrace{T})
+function regenerate!(network::GeneratorNetwork{T}, args::Tuple, outputs, conditions, trace::DictTrace{T})
     order = execution_order(network.dag, outputs, conditions)
     score = 0.
     for addr in order
@@ -41,7 +41,7 @@ function regenerate!(network::GeneratorNetwork{T}, args::Tuple, outputs, conditi
     (score, nothing)
 end
 
-function simulate!(network::GeneratorNetwork, outputs, conditions, trace::ProgramTrace)
+function simulate!(network::GeneratorNetwork, outputs, conditions, trace::DictTrace)
     order = execution_order(network.dag, outputs, conditions)
     score = 0.
     for addr in order
