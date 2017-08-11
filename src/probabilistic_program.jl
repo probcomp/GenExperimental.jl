@@ -232,11 +232,22 @@ function _simulate_or_regenerate!(p::ProbabilisticProgram, args::Tuple, outputs,
     end
 end
 
+function check_addresses_present(addresses, trace::DictTrace)
+    for addr in addresses
+        if !haskey(trace, addr)
+            error("Trace does not contain value for address $addr")
+        end
+    end
+end
+
 function simulate!(p::ProbabilisticProgram, args::Tuple, outputs, conditions, trace::DictTrace)
+    check_addresses_present(conditions, trace)
     _simulate_or_regenerate!(p, args, outputs, conditions, trace, METHOD_SIMULATE)
 end
 
 function regenerate!(p::ProbabilisticProgram, args::Tuple, outputs, conditions, trace::DictTrace)
+    check_addresses_present(outputs, trace)
+    check_addresses_present(conditions, trace)
     _simulate_or_regenerate!(p, args, outputs, conditions, trace, METHOD_REGENERATE)
 end
 

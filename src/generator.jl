@@ -277,7 +277,10 @@ function simulate!(g::AssessableAtomicGenerator{T}, args::Tuple, outputs, condit
         value = rand(g, args...)
         trace[()] = value
         score = 0.
+    else
+        error("Invalid query")
     end
+    @assert trace[()] == value
     (score, value)
 end
 
@@ -294,7 +297,10 @@ function regenerate!(g::AssessableAtomicGenerator{T}, args::Tuple, outputs, cond
         value = rand(g, args...)
         trace[()] = value
         score = 0.
+    else
+        error("Invalid query")
     end
+    @assert trace[()] == value
     (score, value)
 end
 
