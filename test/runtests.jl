@@ -8,7 +8,7 @@ include("address_trie.jl")
 include("program.jl")
 include("nested.jl")
 #include("generator.jl")
-#include("aide.jl")
+include("aide.jl")
 #include("sir.jl")
 
 nothing

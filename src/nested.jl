@@ -11,6 +11,8 @@ struct NestedInferenceGenerator{T} <: Generator{T}
     mapping::Dict
 end
 
+empty_trace(g::NestedInferenceGenerator) = empty_trace(g.p)
+
 function nested(p::Generator{T}, q::Generator, mapping::Dict) where {T}
     NestedInferenceGenerator(p, q, mapping)
 end
