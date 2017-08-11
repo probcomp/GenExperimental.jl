@@ -11,7 +11,7 @@
     @test isapprox(est, 0, atol=0.1)
 end
 
-@testset "AIDE between non-atomic generators" begin
+@testset "AIDE between non-atomic generators with replication" begin
 
     @program p() begin
         x = normal(0, 1)
@@ -22,7 +22,7 @@ end
         y = normal(1, 2)
         b = @g(normal(y, 1), "b")
     end
-
+    
     # small stochastic test
     # due to bias, estimates will be positive in both cases
     # TODO: compute expected value in both cases
@@ -32,4 +32,8 @@ end
 
     est = mean([aide(p, (), p, (), Dict(["a" => "a"])) for i=1:1000])
     @test est > 0
+
+    prep = replicated(p, 100)
+    est = mean([aide(prep, (), prep, (), Dict(["a" => "a"])) for i=1:1000])
+    @test isapprox(est, 0, atol=0.01)
 end

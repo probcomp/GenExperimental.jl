@@ -11,6 +11,7 @@ module Gen
     include("address_trie.jl")
     include("generator.jl")
     include("nested.jl")
+    include("replicated.jl")
 
     # probabilistic program trace and generator types
     include("hierarchical_trace.jl")
