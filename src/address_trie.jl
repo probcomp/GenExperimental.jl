@@ -14,6 +14,7 @@ An address ("foo", "bar", 2) has two meanings:
 mutable struct AddressTrie
     subtries::OrderedDict{Any, AddressTrie}
     has_ea::Bool
+    AddressTrie(subtries::OrderedDict{Any, AddressTrie}, has_ea::Bool) = new(subtries, has_ea)
 end
 
 AddressTrie() = AddressTrie(OrderedDict{Any, AddressTrie}(), false)
@@ -25,7 +26,6 @@ function AddressTrie(addresses...)
     end
     return trie
 end
-
 
 """
 Test if the given address is included.

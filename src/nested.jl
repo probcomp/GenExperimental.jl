@@ -11,8 +11,12 @@ struct NestedInferenceGenerator{T} <: Generator{T}
     mapping::Dict
 end
 
-function regenerate!(g::NestedInferenceGenerator, args::Tuple, outputs,
-                     conditions, trace::T)
+function nested(p::Generator{T}, q::Generator, mapping::Dict) where {T}
+    NestedInferenceGenerator(p, q, mapping)
+end
+
+function regenerate!(g::NestedInferenceGenerator{T}, args::Tuple, outputs,
+                     conditions, trace::T) where {T}
     (p_args, q_args) = args
     q_trace = empty_trace(g.q)
     q_outputs = AddressTrie()
@@ -45,15 +49,15 @@ function regenerate!(g::NestedInferenceGenerator, args::Tuple, outputs,
         end
     end
 
-    (p_score, p_retval) = regenerate!(g.p, p_args, p_outputs, conditions, p_trace)
+    (p_score, p_retval) = regenerate!(g.p, p_args, p_outputs, conditions, trace)
 
     score = p_score - q_score
     (score, p_retval)
 end
 
 
-function simulate!(g::NestedInferenceGenerator, args::Tuple, outputs,
-                   conditions, trace::T)
+function simulate!(g::NestedInferenceGenerator{T}, args::Tuple, outputs,
+                   conditions, trace::T) where {T}
     (p_args, q_args) = args
 
     # NOTE: room for performance optimization here, in avoiding deepcopy
@@ -70,7 +74,7 @@ function simulate!(g::NestedInferenceGenerator, args::Tuple, outputs,
         end
     end
 
-    (p_score, p_retval) = simulate!(g.p, p_args, p_outputs, conditions, p_trace)
+    (p_score, p_retval) = simulate!(g.p, p_args, p_outputs, conditions, trace)
 
     q_trace = empty_trace(g.q)
     q_outputs = AddressTrie()
@@ -82,11 +86,13 @@ function simulate!(g::NestedInferenceGenerator, args::Tuple, outputs,
         else
             push!(q_outputs, q_addr)
         end
-        q_trace[q_addr] = p_trace[p_addr]
+        q_trace[q_addr] = trace[p_addr]
     end
 
-    (q_score, q_retval) = simulate!(g.q, q_args, q_outputs, q_conditions, q_trace)
+    (q_score, q_retval) = regenerate!(g.q, q_args, q_outputs, q_conditions, q_trace)
 
     score = p_score - q_score
     (score, p_retval)
 end
+
+export nested

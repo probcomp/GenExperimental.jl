@@ -35,7 +35,7 @@ none = AddressTrie()
         nothing
     end
 
-    t = ProgramTrace()
+    t = DictTrace()
     simulate!(foo, (), none, none, t)
     @test haskey(t, 3)
     @test haskey(t, 7)
@@ -47,35 +47,35 @@ end
 
     # anonymous, no arguments
     foo1 = @program () begin nothing end
-    @test simulate!(foo1, (), none, none, ProgramTrace()) == (0., nothing)
+    @test simulate!(foo1, (), none, none, DictTrace()) == (0., nothing)
 
     # anonymous, single typed argument
     foo2 = @program (x::Int) begin x end
-    @test simulate!(foo2, (1,), none, none, ProgramTrace()) == (0., 1)
+    @test simulate!(foo2, (1,), none, none, DictTrace()) == (0., 1)
 
     # anonymous, single untyped argument
     foo3 = @program (x) begin x end
-    @test simulate!(foo3, (1,), none, none, ProgramTrace()) == (0., 1)
+    @test simulate!(foo3, (1,), none, none, DictTrace()) == (0., 1)
 
     # anonymous, multiple argument with one untyped
     foo4 = @program (x::Int, y) begin x, y end
-    @test simulate!(foo4, (1, 2), none, none, ProgramTrace()) == (0., (1, 2))
+    @test simulate!(foo4, (1, 2), none, none, DictTrace()) == (0., (1, 2))
 
     # anonymous, no arguments
     @program bar1() begin nothing end
-    @test simulate!(bar1, (), none, none, ProgramTrace()) == (0., nothing)
+    @test simulate!(bar1, (), none, none, DictTrace()) == (0., nothing)
 
     # anonymous, single typed argument
     @program bar2(x::Int) begin x end
-    @test simulate!(bar2, (1,), none, none, ProgramTrace()) == (0., 1)
+    @test simulate!(bar2, (1,), none, none, DictTrace()) == (0., 1)
 
     # anonymous, single untyped argument
     @program bar3(x) begin x end
-    @test simulate!(bar3, (1,), none, none, ProgramTrace()) == (0., 1)
+    @test simulate!(bar3, (1,), none, none, DictTrace()) == (0., 1)
 
     # anonymous, multiple argument with one untyped
     @program bar4(x::Int, y) begin x, y end
-    @test simulate!(bar4, (1, 2), none, none, ProgramTrace()) == (0., (1, 2))
+    @test simulate!(bar4, (1, 2), none, none, DictTrace()) == (0., (1, 2))
 end
 
 @testset "lexical scope" begin
@@ -83,16 +83,16 @@ end
 
     # using one definition syntax
     foo = @program () begin x end
-    @test simulate!(foo, (), none, none, ProgramTrace())[2] == x
+    @test simulate!(foo, (), none, none, DictTrace())[2] == x
 
     # using the other definition syntax
     @program bar() begin x end
-    @test simulate!(bar, (), none, none, ProgramTrace())[2] == x
+    @test simulate!(bar, (), none, none, DictTrace())[2] == x
 end
 
 @testset "regenerate! and simulate!" begin
     foo = @program () begin @g(normal(0, 1), "x") end
-    t = ProgramTrace()
+    t = DictTrace()
 
     # outputs: none
     # conditions: none
@@ -169,7 +169,7 @@ end
 
         (x, y)
     end
-    t = ProgramTrace()
+    t = DictTrace()
     
     # test that values are recorded
     score, val = simulate!(foo, (), none, none, t)
@@ -205,7 +205,7 @@ end
 
 @testset "proposing from program trace" begin
     foo = @program () begin @g(normal(0, 1), "x") end
-    t = ProgramTrace()
+    t = DictTrace()
     score, val = simulate!(foo, (), AddressTrie("x"), none, t)
     @test score == logpdf(Normal(), val, 0, 1)
     @test val == t["x"]
@@ -218,7 +218,7 @@ end
         y = @g(normal(0, 1), "y")
     end
 
-    t = ProgramTrace()
+    t = DictTrace()
     score, val = simulate!(foo, (), none, none, t)
 
     # test a top-level address
@@ -234,7 +234,7 @@ end
     # NOTE: haskey returns false even if there is a subtrace at that address
     # haskey indicates whether an atomic value is present at an address
     foo = @program () begin @g(normal(0, 1), "x") end
-    t = ProgramTrace()
+    t = DictTrace()
     @test !haskey(t, "x")
     set_subtrace!(t, "x", AtomicTrace(Float64))
     @test !haskey(t, "x")
@@ -253,7 +253,7 @@ end
     foo = @program () begin @g(normal(0, 1), "x") end
 
     # deleting a value a program trace
-    t = ProgramTrace()
+    t = DictTrace()
     simulate!(foo, (), none, none, t)
     delete!(t, "x")
     @test !haskey(t, "x")
@@ -281,9 +281,9 @@ end
             @g(normal(mu, std), "x")
         end)
     end
-    t = ProgramTrace()
+    t = DictTrace()
     for addr in ["foo", 1, 2, 3]
-        set_subtrace!(t, addr, ProgramTrace())
+        set_subtrace!(t, addr, DictTrace())
     end
     t[("foo", "mu")] = 4.
     t[("foo", "std")] = 1.
@@ -329,7 +329,7 @@ end
     end
 
     # the score for regenerate! is the sum of output scores
-    t = ProgramTrace()
+    t = DictTrace()
     t["cloudy"] = true
     t["sprinkler"] = true
     t["rain"] = true
@@ -340,7 +340,7 @@ end
     @test isapprox(score, expected_score)
 
     # an address that is not in the output set is not scored
-    t = ProgramTrace()
+    t = DictTrace()
     t["sprinkler"] = true
     t["rain"] = true
     t["wetgrass"] = true
@@ -352,7 +352,7 @@ end
     @test isapprox(score, expected_score)
 
     # the score for simulate! is the sum of the output scores
-    t = ProgramTrace()
+    t = DictTrace()
     score, _ = simulate!(model, (), AddressTrie("sprinkler"), none, t)
     expected_score = if t["cloudy"]
         t["sprinkler"] ? log(0.1) : log(0.9)
@@ -365,13 +365,13 @@ end
     toplevel = @program () begin
         @g(model(), "sub")
     end
-    t = ProgramTrace()
+    t = DictTrace()
     outputs = AddressTrie()
     for addr in ["cloudy", "sprinkler", "rain", "wetgrass"]
         t[addr] = true
         push!(outputs, ("sub", addr))
     end
-    toplevel_trace = ProgramTrace()
+    toplevel_trace = DictTrace()
     set_subtrace!(toplevel_trace, "sub", t)
     score, _ = regenerate!(toplevel, (), outputs, none, toplevel_trace)
     expected_score = log(0.3) + log(0.1) + log(0.8) + log(0.99)
@@ -389,7 +389,7 @@ end
         @g(normal(mu, exp(log_std)), "x")
     end
 
-    trace = ProgramTrace()
+    trace = DictTrace()
 	tape1 = Tape()
     x = 2.1
 	trace["x"] = x

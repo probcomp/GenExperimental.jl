@@ -21,7 +21,7 @@ function increment!(score::Score, increment::GenScalar)
     if isnull(score.gen_value)
         score.gen_value = score.value + increment
     else
-        score.gen_value += increment
+        score.gen_value = get(score.gen_value) + increment
     end
 end
 

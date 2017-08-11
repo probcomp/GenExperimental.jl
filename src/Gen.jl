@@ -10,6 +10,7 @@ module Gen
     # simple trace and generator types
     include("address_trie.jl")
     include("generator.jl")
+    include("nested.jl")
 
     # probabilistic program trace and generator types
     include("hierarchical_trace.jl")
