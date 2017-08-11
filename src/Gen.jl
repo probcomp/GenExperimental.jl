@@ -26,7 +26,8 @@ module Gen
     # AIDE algorithm for measuring divergences
     include("aide.jl")
 
-    # sampling importance sampling
-    include("sir.jl")
+    # inference algorithms
+    #include("sir.jl")
+    include("inference/state_space_smc.jl")
 
 end

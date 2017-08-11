@@ -14,6 +14,8 @@ replicated(g::Generator, num::Int) = ReplicatedGenerator(g, num)
 
 empty_trace(g::ReplicatedGenerator) = empty_trace(g.inner_generator)
 
+
+
 function simulate!(g::ReplicatedGenerator{T}, args::Tuple, outputs, conditions, trace::T) where {T}
     # run one simulate! and num-1 regenerate!s
     scores = Vector{Float64}(g.num)
@@ -47,5 +49,8 @@ function regenerate!(g::ReplicatedGenerator{T}, args::Tuple, outputs, conditions
     # return one of the return values
     (score, retval)
 end
+
+
+(g::ReplicatedGenerator)(args...) = simulate!(g, args, AddressTrie(), AddressTrie(), empty_trace(g))[2]
 
 export replicated
