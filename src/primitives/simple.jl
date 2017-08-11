@@ -32,7 +32,6 @@ NOTE: `gamma` conflicts with `Base.gamma`. Use `Gen.gamma`
 """
 struct Gamma <: AssessableAtomicGenerator{Float64} end
 
-# k = shape, s = scale
 function Gen.logpdf{M,N,O}(::Gamma, x::M, k::N, s::O)
     (k - 1.0) * log(x) - (x / s) - k * log(s) - lgamma(k)
 end
@@ -42,6 +41,26 @@ function Base.rand{M,N}(gamma::Gamma, k::M, s::N)
 end
 
 register_primitive(:gamma, Gamma)
+
+
+"""
+Inverse gamma generator, with singleton `inv_gamma`.
+
+    generate!(inv_gamma, (shape, scale), trace::AtomicTrace{Float64})
+
+    inv_gamma(shape, scale)
+"""
+struct InverseGamma <: AssessableAtomicGenerator{Float64} end
+
+function Gen.logpdf{M,N,O}(::InverseGamma, x::M, shape::N, scale::O)
+    shape * log(scale) - (shape + 1) * log(x) - lgamma(shape) - (scale / x)
+end
+
+function Base.rand{M,N}(::InverseGamma, k::M, s::N)
+    rand(Distributions.InverseGamma(k, s))
+end
+
+register_primitive(:inv_gamma, InverseGamma)
 
 
 """

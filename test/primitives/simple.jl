@@ -15,6 +15,17 @@ end
     @test isapprox(logpdf(Gamma(), x, k, s), Distributions.logpdf(Distributions.Gamma(k, s), x))
 end
 
+@testset "inv_gamma" begin
+
+    # test against Distributions.Gamma since we re-implement the density
+    # function ourselves for purposes of AD
+    x = 0.1
+    shape = 0.2
+    scale = 0.3
+    @test isapprox(logpdf(InverseGamma(), x, shape, scale),
+                   Distributions.logpdf(Distributions.InverseGamma(shape, scale), x))
+end
+
 @testset "normal" begin
 
     # test against Distributions.Normal since we re-implement the density
