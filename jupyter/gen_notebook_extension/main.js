@@ -4,14 +4,6 @@ define(['require'], function(require) {
         console.info('Loading Gen extension');
     }
 
-    function find_choice(trace, name) {
-        if (name in trace) {
-            return { value: trace[name].value, where: trace[name].mode };
-        } else {
-            return null;
-        }
-    }
-
     function register_jupyter_renderer(name, render_function) {
         Jupyter.notebook.kernel.comm_manager.unregister_target(name);
         Jupyter.notebook.kernel.comm_manager.register_target(name, function(comm, msg) {
@@ -29,10 +21,6 @@ define(['require'], function(require) {
 
     return {
         load_ipython_extension: load_ipython_extension,
-        find_choice: find_choice,
-        register_jupyter_renderer: register_jupyter_renderer,
-        recorded: "record",
-        interventions: "intervene",
-        constraints: "constrain"
+        register_jupyter_renderer: register_jupyter_renderer
     };
 });
