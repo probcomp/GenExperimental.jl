@@ -58,35 +58,38 @@ function smc(scheme::StateSpaceSMCScheme{H}) where {H}
     ess_threshold = get_ess_threshold(scheme)
     states = Matrix{H}(N, T)
     parents = Matrix{Int}(N, T-1)
-    log_weights = Vector{Float64}(N)
+    log_unnormalized_weights = Vector{Float64}(N)
     log_ml_estimate = 0.
     for i=1:N
-        (states[i, 1], log_weights[i]) = init(scheme)
+        (states[i, 1], log_unnormalized_weights[i]) = init(scheme)
     end
-    log_total_weight = logsumexp(log_weights)
-    log_ml_estimate += (log_total_weight - log(N))
-    log_weights = log_weights - log_total_weight
+
     num_resamples = 0
     for t=2:T
-        if effective_sample_size(log_weights) < ess_threshold
-            weights = exp(log_weights)
+        log_total_weight = logsumexp(log_unnormalized_weights)
+        log_normalized_weights = log_unnormalized_weights - log_total_weight
+        if effective_sample_size(log_normalized_weights) < ess_threshold
+            weights = exp.(log_normalized_weights)
             parents[:, t-1] = rand(Distributions.Categorical(weights / sum(weights)), N)
-            log_weights = fill(-log(N), N)
+            log_ml_estimate += log_total_weight - log(N)
+            log_unnormalized_weights = zeros(N)
             num_resamples += 1
         else
             parents[:, t-1] = 1:N
         end
         for i=1:N
             parent = parents[i, t-1]
-            (states[i, t], log_weight) = forward(scheme, states[parent, t-1], t)
-            log_weights[i] += log_weight
+            (states[i, t], log_incremental_weight) = forward(scheme, states[parent, t-1], t)
+            log_unnormalized_weights[i] += log_incremental_weight
         end
-        log_total_weight = logsumexp(log_weights)
-        log_ml_estimate += (log_total_weight - log(N))
-        log_weights = log_weights - log_total_weight
     end
-    StateSpaceSMCResult(states, parents, log_weights, log_ml_estimate, num_resamples)
+    log_total_weight = logsumexp(log_unnormalized_weights)
+    log_normalized_weights = log_unnormalized_weights - log_total_weight
+    log_ml_estimate += log_total_weight - log(N)
+    StateSpaceSMCResult(states, parents, log_normalized_weights, log_ml_estimate, num_resamples)
 end
+
+# TODO modify conditional SMC below
 
 const ONE = 1
 """
@@ -106,27 +109,28 @@ function conditional_smc(scheme::StateSpaceSMCScheme{H}, distinguished_particle:
     end
     states = Matrix{H}(N, T)
     parents = Matrix{Int}(N, T-1)
-    log_weights = Vector{Float64}(N)
+    log_unnormalized_weights = Vector{Float64}(N)
     log_ml_estimate = 0.
 
     # Due to symmetries, the ancestral indices of the distinguished
     # particle do not matter, so we set them all to 1.
     # Note that this may not suffice for other resampling schemes.
     states[ONE, 1] = distinguished_particle[1]
-    log_weights[ONE] = init_score(scheme, states[ONE, 1])
+    log_unnormalized_weights[ONE] = init_score(scheme, states[ONE, 1])
 
     for i=2:N
-        (states[i, 1], log_weights[i]) = init(scheme)
+        (states[i, 1], log_unnormalized_weights[i]) = init(scheme)
     end
-    log_total_weight = logsumexp(log_weights)
-    log_ml_estimate += (log_total_weight - log(N))
-    log_weights = log_weights - log_total_weight
+
     num_resamples = 0
     for t=2:T
-        if effective_sample_size(log_weights) < ess_threshold
-            weights = exp(log_weights)
+        log_total_weight = logsumexp(log_unnormalized_weights)
+        log_normalized_weights = log_unnormalized_weights - log_total_weight
+        if effective_sample_size(log_normalized_weights) < ess_threshold
+            weights = exp.(log_normalized_weights)
             parents[:, t-1] = rand(Distributions.Categorical(weights / sum(weights)), N)
-            log_weights = fill(-log(N), N)
+            log_ml_estimate += log_total_weight - log(N)
+            log_unnormalized_weights = zeros(N)
             num_resamples += 1
         else
             parents[:, t-1] = 1:N
@@ -135,19 +139,18 @@ function conditional_smc(scheme::StateSpaceSMCScheme{H}, distinguished_particle:
         # handle distinguished particle
         parents[ONE, t-1] = ONE
         states[ONE, t] = distinguished_particle[t]
-        distinguished_log_weight = forward_score(scheme, states[ONE, t-1], states[ONE, t], t)
-        log_weights[ONE] += distinguished_log_weight
+        log_unnormalized_weights[ONE] += forward_score(scheme, states[ONE, t-1], states[ONE, t], t)
 
         for i=2:N
             parent = parents[i, t-1]
-            (states[i, t], log_weight) = forward(scheme, states[parent, t-1], t)
-            log_weights[i] += log_weight
+            (states[i, t], log_incremental_weight) = forward(scheme, states[parent, t-1], t)
+            log_unnormalized_weights[i] += log_incremental_weight
         end
-        log_total_weight = logsumexp(log_weights)
-        log_ml_estimate += (log_total_weight - log(N))
-        log_weights = log_weights - log_total_weight
     end
-    StateSpaceSMCResult(states, parents, log_weights, log_ml_estimate, num_resamples)
+    log_total_weight = logsumexp(log_unnormalized_weights)
+    log_normalized_weights = log_unnormalized_weights - log_total_weight
+    log_ml_estimate += log_total_weight - log(N)
+    StateSpaceSMCResult(states, parents, log_normalized_weights, log_ml_estimate, num_resamples)
 end
 
 function get_particle(result::StateSpaceSMCResult{H}, final_index::Integer) where {H}
