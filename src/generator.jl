@@ -1,6 +1,6 @@
-#################################
-# Generic generators and traces #
-#################################
+#######################
+# Abstract trace type #
+#######################
 
 """
 Mutable associative collection indexed by addresses.
@@ -49,6 +49,11 @@ Syntactic sugar for `Base.setindex!` with a single-element address
 """
 Base.setindex!(t::Trace, value, addr_element) = begin t[(addr_element,)] = value end
 
+
+###########################
+# Abstract generator type #
+###########################
+
 """
 Generative process that can record values into a `Trace`
 
@@ -76,7 +81,7 @@ TODO: Explain
 
 The return value is the value at the empty address `()` in the trace.
 """
-function simulate! end
+function regenerate! end
 
 
 """
@@ -86,16 +91,11 @@ Return an empty trace that is compatible with the given generator.
 """
 function empty_trace end
 
-export Trace
-export Generator
-export simulate!
-export regenerate!
-export empty_trace
 
 
-#####################
-# Atomic generators #
-#####################
+######################################
+# Atomic (single address) trace type #
+######################################
 
 """
 A trace that can contains a single value, of type `T`, at address `()`.
@@ -153,6 +153,15 @@ function Base.setindex!(t::AtomicTrace{T}, value, addr::Tuple) where {T}
     error("Wrong type for value, got type $(typeof(value)), expected type $T")
 end
 
+function Base.print(io::IO, trace::AtomicTrace)
+    valstring = isnull(trace.value) ? "" : "$(get(trace.value))"
+    print(io, valstring)
+end
+
+
+###############################
+# Generator for atomic traces #
+###############################
 
 """
 A generator that generates values for a single address.
@@ -161,14 +170,6 @@ AtomicGenerator{T} = Generator{AtomicTrace{T}}
 
 empty_trace(::AtomicGenerator{T}) where {T} = AtomicTrace(T)
 
-function Base.print(io::IO, trace::AtomicTrace)
-    valstring = isnull(trace.value) ? "" : "$(get(trace.value))"
-    print(io, valstring)
-end
-
-export AtomicTrace
-export AtomicGenerator
-export value_type
 
 
 """
@@ -304,5 +305,15 @@ function regenerate!(g::AssessableAtomicGenerator{T}, args::Tuple, outputs, cond
     (score, value)
 end
 
+
+
+export Trace
+export Generator
+export simulate!
+export regenerate!
+export empty_trace
+export AtomicTrace
+export AtomicGenerator
+export value_type
 export AssessableAtomicGenerator
 export logpdf
