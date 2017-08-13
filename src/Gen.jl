@@ -8,10 +8,18 @@ module Gen
     include("math.jl")
 
     # simple trace and generator types
+    include("address_trie.jl")
     include("generator.jl")
+    include("nested.jl")
+    include("replicated.jl")
+
+    # networks of generators with dependency tracking
+    # (incomplete feature)
+    include("dag.jl")
 
     # probabilistic program trace and generator types
-    include("program.jl")
+    include("dict_trace.jl")
+    include("probabilistic_program.jl")
 
     # custom features for jupyter notebooks
     include("notebook.jl")
@@ -22,7 +30,7 @@ module Gen
     # AIDE algorithm for measuring divergences
     include("aide.jl")
 
-    # sampling importance sampling
-    include("sir.jl")
+    # inference algorithms
+    include("inference/state_space_smc.jl")
 
 end

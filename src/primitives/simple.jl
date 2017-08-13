@@ -11,8 +11,8 @@ Score is differentiable with respect to `prob`
 """
 struct Flip <: AssessableAtomicGenerator{Bool} end
 
-simulate{T}(::Flip, prob::T) = rand() < prob
-logpdf{T}(::Flip, value::Bool, prob::T) = value ? log(prob) : log(1.0 - prob)
+Base.rand{T}(::Flip, prob::T) = rand() < prob
+Gen.logpdf{T}(::Flip, value::Bool, prob::T) = value ? log(prob) : log(1.0 - prob)
 
 register_primitive(:flip, Flip)
 
@@ -32,16 +32,35 @@ NOTE: `gamma` conflicts with `Base.gamma`. Use `Gen.gamma`
 """
 struct Gamma <: AssessableAtomicGenerator{Float64} end
 
-# k = shape, s = scale
-function logpdf{M,N,O}(::Gamma, x::M, k::N, s::O)
+function Gen.logpdf{M,N,O}(::Gamma, x::M, k::N, s::O)
     (k - 1.0) * log(x) - (x / s) - k * log(s) - lgamma(k)
 end
 
-function simulate{M,N}(gamma::Gamma, k::M, s::N)
+function Base.rand{M,N}(gamma::Gamma, k::M, s::N)
     rand(Distributions.Gamma(k, s))
 end
 
 register_primitive(:gamma, Gamma)
+
+
+"""
+Inverse gamma generator, with singleton `inv_gamma`.
+
+    generate!(inv_gamma, (shape, scale), trace::AtomicTrace{Float64})
+
+    inv_gamma(shape, scale)
+"""
+struct InverseGamma <: AssessableAtomicGenerator{Float64} end
+
+function Gen.logpdf{M,N,O}(::InverseGamma, x::M, shape::N, scale::O)
+    shape * log(scale) - (shape + 1) * log(x) - lgamma(shape) - (scale / x)
+end
+
+function Base.rand{M,N}(::InverseGamma, k::M, s::N)
+    rand(Distributions.InverseGamma(k, s))
+end
+
+register_primitive(:inv_gamma, InverseGamma)
 
 
 """
@@ -55,13 +74,13 @@ Score is differentiable with respect to `mu` and `std` and output
 """
 struct Normal <: AssessableAtomicGenerator{Float64} end
 
-function logpdf{M,N,O}(::Normal, x::M, mu::N, std::O)
+function Gen.logpdf{M,N,O}(::Normal, x::M, mu::N, std::O)
     var = std * std
     diff = x - mu
     -(diff * diff)/ (2.0 * var) - 0.5 * log(2.0 * pi * var)
 end
 
-function simulate{M,N}(normal::Normal, mu::M, std::N)
+function Base.rand{M,N}(normal::Normal, mu::M, std::N)
     rand(Distributions.Normal(concrete(mu), concrete(std)))
 end
 
@@ -79,12 +98,12 @@ Score is not (yet) differentiable with respect to `mu` and `std` and output [#53
 """
 struct MultivariateNormal <: AssessableAtomicGenerator{Vector{Float64}} end
 
-function logpdf(::MultivariateNormal, x::Vector{Float64}, mu::Vector{Float64}, std::Matrix{Float64})
+function Gen.logpdf(::MultivariateNormal, x::Vector{Float64}, mu::Vector{Float64}, std::Matrix{Float64})
     d = Distributions.MvNormal(concrete(mu), concrete(std)) 
     Distributions.logpdf(d, x)
 end
 
-function simulate(::MultivariateNormal, mu::Vector{Float64}, std::Matrix{Float64})
+function Base.rand(::MultivariateNormal, mu::Vector{Float64}, std::Matrix{Float64})
     rand(Distributions.MvNormal(concrete(mu), concrete(std)))
 end
 
@@ -102,11 +121,11 @@ Score is not differentiable.
 """
 struct UniformContinuous <: AssessableAtomicGenerator{Float64} end
 
-function logpdf(::UniformContinuous, x::Float64, lower::Real, upper::Real)
+function Gen.logpdf(::UniformContinuous, x::Float64, lower::Real, upper::Real)
     x < lower || x > upper ? -Inf : -log(upper - lower)
 end
 
-function simulate(::UniformContinuous, lower::Real, upper::Real)
+function Base.rand(::UniformContinuous, lower::Real, upper::Real)
     rand() * (upper - lower) + lower
 end
 
@@ -126,12 +145,12 @@ Score is not differentiable.
 """
 struct UniformDiscrete <: AssessableAtomicGenerator{Int64} end
 
-function logpdf(::UniformDiscrete, x::Int64, lower::Int, upper::Int)
+function Gen.logpdf(::UniformDiscrete, x::Int64, lower::Int, upper::Int)
     d = Distributions.DiscreteUniform(concrete(lower), concrete(upper)) 
     Distributions.logpdf(d, x)
 end
 
-function simulate(::UniformDiscrete, lower::Int, upper::Int)
+function Base.rand(::UniformDiscrete, lower::Int, upper::Int)
     rand(Distributions.DiscreteUniform(concrete(lower), concrete(upper)))
 end
 
@@ -151,11 +170,11 @@ Score is not (yet) differentiable [#65](https://github.com/probcomp/Gen.jl/issue
 """
 struct CategoricalLog <: AssessableAtomicGenerator{Int64} end
 
-function logpdf(::CategoricalLog, x::Int64, scores::Vector{Float64})
+function Gen.logpdf(::CategoricalLog, x::Int64, scores::Vector{Float64})
     (scores - logsumexp(scores))[x]
 end
 
-function simulate(::CategoricalLog, scores::Vector{Float64})
+function Base.rand(::CategoricalLog, scores::Vector{Float64})
     probs = exp.(scores - logsumexp(scores))
     rand(Distributions.Categorical(probs))
 end
@@ -177,8 +196,8 @@ Score is not differentiable.
 
 struct Nil <: AssessableAtomicGenerator{Float64} end
 
-logpdf{T}(::Nil, x::T) = x == Nil() ? 0.0 : -Inf
+Gen.logpdf{T}(::Nil, x::T) = x == Nil() ? 0.0 : -Inf
 
-simulate(::Nil) = Nil()
+Base.rand(::Nil) = Nil()
 
 register_primitive(:nil, Nil)

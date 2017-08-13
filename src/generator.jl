@@ -1,111 +1,101 @@
-#################################
-# Generic generators and traces #
-#################################
+#######################
+# Abstract trace type #
+#######################
 
 """
-Record of a generative process.
+Mutable associative collection indexed by addresses.
+
+Implements the following methods:
+
+
+Check if a value exists in the trace at the given address.
+
+    Base.haskey(t::Trace, addr::Tuple)
+
+
+Delete a value from the trace at the given address, if one exists.
+
+    Base.delete!(t::Trace, addr::Tuple)
+
+
+Retrieve a value from the trace at the given address, if one exists.
+
+    Base.getindex(t::Trace, addr::Tuple)
+
+
+Set a value at in the trace at the given address.
+
+    Base.setindex!(t::Trace, value, addr::Tuple)
 """
 abstract type Trace end
 
 """
-    value(trace::Trace, addr::Tuple)
-
-Retrieve the value at a particular address of a trace.
+Syntactic sugar for `Base.haskey` with a single-element address
 """
-function value end
+Base.haskey(t::Trace, addr_element) = haskey(t, (addr_element,))
 
 """
-    constrain!(trace::Trace, addr::Tuple, value)
-
-Constrain an address of a trace to a particular value.
+Syntactic sugar for `Base.delete!` with a single-element address
 """
-function constrain! end
+Base.delete!(t::Trace, addr_element) = delete!(t, (addr_element,))
 
 """
-    intervene!(trace::Trace, addr::Tuple, value)
-
-Modify the behavior of a `Generator` recording to this trace by fixing the value at the given address.
+Syntactic sugar for `Base.getindex` with a single-element address
 """
-function intervene! end
+Base.getindex(t::Trace, addr_element) = t[(addr_element,)]
 
 """
-    propose!(trace::Trace, addr:Tuple, t::Type)
+Syntactic sugar for `Base.setindex!` with a single-element address
 """
-function propose! end
+Base.setindex!(t::Trace, value, addr_element) = begin t[(addr_element,)] = value end
+
+
+###########################
+# Abstract generator type #
+###########################
 
 """
-    release!(trace::Trace, addr::Tuple)
-"""
-function release! end
-
-"""
-    mode(trace::Trace, addr::Tuple)
-"""
-function mode end
-
-Base.delete!(t::Trace, addr) = delete!(t, (addr,))
-Base.haskey(t::Trace, addr) = haskey(t, (addr,))
-value(t::Trace, addr) = value(t, (addr,))
-release!(t::Trace, addr) = release!(t, (addr,))
-mode(t::Trace, addr) = mode(t, (addr,))
-Base.getindex(t::Trace, addr::Tuple) = value(t, addr)
-Base.getindex(t::Trace, addr...) = t[addr]
-# NOTE: defining generic mappings from addr to (addr,) for caused infinite looping
-# when Type{val} does not match the method signature of constrain! implemented by the actual generator
-propose!(t::Trace, addr, valtype::Type) = propose!(t, (addr,), valtype)
-
-"""
-Generative process that can record values into a `Trace`.
+Generative process that can record values into a `Trace`
 
 Each `Generator` type can record values into a paticular `Trace` type `T`.
 """
 abstract type Generator{T <: Trace} end
 
 """
-    (score, value) = generate!(generator::Generator{T}, args::Tuple, trace::T)
+TODO: Explain
 
-Record a generative process, which takes arguments, in a trace.
-Return a score describing how this realization of the generative process interacted with the constraints and proposals in the trace, and the return value of the process.
+    (score, value) = simulate!(generator::Generator{T}, outputs, conditions, args::Tuple, trace::T)
 
-There is also a macro that allows for a function-call syntax to be used with generators:
+`outputs` and `conditions` must implement `in`, `haskey`, `getindex`, and `isempty` methods that match the behavior of `AddressTrie`.
 
-    (score, value) = @generate!(generator::Generator{T}(args::Tuple), trace::T)
+The return value is the value at the empty address `()` in the trace.
 """
-function generate! end
+function simulate! end
 
-# subtraces can be in one of several modes:
-@enum SubtraceMode record=1 propose=2 constrain=3 intervene=4
+"""
+TODO: Explain
 
-macro generate!(generator_and_args, trace)
-    if generator_and_args.head == :call 
-        generator = generator_and_args.args[1]
-        generator_args = generator_and_args.args[2:end]
-        Expr(:call, generate!,
-            esc(generator),
-            esc(Expr(:tuple, generator_args...)),
-            esc(trace))
-    else
-        error("invalid use of @generate!")
-    end
-end
+    (score, value) = regenerate!(generator::Generator{T}, outputs, conditions, args::Tuple, trace::T)
 
-export Generator
-export generate!
-export @generate!
-export Trace
-export SubtraceMode
-export value
-export mode
-export constrain!
-export intervene!
-export propose!
-export release!
-export empty_trace
+`outputs` and `conditions` must implement `in`, `haskey`, `getindex`, and `isempty` methods that match the behavior of `AddressTrie`.
+
+The return value is the value at the empty address `()` in the trace.
+"""
+function regenerate! end
 
 
-#####################
-# Atomic generators #
-#####################
+"""
+Return an empty trace that is compatible with the given generator.
+
+    trace::T = empty_trace(generator::Generator{T})
+"""
+function empty_trace end
+
+
+
+######################################
+# Atomic (single address) trace type #
+######################################
 
 """
 A trace that can contains a single value, of type `T`, at address `()`.
@@ -114,88 +104,64 @@ A trace that can contains a single value, of type `T`, at address `()`.
 """
 mutable struct AtomicTrace{T} <: Trace
     value::Nullable{T}
-    mode::SubtraceMode
 end
 
 value_type(::AtomicTrace{T}) where {T} = T
 
-"Construct an atomic trace with a missing value"
-AtomicTrace(::Type{T}) where {T} = AtomicTrace(Nullable{T}(), record)
+"""
+Construct an atomic trace with a missing value
+"""
+AtomicTrace(::Type{T}) where {T} = AtomicTrace(Nullable{T}())
 
-"Construct an atomic trace with a value"
-AtomicTrace(value) = AtomicTrace(Nullable(value), record)
+"""
+Construct an atomic trace with a value
+"""
+AtomicTrace(value) = AtomicTrace(Nullable(value))
 
-"Get the value from an atomic trace, or an error if there is none"
+"""
+Get the value from an atomic trace, or an error if there is none
+"""
 Base.get(trace::AtomicTrace) = get(trace.value)
 
 atomic_addr_err(addr::Tuple) = error("address not found: $addr; the only valid address is ()")
 
-function Base.getindex(trace::AtomicTrace, addr::Tuple)
-    addr == () ? get(trace) : atomic_addr_err(addr)
-end
-
-function _constrain!(trace::AtomicTrace{T}, value::T) where {T}
-    trace.mode = constrain
-    trace.value = Nullable{T}(value)
-end
-
-function constrain!(trace::AtomicTrace{T}, addr::Tuple, value::T) where {T}
-    addr == () ? _constrain!(trace, value) : atomic_addr_err(addr)
-end
-
-function _intervene!(trace::AtomicTrace{T}, value::T) where {T}
-    trace.mode = intervene
-    trace.value = Nullable{T}(value)
-end
-
-function intervene!(trace::AtomicTrace{T}, addr::Tuple, value::T) where {T}
-    addr == () ? _intervene!(trace, value) : atomic_addr_err(addr)
-end
-
-function _propose!(trace::AtomicTrace)
-    trace.mode = propose
-end
-
-function propose!(trace::AtomicTrace{T}, addr::Tuple, valtype::Type{T}) where {T}
-    addr == () ? _propose!(trace) : atomic_addr_err(addr)
-end
-
-function propose!(trace::AtomicTrace{T}, addr::Tuple, valtype::Type) where {T}
-    error("type $valtype does match trace type $T")
-end
-
-function _release!(t::AtomicTrace)
-    t.mode = record
-end
-
-function release!(t::AtomicTrace, addr::Tuple)
-    addr == () ? _release!(t) : atomic_addr_err(addr)
-end
-
-function _delete!(t::AtomicTrace{T}) where {T}
-    t.mode = record
-    t.value = Nullable{T}()
-end
-
-function Base.delete!(t::AtomicTrace, addr)
-    addr == () ? _delete!(t) : atomic_addr_err(addr)
-end
-
-value(t::AtomicTrace) = get(t.value)
-
-function value(t::AtomicTrace, addr)
-    addr == () ? get(t.value) : atomic_addr_err(addr)
-end
-
-mode(t::AtomicTrace) = t.mode
-
-function mode(t::AtomicTrace, addr)
-    addr == () ? mode(t) : atomic_addr_err(addr)
-end
-
-function Base.haskey(t::AtomicTrace, addr)
+function Base.haskey(t::AtomicTrace, addr::Tuple)
     addr == () ? !isnull(t.value) : atomic_addr_err(addr)
 end
+
+function Base.delete!(t::AtomicTrace{T}, addr::Tuple) where {T}
+    if addr == ()
+        t.value = Nullable{T}()
+    else
+        atomic_addr_err(addr)
+    end
+end
+
+function Base.getindex(t::AtomicTrace, addr::Tuple)
+    addr == () ? get(t) : atomic_addr_err(addr)
+end
+
+function Base.setindex!(t::AtomicTrace{T}, value::T, addr::Tuple) where {T}
+    if addr == ()
+        t.value = Nullable(value)
+    else
+        atomic_addr_err(addr)
+    end
+end
+
+function Base.setindex!(t::AtomicTrace{T}, value, addr::Tuple) where {T}
+    error("Wrong type for value, got type $(typeof(value)), expected type $T")
+end
+
+function Base.print(io::IO, trace::AtomicTrace)
+    valstring = isnull(trace.value) ? "" : "$(get(trace.value))"
+    print(io, valstring)
+end
+
+
+###############################
+# Generator for atomic traces #
+###############################
 
 """
 A generator that generates values for a single address.
@@ -204,182 +170,150 @@ AtomicGenerator{T} = Generator{AtomicTrace{T}}
 
 empty_trace(::AtomicGenerator{T}) where {T} = AtomicTrace(T)
 
-function Base.print(io::IO, trace::AtomicTrace)
-    prefix = if trace.mode == constrain 
-        "*"
-    elseif trace.mode == intervene
-        "!"
-    elseif trace.mode == propose
-        "+"
-    else
-        " "
-    end
-    valstring = isnull(trace.value) ? "" : "$(get(trace.value))"
-    print(io, "[$prefix]$(valstring)")
-end
-
-export AtomicTrace
-export AtomicGenerator
-export value_type
 
 
 """
 A generator defined in terms of its sampler function (`simulate`) and its exact log density evaulator function (`logpdf`).
 
-    simulate(g::AssessableAtomicGenerator{T}, args...)
-
+    rand(g::AssessableAtomicGenerator{T}, args...)
     logpdf(g::AssessableAtomicGenerator{T}, value::T, args...)
+
+
+The `simulate!` method accepts the following queries:
+
+
+Sample a value for the output, and return its log density as the score, and return the sampled value.
+The trace is populated with the sampled value.
+
+    OUTPUT_QUERY
+    outputs: ()
+    conditions: None
+
+
+Return a score of zero and the return the value given in the trace.
+the value given in the trace is unmodified.
+
+    CONDITION_QUERY
+    outputs: None
+    conditions: ()
+
+
+Sample a value for the output, and return zero as the score, and return the sampled value.
+The trace is populated with the sampled value, which is considered an auxiliary variable.
+
+    EMPTY_QUERY
+    outputs: None
+    conditions: None
+
+
+The `regenerate!` method accepts the following queries:
+
+
+Return the log density of the value given in the input trace as the score.
+The value in the trace is not modified.
+
+    OUTPUT_QUERY
+    outputs: ()
+    conditions: None
+
+
+Return a score of zero and the return the value given in the trace.
+the value given in the trace is unmodified.
+Equivalent to `simulate!` with the same arguments.
+
+    CONDITION_QUERY
+    outputs: None
+    conditions: ()
+
+
+Sample a value for the output, and return zero as the score, and return the sampled value.
+The trace is populated with the sampled value, which is considered an auxiliary variable.
+Equivalent to `simulate!` with the same arguments.
+
+    EMPTY_QUERY
+    outputs: None
+    conditions: None
 """
 abstract type AssessableAtomicGenerator{T} <: AtomicGenerator{T} end
 
-function simulate end
 function logpdf end
 
-function generate!(g::AssessableAtomicGenerator{T}, args::Tuple, trace::AtomicTrace{T}) where {T}
+# outputs: ()
+# conditions: None
+const OUTPUT_QUERY = 1
+
+# outputs: None
+# conditions: ()
+const CONDITION_QUERY = 2
+
+# outputs: None
+# conditions: None
+const EMPTY_QUERY = 3
+
+function parse_query(outputs, conditions)
+    # TODO check for other addresses and error if there are any
+    # Any query not one of the above forms is technically an error.
+    if () in outputs && !(() in conditions)
+        return OUTPUT_QUERY 
+    elseif () in conditions && !(() in outputs)
+        return CONDITION_QUERY
+    elseif !(() in conditions) && !(() in outputs)
+        return EMPTY_QUERY
+    else
+        error("Invalid query. The address () was contained in both outputs and conditions")
+    end
+end
+
+function simulate!(g::AssessableAtomicGenerator{T}, args::Tuple, outputs, conditions, trace::AtomicTrace{T}) where {T}
     local value::T
-    if trace.mode == intervene || trace.mode == constrain
-        value = get(trace.value)
-    else
-        value = simulate(g, args...)
-        trace.value = Nullable(value)
-    end
-    if trace.mode == constrain || trace.mode == propose
+    query_type = parse_query(outputs, conditions)
+    if query_type == OUTPUT_QUERY
+        value = rand(g, args...)
+        trace[()] = value
         score = logpdf(g, value, args...)
-    else
+    elseif query_type == CONDITION_QUERY
+        value = trace[()]
         score = 0.
+    elseif query_type == EMPTY_QUERY
+        value = rand(g, args...)
+        trace[()] = value
+        score = 0.
+    else
+        error("Invalid query")
     end
+    @assert trace[()] == value
     (score, value)
 end
 
+function regenerate!(g::AssessableAtomicGenerator{T}, args::Tuple, outputs, conditions, trace::AtomicTrace{T}) where {T}
+    local value::T
+    query_type = parse_query(outputs, conditions)
+    if query_type == OUTPUT_QUERY
+        value = trace[()]
+        score = logpdf(g, value, args...)
+    elseif query_type == CONDITION_QUERY
+        value = trace[()]
+        score = 0.
+    elseif query_type == EMPTY_QUERY
+        value = rand(g, args...)
+        trace[()] = value
+        score = 0.
+    else
+        error("Invalid query")
+    end
+    @assert trace[()] == value
+    (score, value)
+end
+
+
+
+export Trace
+export Generator
+export simulate!
+export regenerate!
+export empty_trace
+export AtomicTrace
+export AtomicGenerator
+export value_type
 export AssessableAtomicGenerator
-export simulate
 export logpdf
-
-
-#########################################
-# Generator nested inference combinator #
-#########################################
-
-"""
-A generator that returns log importance weights for its score.
-"""
-struct PairedGenerator{T} <: Generator{T}
-    p::Generator{T}
-    q::Generator
-
-    # mapping from q_address to (p_address, type)
-    mapping::Dict
-end
-
-"""
-Construct a `PairedGenerator` from two generators.
-
-The `mapping` maps addresses of `q` to tuples `(p_addr, value_type)` where `p_addr` is an address of `p` and `value_type` is the type of that address (which must be consistent between `p` and `q`).
-
-The resulting generator inherits the trace type of `p` and address space of `p`.
-
-The score is a log importance weight in which the target density is the unnormalized joint density of `p`, which may be constrained, and the importance distribution is `q`.
-"""
-function compose(p::Generator, q::Generator, mapping::Dict)
-    PairedGenerator(p, q, mapping)
-end
-
-function generate!(g::PairedGenerator{U}, args::Tuple, p_trace::U) where {U}
-    (p_args, q_args) = args
-
-    # populate q's trace with proposal or constraint directives
-    proposed_from_q = Set()
-    q_trace = empty_trace(g.q)
-    for (q_addr, (p_addr, value_type)) in g.mapping
-        m = haskey(p_trace, p_addr) ? mode(p_trace, p_addr) : record
-        if m == constrain
-            constrain!(q_trace, q_addr, p_trace[p_addr])
-        elseif m == propose
-            error("cannot handle proposal at address $p_addr")
-        elseif m == intervene
-            error("cannot handle intervention at address $p_addr")
-        else
-            # m == record, propose from q
-            push!(proposed_from_q, q_addr)
-            propose!(q_trace, q_addr, value_type)
-        end
-    end
-
-    # generate q
-    (q_score, _) = generate!(g.q, q_args, q_trace)
-
-    # populate p's trace with new constraints generated from q
-    for q_addr in proposed_from_q
-        (p_addr, _) = g.mapping[q_addr]
-        constrain!(p_trace, p_addr, q_trace[q_addr])
-    end
-
-    # generate p
-    (p_score, p_retval) = generate!(g.p, p_args, p_trace)
-
-    # release constraints on p's trace for values proposed from q
-    for q_addr in proposed_from_q
-        (p_addr, _) = g.mapping[q_addr]
-        release!(p_trace, p_addr)
-    end
-
-    score = p_score - q_score
-    (score, p_retval)
-end
-
-# shorthand combinatorifor when the proposal is an AtomicGenerator
-function compose(p::Generator, q::AtomicGenerator{T}, p_addr::Tuple) where {T}
-    mapping = Dict([() => (p_addr, T)])
-    PairedGenerator(p, q, mapping)
-end
-
-export PairedGenerator
-export compose
-
-###################################
-# Generator replicator combinator #
-###################################
-
-"""
-A generator that wraps another generator with more accurate scores.
-"""
-struct ReplicatedAtomicGenerator{T} <: AtomicGenerator{T}
-    inner_generator::AtomicGenerator{T}
-    num::Int
-end
-
-"""
-Construct a `ReplicatedAtomicGenerator`.
-
-The resulting generator inherits the trace type, address space, and sampling distribution of the `generator` argument.
-
-The generator has the same forward sampling distribution as the innter generator, but the scores are more accurate estimates of the log density of constraints and proposals.
-
-As `num` increases, the scores become more accurate estimates.
-
-Score is not (yet) differentaible [#65](https://github.com/probcomp/Gen.jl/issues/65)
-"""
-replicate(generator::AtomicGenerator, num::Int) = ReplicatedAtomicGenerator(generator, num)
-
-function generate!(g::ReplicatedAtomicGenerator{T}, args::Tuple, trace::AtomicTrace{T}) where {T}
-    if trace.mode == record
-        (score, val) = generate!(g.inner_generator, args, trace)
-        @assert score == 0.
-        @assert val == value(trace)
-        return (score, val)
-    elseif trace.mode == intervene
-        return generate!(g.inner_generator, args, trace)
-    end
-    scores = Vector{Float64}(g.num)
-    (scores[1], _) = generate!(g.inner_generator, args, trace)
-    for i=2:g.num
-        supplementary_trace = AtomicTrace(T)
-        constrain!(supplementary_trace, (), value(trace))
-        (scores[i], _) = generate!(g.inner_generator, args, supplementary_trace)
-    end
-    score = logsumexp(scores) - log(g.num)
-    (score, value(trace))
-end
-
-export ReplicatedAtomicGenerator
-export replicate

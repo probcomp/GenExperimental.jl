@@ -1,4 +1,6 @@
 
+none = AddressTrie()
+
 @testset "program tagging syntaxes" begin
 
     # use the `bar = @program` definition syntax (this was once breaking)
@@ -33,48 +35,47 @@
         nothing
     end
 
-    t = ProgramTrace()
-    generate!(foo, (), t)
+    t = DictTrace()
+    simulate!(foo, (), none, none, t)
     @test haskey(t, 3)
     @test haskey(t, 7)
     @test haskey(t, 8)
     @test haskey(t, 9)
-    @test mode(t, 9) == Gen.record
 end
 
 @testset "program definition syntaxes" begin
 
     # anonymous, no arguments
     foo1 = @program () begin nothing end
-    @test generate!(foo1, (), ProgramTrace()) == (0., nothing)
+    @test simulate!(foo1, (), none, none, DictTrace()) == (0., nothing)
 
     # anonymous, single typed argument
     foo2 = @program (x::Int) begin x end
-    @test generate!(foo2, (1,), ProgramTrace()) == (0., 1)
+    @test simulate!(foo2, (1,), none, none, DictTrace()) == (0., 1)
 
     # anonymous, single untyped argument
     foo3 = @program (x) begin x end
-    @test generate!(foo3, (1,), ProgramTrace()) == (0., 1)
+    @test simulate!(foo3, (1,), none, none, DictTrace()) == (0., 1)
 
     # anonymous, multiple argument with one untyped
     foo4 = @program (x::Int, y) begin x, y end
-    @test generate!(foo4, (1, 2), ProgramTrace()) == (0., (1, 2))
+    @test simulate!(foo4, (1, 2), none, none, DictTrace()) == (0., (1, 2))
 
     # anonymous, no arguments
     @program bar1() begin nothing end
-    @test generate!(bar1, (), ProgramTrace()) == (0., nothing)
+    @test simulate!(bar1, (), none, none, DictTrace()) == (0., nothing)
 
     # anonymous, single typed argument
     @program bar2(x::Int) begin x end
-    @test generate!(bar2, (1,), ProgramTrace()) == (0., 1)
+    @test simulate!(bar2, (1,), none, none, DictTrace()) == (0., 1)
 
     # anonymous, single untyped argument
     @program bar3(x) begin x end
-    @test generate!(bar3, (1,), ProgramTrace()) == (0., 1)
+    @test simulate!(bar3, (1,), none, none, DictTrace()) == (0., 1)
 
     # anonymous, multiple argument with one untyped
     @program bar4(x::Int, y) begin x, y end
-    @test generate!(bar4, (1, 2), ProgramTrace()) == (0., (1, 2))
+    @test simulate!(bar4, (1, 2), none, none, DictTrace()) == (0., (1, 2))
 end
 
 @testset "lexical scope" begin
@@ -82,56 +83,79 @@ end
 
     # using one definition syntax
     foo = @program () begin x end
-    @test @generate!(foo(), ProgramTrace())[2] == x
+    @test simulate!(foo, (), none, none, DictTrace())[2] == x
 
     # using the other definition syntax
     @program bar() begin x end
-    @test @generate!(bar(), ProgramTrace())[2] == x
+    @test simulate!(bar, (), none, none, DictTrace())[2] == x
 end
 
-@testset "program generate! syntaxes" begin
-
-    foo = @program (x) begin x end
-    
-    # lower-level synyntax
-    @test generate!(foo, ("asdf",), ProgramTrace()) == (0., "asdf")
-
-    # the syntax sugar
-    @test @generate!(foo("asdf"), ProgramTrace()) == (0., "asdf")
-end
-
-@testset "constraining trace" begin
+@testset "regenerate! and simulate!" begin
     foo = @program () begin @g(normal(0, 1), "x") end
-    t = ProgramTrace()
-    constrain!(t, "x", 2.3)
-    score, val = @generate!(foo(), t)
+    t = DictTrace()
+
+    # outputs: none
+    # conditions: none
+    # regenerate! and simulate! have the same behavior in this case
+    # score is 0., and the value is overwritten
+    t["x"] = 2.3
+    score, val = regenerate!(foo, (), none, none, t)
+    @test score == 0.
+    @test val != 2.3
+    @test t["x"] == val
+    score, val = simulate!(foo, (), none, none, t)
+    @test score == 0.
+    @test val != 2.3
+    @test t["x"] == val
+
+    # outputs: none
+    # conditions: ()
+    # regenerate! and simulate! have the same behavior in this case
+    # score is 0., and the return value is the given value
+    t[()] = 2.3
+    score, val = regenerate!(foo, (), none, AddressTrie(()), t)
+    @test score == 0.
+    @test val == 2.3
+    t[()] = 2.3
+    score, val = simulate!(foo, (), none, AddressTrie(()), t)
+    @test score == 0.
+    @test val == 2.3
+
+    # NOTE: outputs: () and conditions: none is not a valid query for a ProbabilisticProgram
+
+    # outputs: "x"
+    # conditions: none
+    # regenerate!
+    # score is is the log-density, and does not overwrite the value
+    t["x"] = 2.3
+    score, val = regenerate!(foo, (), AddressTrie("x"), none, t)
     @test score == logpdf(Normal(), 2.3, 0, 1)
     @test val == 2.3
-    @test mode(t, "x") == Gen.constrain
-end
+    @test t["x"] == val
 
-@testset "intervening on primitive generator invocation" begin
-    foo = @program () begin @g(normal(0, 1), "x") end
-    t = ProgramTrace()
-    intervene!(t, "x", 2.3)
-    score, val = @generate!(foo(), t)
+    # outputs: "x"
+    # conditions: none
+    # simulate!
+    # score is is the log-density, and overwrites the value
+    t["x"] = 2.3
+    score, val = simulate!(foo, (), AddressTrie("x"), none, t)
+    @test val != 2.3
+    @test t["x"] == val
+    @test score == logpdf(Normal(), val, 0, 1)
+
+    # outputs: none
+    # conditions: "x"
+    # regenerate! and simulate! have the same behavior in this case
+    # score is zero, and the value is taken from the trace
+    t["x"] = 2.3
+    score, val = regenerate!(foo, (), none, AddressTrie("x"), t)
     @test score == 0.
     @test val == 2.3
-    @test mode(t, "x") == Gen.intervene
-end
-
-@testset "intervening on probabilistic program invocation" begin
-    bar = @program () begin @g(normal(0, 1), "y") end
-    foo = @program () begin @g(bar(), "x") end
-    t = ProgramTrace()
-    # by default, interevne! will place an AtomicTrace at address "x", which will cause
-    # an error during generate! because the generator uses ProgramTraces.
-    set_subtrace!(t, "x", ProgramTrace())
-    intervene!(t, "x", "fixed")
-    score, val = @generate!(foo(), t)
+    @test t["x"] == val
+    score, val = simulate!(foo, (), none, AddressTrie("x"), t)
     @test score == 0.
-    @test val == "fixed"
-    @test mode(t, "x") == Gen.intervene
+    @test val == 2.3
+    @test t["x"] == val
 end
 
 @testset "tagging arbitrary expressions" begin
@@ -145,20 +169,23 @@ end
 
         (x, y)
     end
-    t = ProgramTrace()
+    t = DictTrace()
     
     # test that values are recorded
-    score, val = @generate!(foo(), t)
+    score, val = simulate!(foo, (), none, none, t)
     @test haskey(t, "x")
     @test haskey(t, "y")
     @test score == 0.
     @test val == (t["x"], t["y"])
     @test t["y"] == t["x"] + 1
 
-    # test intervention
-    intervene!(t, "x", 2.)
-    intervene!(t, "y", 3.)
-    score, val = @generate!(foo(), t)
+    # test conditioning on arbitrary expression
+    t["x"] = 2.
+    t["y"] = 3.
+    conditions = AddressTrie()
+    push!(conditions, "x")
+    push!(conditions, "y")
+    score, val = simulate!(foo, (), none, conditions, t)
     @test t["x"] == 2.
     @test t["y"] == 3.
     @test score == 0.
@@ -171,18 +198,17 @@ end
 
 @testset "proposing from atomic trace" begin
     t = AtomicTrace(Float64)
-    propose!(t, (), Float64)
-    score, val = @generate!(normal(0, 1), t)
+    score, val = simulate!(normal, (0, 1), AddressTrie(()), none, t)
     @test score == logpdf(normal, val, 0, 1)
+    @test val == t[()]
 end
 
 @testset "proposing from program trace" begin
     foo = @program () begin @g(normal(0, 1), "x") end
-    t = ProgramTrace()
-    propose!(t, "x", Float64)
-    score, val = @generate!(foo(), t)
+    t = DictTrace()
+    score, val = simulate!(foo, (), AddressTrie("x"), none, t)
     @test score == logpdf(Normal(), val, 0, 1)
-    @test mode(t, "x") == Gen.propose
+    @test val == t["x"]
 end
 
 @testset "different syntaxes for retrieving value from a trace" begin
@@ -192,17 +218,14 @@ end
         y = @g(normal(0, 1), "y")
     end
 
-    t = ProgramTrace()
-    score, val = @generate!(foo(), t)
+    t = DictTrace()
+    score, val = simulate!(foo, (), none, none, t)
 
     # test a top-level address
-    @test t[("y",)] == value(t, "y")
-    @test t["y"] == value(t, "y")
-    @test value(t, "y") == value(t, ("y",))
+    @test t[("y",)] == t["y"]
 
     # test a hierarchical address
-    @test t[("bar", "x")] == value(t, ("bar", "x"))
-    @test t["bar", "x"] == value(t, ("bar", "x"))
+    @test t[("bar", "x")] == get_subtrace(t, "bar")["x"]
 end
 
 @testset "haskey" begin
@@ -211,83 +234,41 @@ end
     # NOTE: haskey returns false even if there is a subtrace at that address
     # haskey indicates whether an atomic value is present at an address
     foo = @program () begin @g(normal(0, 1), "x") end
-    t = ProgramTrace()
+    t = DictTrace()
     @test !haskey(t, "x")
     set_subtrace!(t, "x", AtomicTrace(Float64))
     @test !haskey(t, "x")
-    constrain!(t, "x", 1.2)
+    t["x"] = 1.2
     @test haskey(t, "x")
 
     # atomic trace
     t = AtomicTrace(Float64)
     @test !haskey(t, ())
-    constrain!(t, (), 1.2)
+    t[()] = 1.2
     @test haskey(t, ())
 end
-
-
 
 @testset "delete!" begin
 
     foo = @program () begin @g(normal(0, 1), "x") end
 
-    # deleting a subtrace from a program trace
-    t = ProgramTrace()
-    @generate!(foo(), t)
+    # deleting a value a program trace
+    t = DictTrace()
+    simulate!(foo, (), none, none, t)
     delete!(t, "x")
     @test !haskey(t, "x")
 
-    # deleting the value from an atomic trace
-    t = AtomicTrace(Float64)
-    @generate!(normal(0, 1), t)
+    # deleing the output value from a program trace
     @test haskey(t, ())
     delete!(t, ())
     @test !haskey(t, ())
-end
 
-
-@testset "release!" begin
-
-    foo = @program () begin @g(normal(0, 1), "x") end
-    t = ProgramTrace()
-
-    # releasing a constraint
-    # the subtrace remains, but it is no longer constrained
-    # what happens to the value is undefined (its up to the trace type)
-    constrain!(t, "x", 1.1)
-    score, _ = @generate!(foo(), t)
-    @test value(t, "x") == 1.1
-    @test score != 0.
-    release!(t, "x")
-    @test haskey(t, "x")
-    score, _ = @generate!(foo(), t)
-    @test score == 0.
-    @test value(t, "x") != 1.1
-    @test mode(t, "x") == Gen.record
-    
-    # releasing an intervention
-    # the subtrace remains, but it is no longer constrained
-    # what happens to the value is undefined (its up to the trace type)
-    intervene!(t, "x", 1.1)
-    @generate!(foo(), t)
-    @test value(t, "x") == 1.1
-    release!(t, "x")
-    @test haskey(t, "x")
-    @generate!(foo(), t)
-    @test value(t, "x") != 1.1
-    @test mode(t, "x") == Gen.record
-
-    # releasing a proposal
-    # the subtrace remains, but it is no longer constrained
-    # what happens to the value is undefined (its up to the trace type
-    propose!(t, "x", Float64)
-    score, _ = @generate!(foo(), t)
-    @test score != 0.
-    release!(t, "x")
-    @test haskey(t, "x")
-    score, _ = @generate!(foo(), t)
-    @test score == 0.
-    @test mode(t, "x") == Gen.record
+    # deleting the value from an atomic trace
+    t = AtomicTrace(Float64)
+    simulate!(normal, (0, 1), none, none, t)
+    @test haskey(t, ())
+    delete!(t, ())
+    @test !haskey(t, ())
 end
 
 @testset "higher order probabilistic program" begin
@@ -300,23 +281,29 @@ end
             @g(normal(mu, std), "x")
         end)
     end
-    t = ProgramTrace()
+    t = DictTrace()
     for addr in ["foo", 1, 2, 3]
-        set_subtrace!(t, addr, ProgramTrace())
+        set_subtrace!(t, addr, DictTrace())
     end
-    constrain!(t, ("foo", "mu"), 4.)
-    constrain!(t, ("foo", "std"), 1.)
-    constrain!(t, (1, "x"), 4.5)
-    constrain!(t, (2, "x"), 4.3)
-    constrain!(t, (3, "x"), 4.2)
+    t[("foo", "mu")] = 4.
+    t[("foo", "std")] = 1.
+    t[(1, "x")] = 4.5
+    t[(2, "x")] = 4.3
+    t[(3, "x")] = 4.2
+    outputs = AddressTrie(
+        ("foo", "mu"),
+        ("foo", "std"),
+        (1, "x"),
+        (2, "x"),
+        (3, "x"))
 
-    (score, value) = generate!((@program () begin
+    (score, value) = regenerate!((@program () begin
         sampler = @g(foo(), "foo")
         x1 = @g(sampler(), 1)
         x2 = @g(sampler(), 2)
         x3 = @g(sampler(), 3)
         (x1, x2, x3)
-    end), (), t)
+    end), (), outputs, none, t)
     @test value == (4.5, 4.3, 4.2)
     expected_score = 0.
     expected_score += logpdf(Normal(), 4., 0., 10.)
@@ -341,32 +328,32 @@ end
             end), "wetgrass")
     end
 
-    # the score is the sum of constrained scores
-    t = ProgramTrace()
-    constrain!(t, "cloudy", true)
-    constrain!(t, "sprinkler", true)
-    constrain!(t, "rain", true)
-    constrain!(t, "wetgrass", true)
-    score, _ = @generate!(model(), t)
+    # the score for regenerate! is the sum of output scores
+    t = DictTrace()
+    t["cloudy"] = true
+    t["sprinkler"] = true
+    t["rain"] = true
+    t["wetgrass"] = true
+    score, _ = regenerate!(model, (), AddressTrie("cloudy", "sprinkler", "rain", "wetgrass"),
+                           none, t)
     expected_score = log(0.3) + log(0.1) + log(0.8) + log(0.99)
     @test isapprox(score, expected_score)
 
-    # an unconstrained choice is not scored
-    t = ProgramTrace()
-    constrain!(t, "sprinkler", true)
-    constrain!(t, "rain", true)
-    constrain!(t, "wetgrass", true)
-    score, _ = @generate!(model(), t)
+    # an address that is not in the output set is not scored
+    t = DictTrace()
+    t["sprinkler"] = true
+    t["rain"] = true
+    t["wetgrass"] = true
+    score, _ = regenerate!(model, (), AddressTrie("sprinkler", "rain", "wetgrass"), none, t)
     sprinkler_score = t["cloudy"] ? log(0.1) : log(0.4)
     rain_score = t["cloudy"] ? log(0.8) : log(0.2)
     wetgrass_score = log(0.99)
     expected_score = sprinkler_score + rain_score + wetgrass_score
     @test isapprox(score, expected_score)
 
-    # a proposed choice is scored
-    t = ProgramTrace()
-    propose!(t, "sprinkler", Bool)
-    score, _ = @generate!(model(), t)
+    # the score for simulate! is the sum of the output scores
+    t = DictTrace()
+    score, _ = simulate!(model, (), AddressTrie("sprinkler"), none, t)
     expected_score = if t["cloudy"]
         t["sprinkler"] ? log(0.1) : log(0.9)
     else
@@ -378,84 +365,19 @@ end
     toplevel = @program () begin
         @g(model(), "sub")
     end
-    t = ProgramTrace()
-    constrain!(t, "cloudy", true)
-    constrain!(t, "sprinkler", true)
-    constrain!(t, "rain", true)
-    constrain!(t, "wetgrass", true)
-    toplevel_trace = ProgramTrace()
+    t = DictTrace()
+    outputs = AddressTrie()
+    for addr in ["cloudy", "sprinkler", "rain", "wetgrass"]
+        t[addr] = true
+        push!(outputs, ("sub", addr))
+    end
+    toplevel_trace = DictTrace()
     set_subtrace!(toplevel_trace, "sub", t)
-    score, _ = @generate!(toplevel(), toplevel_trace)
+    score, _ = regenerate!(toplevel, (), outputs, none, toplevel_trace)
     expected_score = log(0.3) + log(0.1) + log(0.8) + log(0.99)
     @test isapprox(score, expected_score)
 end
 
-@testset "aliasing" begin
-
-    sub = @program () begin
-
-        # a generator invocation
-        a = @g(normal(0, 1), "a")
-
-        # an expression
-        b = @e(a + 1, "b")
-    end
-
-    foo = @program () begin
-        # 2 -> 1/a
-        # 3 -> 1/b
-        @alias(2, (1, "a"))
-        @alias(3, (1, "b"))
-        x = @g(sub(), 1)
-    end
-
-    # retrieve recorded value at alias
-    t = ProgramTrace()
-    @generate!(foo(), t)
-    @test haskey(t, (1, "a"))
-    @test haskey(t, (1, "b"))
-    @test haskey(t, 2)
-    @test haskey(t, 3)
-    @test t[1, "a"] == t[2]
-    @test t[1, "b"] == t[3]
-    
-    # constrain an alias
-    t = ProgramTrace()
-    @generate!(foo(), t)
-    constrain!(t, 2, 2.2)
-    @test t[2] == 2.2
-    # NOTE: until we have run generate! again, the alias is just a separate subtrace
-    @test t[1, "a"] != t[2]
-    score, _ = @generate!(foo(), t)
-    @test t[2] == 2.2
-    @test t[1, "a"] == t[2]
-    @test score == logpdf(normal, 2.2, 0, 1)
-
-    # intervene on an alias
-    t = ProgramTrace()
-    @generate!(foo(), t)
-    intervene!(t, 2, 2.2)
-    intervene!(t, 3, 3.3)
-    @test t[2] == 2.2
-    @test t[3] == 3.3
-    # NOTE: until we have run generate! again, the alias is just a separate subtrace
-    @test t[1, "a"] != t[2]
-    @test t[1, "b"] != t[3]
-    score, _ = @generate!(foo(), t)
-    @test t[2] == 2.2
-    @test t[1, "a"] == t[2]
-    @test t[3] == 3.3
-    @test t[1, "b"] == t[3]
-    @test score == 0.
-
-    # propose an alias
-    t = ProgramTrace()
-    propose!(t, 2, Float64)
-    score, _ = @generate!(foo(), t)
-    @test t[1, "a"] == t[2]
-    @test score == logpdf(normal, t[2], 0, 1)
-
-end
 
 @testset "autodiff on trace score" begin
     
@@ -467,19 +389,22 @@ end
         @g(normal(mu, exp(log_std)), "x")
     end
 
-    t = ProgramTrace()
+    trace = DictTrace()
+	tape1 = Tape()
     x = 2.1
-    mu = 0.
-    std = 1.
-    constrain!(t, "x", x)
-    parametrize!(t, "mu", mu)
-    parametrize!(t, "logstd", log(std))
-    @generate!(foo(), t)
+	trace["x"] = x
+	trace["mu"] = GenScalar(0., tape1)
+	trace["logstd"] = GenScalar(0., tape1)
+	conditions = AddressTrie()
+	push!(conditions, "mu")
+	push!(conditions, "logstd")
+    (score, _) = regenerate!(foo, (), AddressTrie("x"), conditions, trace)
+	backprop(score)
 
-    tape = Tape()
-    gen_mu = makeGenValue(mu, tape)
-    gen_std = makeGenValue(std, tape)
-    backprop(logpdf(normal, x, gen_mu, gen_std))
-    @test isapprox(partial(t["mu"]), partial(gen_mu))
-    @test isapprox(partial(t["logstd"]), partial(gen_std))
+    tape2 = Tape()
+	mu = GenScalar(0., tape2)
+	logstd = GenScalar(0., tape2)
+    backprop(logpdf(normal, x, mu, exp(logstd)))
+    @test isapprox(partial(trace["mu"]), partial(mu))
+    @test isapprox(partial(trace["logstd"]), partial(logstd))
 end
