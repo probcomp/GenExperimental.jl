@@ -7,7 +7,6 @@ struct NestedInferenceGenerator{T} <: Generator{T}
     q::Generator
     
     # mapping from p_address to q_address
-    # NOTE: this is different from before
     mapping::Dict
 end
 

@@ -62,7 +62,6 @@ function Base.delete!(t::DictTrace, addr::Tuple)
 
         # NOTE: Does not remove a subtrace from the trace, even if the address is a single-element address.
         # For a single-element address, it forwards the delete request to the subtrace, with address ()
-        # It is not possible to delete a subtrace.
         subtrace = t.subtraces[addr_first]
         delete!(subtrace, addr[2:end])
     end
