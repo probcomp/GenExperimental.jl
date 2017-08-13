@@ -9,7 +9,7 @@ Concerete subtypes should implement the following methods:
 
     forward(scheme::StateSpaceSMCScheme{H}, prev_state::H, t::Integer)
 
-    forward(scheme::StateSpaceSMCScheme{H}, prev_state::H, state::H, t::Integer)
+    forward_score(scheme::StateSpaceSMCScheme{H}, prev_state::H, state::H, t::Integer)
 
     get_num_steps(scheme::StateSpaceSMCScheme{H})
 
