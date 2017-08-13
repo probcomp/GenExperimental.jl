@@ -18,7 +18,7 @@ module Gen
     include("dag.jl")
 
     # probabilistic program trace and generator types
-    include("hierarchical_trace.jl")
+    include("dict_trace.jl")
     include("probabilistic_program.jl")
 
     # custom features for jupyter notebooks
