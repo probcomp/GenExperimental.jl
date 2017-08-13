@@ -27,7 +27,6 @@ module Gen
     include("aide.jl")
 
     # inference algorithms
-    #include("sir.jl")
     include("inference/state_space_smc.jl")
 
 end
