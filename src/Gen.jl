@@ -13,6 +13,10 @@ module Gen
     include("nested.jl")
     include("replicated.jl")
 
+    # networks of generators with dependency tracking
+    # (incomplete feature)
+    include("dag.jl")
+
     # probabilistic program trace and generator types
     include("hierarchical_trace.jl")
     include("probabilistic_program.jl")
