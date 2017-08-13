@@ -11,7 +11,4 @@ include("replicated.jl")
 include("aide.jl")
 include("inference/state_space_smc.jl")
 
-#include("sir.jl")
-#include("generator.jl")
-
 nothing
