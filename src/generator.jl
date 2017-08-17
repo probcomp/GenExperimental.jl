@@ -104,19 +104,11 @@ A trace that can contains a single value, of type `T`, at address `()`.
 """
 mutable struct AtomicTrace{T} <: Trace
     value::Nullable{T}
+    AtomicTrace(value::T) where {T} = new{T}(Nullable{T}(value))
+    AtomicTrace(::Type{T}) where {T} = new{T}(Nullable{T}())
 end
 
 value_type(::AtomicTrace{T}) where {T} = T
-
-"""
-Construct an atomic trace with a missing value
-"""
-AtomicTrace(::Type{T}) where {T} = AtomicTrace(Nullable{T}())
-
-"""
-Construct an atomic trace with a value
-"""
-AtomicTrace(value) = AtomicTrace(Nullable(value))
 
 """
 Get the value from an atomic trace, or an error if there is none
