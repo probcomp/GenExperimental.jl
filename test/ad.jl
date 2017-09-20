@@ -68,7 +68,7 @@ function adtest(f, a_val, b_val)
         tape = Tape()
         a = makeGenValue(a_val, tape)
         b = makeGenValue(b_val, tape)
-        f_i = (x, y) -> f(x, y)[i]
+        f_i = (x, y) -> f(x, y)[i] * 2. # the 2. is so that the result adjoint is not always 1
         result_i = f_i(a, b)
         backprop(result_i)
         @test isapprox(partial(a), finite_difference((x) -> f_i(x, b_val), a_val))
@@ -90,7 +90,7 @@ function adtest(f, a_val)
     for i=1:length(result)
         tape = Tape()
         a = makeGenValue(a_val, tape)
-        f_i = (x) -> f(x)[i]
+        f_i = (x) -> f(x)[i] * 2. # the 2. is so that the result adjoint is not always 1
         result_i = f_i(a)
         backprop(result_i)
         @test isapprox(partial(a), finite_difference(f_i, a_val))
@@ -339,6 +339,27 @@ end
         adtest(sum, a_vector)
         adtest(sum, a_row_vector)
         adtest(sum, a_matrix)
+    end
+
+    @testset "logsumexp" begin
+
+        # test when argument is a GenColumnVector
+        adtest(logsumexp, a_vector)
+
+        # test when the argument is a mixed Vector{Any}
+        tape = Tape()
+        a = [GenScalar(1.0, tape), 2.5, GenScalar(2.3, tape)]
+        result = logsumexp(a)
+        @test logsumexp(map(concrete, a)) == concrete(result)
+
+        tape = Tape()
+        a = [GenScalar(1.0, tape), 2.5, GenScalar(2.3, tape)]
+        f = (x) -> logsumexp(x) * 2. # the 2. is so that the result adjoint is not always 1
+        result = f(a)
+        backprop(result)
+        expected = finite_difference(f, map(concrete, a))
+        @test isapprox(partial(a[1]), expected[1])
+        @test isapprox(partial(a[3]), expected[3])
     end
 
 end
