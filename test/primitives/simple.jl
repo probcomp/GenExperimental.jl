@@ -5,6 +5,16 @@ import Distributions
     @test isapprox(logpdf(Flip(), false, 0.1), log(0.9))
 end
 
+@testset "beta" begin
+
+    # test against Distributions.Beta since we re-implement the density
+    # function ourselves for purposes of AD
+    x = 0.1
+    a = 0.2
+    b = 0.3
+    @test isapprox(logpdf(Beta(), x, a, b), Distributions.logpdf(Distributions.Beta(a, b), x))
+end
+
 @testset "gamma" begin
 
     # test against Distributions.Gamma since we re-implement the density

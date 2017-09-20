@@ -18,6 +18,30 @@ register_primitive(:flip, Flip)
 
 
 """
+Beta generator, with singleton `beta`.
+
+    generate!(beta, (a, b), trace::AtomicTrace{Float64})
+
+    beta(a, b)
+
+Score is differentiable with respect to `a` and `b` and output
+
+NOTE: `beta` conflicts with `Base.Math.beta`. Use `Gen.beta`
+"""
+struct Beta <: AssessableAtomicGenerator{Float64} end
+
+function Gen.logpdf{M,N,O}(::Beta, x::M, a::N, b::O)
+    (a - 1) * log(x) + (b - 1) * log(1 - x) - lgamma(a) - lgamma(b) + lgamma(a + b)
+end
+
+function Base.rand{M,N}(::Beta, a::M, b::N)
+    rand(Distributions.Beta(a, b))
+end
+
+register_primitive(:beta, Beta)
+
+
+"""
 Gamma generator, with singleton `gamma`.
 
     generate!(gamma, (k, S), trace::AtomicTrace{Float64})
