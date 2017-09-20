@@ -800,3 +800,45 @@ end
 # TODO handle slice indexing. This might be handled currently but inefficiently by Julia's
 # AbstractArray indexing facilities, which will probably produce an array of GenScalars
 
+
+# ---- logsumexp ----
+@generate_unary_node_type(LogSumExp)
+
+# generate operator for logsumexp of a GenColumnVector
+@generate_gen_unary_operator(logsumexp, LogSumExp, GenColumnVector)
+
+# operator for logsumexp of a general (possibly mixed) array
+function logsumexp(arr::Vector{Any})
+    tape::Nullable{Tape} = Nullable()
+    for el in arr
+        if isa(el, GenScalar)
+            if isnull(tape)
+                tape = el.tape
+            else
+                if get(tape) != el.tape
+                    error("Tapes do not match")
+                end
+            end
+        end
+    end
+    concrete_arr = map(concrete, arr)
+    min_arr = maximum(concrete_arr)
+    if isnull(tape)
+        min_arr + log(sum(exp.(concrete_arr - min_arr)))
+    else
+        makeGenValue(min_arr + log(sum(exp.(concrete_arr - min_arr))), get(tape), LogSumExp(arr))
+    end
+end
+
+function propagate(op::LogSumExp{U}, datum::ConcreteScalar, adj::ConcreteScalar) where {U <: GenColumnVector}
+    op.arg.adj += exp.(op.arg.datum - datum) * adj
+end
+
+function propagate(op::LogSumExp{Vector{Any}}, datum::ConcreteScalar, adj::ConcreteScalar)
+    # operand is a vector where only some elements are GenScalars, and others are not
+    for i=1:length(op.arg)
+        if isa(op.arg[i], GenScalar)
+            op.arg[i].adj += exp(op.arg[i].datum - datum) * adj
+        end
+    end
+end
