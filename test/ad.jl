@@ -93,7 +93,7 @@ function adtest(f, a_val)
         f_i = (x) -> f(x)[i] * 2. # the 2. is so that the result adjoint is not always 1
         result_i = f_i(a)
         backprop(result_i)
-        @test isapprox(partial(a), finite_difference(f_i, a_val))
+        @test isapprox(partial(a), finite_difference(f_i, a_val), atol=1e-16)
     end
 end
 
@@ -105,7 +105,7 @@ end
     b_vector = [8.3453, 0.9913]
     a_row_vector = a_vector'
     b_row_vector = b_vector'
-    a_matrix = [1.4123 4.3452 40.1; 10.123 0.9314 0.11] # 2 rows, 3 columns
+    a_matrix = [1.4123 2.3452 2.1; 2.123 0.9314 0.11] # 2 rows, 3 columns
     b_matrix = [4.13 33.123 5.32431; 4.314 5.1341 8.09] # 2 rows, 3 columns
 
     @testset "add" begin
@@ -339,6 +339,13 @@ end
         adtest((a) -> ewise(lgamma, a), a_vector)
         adtest((a) -> ewise(lgamma, a), a_row_vector)
         adtest((a) -> ewise(lgamma, a), a_matrix)
+    end
+
+    @testset "sigmoid" begin
+        adtest(sigmoid, a_scalar)
+        adtest((a) -> ewise(sigmoid, a), a_vector)
+        adtest((a) -> ewise(sigmoid, a), a_row_vector)
+        adtest((a) -> ewise(sigmoid, a), a_matrix)
     end
 
     @testset "sum" begin

@@ -860,3 +860,31 @@ import Base.log1p
 function propagate(op::Log1Plus, datum::T, adj::U) where {T,U}
     op.arg.adj += adj ./ (op.arg.datum + 1)
 end
+
+
+# ---- sigmoid ----
+
+function sigmoid(val::ConcreteScalar)
+    if val >= 0.
+        z = exp(-val)
+        1. / (1. + z)
+    else
+        z = exp(val)
+        z / (1. + z)
+    end
+    #ewise(/, 1.0, (1.0 + ewise(exp,-val)))
+end
+
+function sigmoid(val::Union{ConcreteColumnVector, ConcreteRowVector, ConcreteMatrix})
+    broadcast(ewise, val)
+end
+
+@generate_unary_node_type(Sigmoid)
+@generate_gen_unary_operator(sigmoid, Sigmoid, GenScalar)
+@generate_gen_unary_broadcast(sigmoid, Sigmoid, Union{GenVector, GenMatrix})
+
+function propagate(op::Sigmoid, datum::T, adj::U) where {T,U}
+    op.arg.adj += datum .* (1. - datum) .* adj
+end
+
+export sigmoid
