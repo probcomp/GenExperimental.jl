@@ -111,6 +111,31 @@ end
 register_primitive(:normal, Normal)
 
 
+
+"""
+Univariate Cauchy generator, with singleton `cauchy`.
+
+    generate!(cauchy, (loc, scale), trace::AtomicTrace{Float64})
+
+    cauchy(loc, scale)
+
+Score is differentiable with respect to `loc` and `scale` and output
+"""
+struct Cauchy <: AssessableAtomicGenerator{Float64} end
+
+const LOG_PI = log(Float64(pi))
+function Gen.logpdf{M,N,O}(::Cauchy, x::M, loc::N, scale::O)
+    -LOG_PI - log(scale) - log1p((x - loc) * (x - loc) / (scale * scale))
+end
+
+function Base.rand{M,N}(::Cauchy, loc::M, scale::N)
+    rand(Distributions.Cauchy(concrete(loc), concrete(scale)))
+end
+
+register_primitive(:cauchy, Cauchy)
+
+
+
 """
 Multivariate normal generator, with singleton `mvnormal`.
 

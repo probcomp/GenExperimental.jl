@@ -327,6 +327,13 @@ end
         adtest((a) -> ewise(log, a), a_matrix)
     end
 
+    @testset "log1p" begin
+        adtest(log1p, a_scalar)
+        adtest((a) -> ewise(log1p, a), a_vector)
+        adtest((a) -> ewise(log1p, a), a_row_vector)
+        adtest((a) -> ewise(log1p, a), a_matrix)
+    end
+
     @testset "lgamma" begin
         adtest(lgamma, a_scalar)
         adtest((a) -> ewise(lgamma, a), a_vector)
