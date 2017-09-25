@@ -17,19 +17,24 @@ The user implements a custom objective type `T` which must implement the followi
 
 The method must return a tuple `(f, g)` where `f` is an unbiased estimate of the objective function for the parameters in `params` and where `g` is an unbiased estimate of the gradient of the objective with respect to these parameters.
 """
-struct Optimizer{T}
+struct ADAMOptimizer{T}
     objective::T
     adam_params::ADAMParams
     minibatch_size::Int
     verbose::Bool
 end
 
-function optimize(opt::Optimizer, params::Vector{Float64}, num_steps::ADAMParams)
+struct ADAMResult
+    params::Vector{Float64}
+    m::Vector{Float64}
+    v::Vector{Float64}
+    history::Vector{Float64}
+end
 
-    # ADAM state
-    num_params = length(params)
-    adam_m = zeros(num_params)
-    adam_v = zeros(num_params)
+function fgrad_estimate end
+
+function optimize(opt::ADAMOptimizer, params::Vector{Float64},
+                  m::Vector{Float64}, v::Vector{Float64}, num_steps::Integer)
     history = Vector{Float64}(num_steps)
     for t=1:num_steps
 
@@ -39,7 +44,7 @@ function optimize(opt::Optimizer, params::Vector{Float64}, num_steps::ADAMParams
         # unbiased estimate of gradient
         grads = map((r) -> r[2], results)
         grad = (1. / opt.minibatch_size) * sum(grads) 
-        params, adam_m, adam_v = adam_update(opt.adam_params, t, params, grad, adam_m, adam_v)
+        params, m, v = adam_update(opt.adam_params, t, params, grad, m, v)
 
         # print unbiased estimate of objective 
         scores = map((r) -> r[1], results)
@@ -49,7 +54,15 @@ function optimize(opt::Optimizer, params::Vector{Float64}, num_steps::ADAMParams
             println("iter: $t, objective est: $objective_est")
         end
     end
-    return params, history
+    return ADAMResult(params, m, v, history)
+end
+
+function optimize(opt::ADAMOptimizer, params::Vector{Float64}, num_steps::Integer)
+    # initialize ADAM state
+    num_params = length(params)
+    m = zeros(num_params)
+    v = zeros(num_params)
+    return optimize(opt, params, m, v, num_steps)
 end
 
 function adam_update(adam_params::ADAMParams, t::Integer,
@@ -62,3 +75,8 @@ function adam_update(adam_params::ADAMParams, t::Integer,
     params += adam_params.alpha * mhat ./ (sqrt.(vhat + adam_params.epsilon))
     return (params, m, v)
 end
+
+export ADAMParams
+export ADAMOptimizer
+export optimize
+export fgrad_estimate
