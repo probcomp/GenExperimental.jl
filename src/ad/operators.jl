@@ -18,6 +18,9 @@ end
 macro generate_gen_binary_operator(op, node_type, a_type, b_type)
     eval(quote
             function ($op)(l::$a_type, r::$b_type)
+                if l.tape != r.tape
+                    error("Tapes do not match")
+                end
                 makeGenValue(($op)(concrete(l), concrete(r)), l.tape, ($node_type)(l, r))
             end
         end)
@@ -44,6 +47,9 @@ end
 macro generate_gen_binary_broadcast(op, node_type, a_type, b_type)
     eval(quote
             function ewise(::typeof($op), l::$a_type, r::$b_type)
+                if l.tape != r.tape
+                    error("Tapes do not match")
+                end
                 makeGenValue(broadcast($op, concrete(l), concrete(r)), l.tape, ($node_type)(l, r))
             end
         end)
