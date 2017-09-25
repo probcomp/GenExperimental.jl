@@ -18,7 +18,8 @@ empty_trace(g::ReplicatedGenerator) = empty_trace(g.inner_generator)
 
 function simulate!(g::ReplicatedGenerator{T}, args::Tuple, outputs, conditions, trace::T) where {T}
     # run one simulate! and num-1 regenerate!s
-    scores = Vector{Float64}(g.num)
+    # each score may be either a GenValue, or a Float64
+    scores = Vector{Any}(g.num)
     (scores[1], retval) = simulate!(g.inner_generator, args, outputs, conditions, trace)
     for i=2:g.num
         # NOTE: opportunity for performance optimization?
@@ -39,7 +40,8 @@ end
 
 function regenerate!(g::ReplicatedGenerator{T}, args::Tuple, outputs, conditions, trace::T) where {T}
     # run num regenerate!s
-    scores = Vector{Float64}(g.num)
+    # each score may be either a GenValue, or a Float64
+    scores = Vector{Any}(g.num)
     local retval
     for i=1:g.num
         (scores[i], retval) = regenerate!(g.inner_generator, args, outputs, conditions, trace)
