@@ -46,6 +46,16 @@ end
     @test isapprox(logpdf(Normal(), x, mu, std), Distributions.logpdf(Distributions.Normal(mu, std), x))
 end
 
+@testset "cauchy" begin
+
+    # test against Distributions.Cauchy since we re-implement the density
+    # function ourselves for purposes of AD
+    x = 0.1
+    loc = 0.2
+    scale = 0.3
+    @test isapprox(logpdf(Cauchy(), x, loc, scale), Distributions.logpdf(Distributions.Cauchy(loc, scale), x))
+end
+
 @testset "mvnormal" begin
 
     # NOTE: as long as regenerate is implemented using

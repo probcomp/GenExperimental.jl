@@ -842,3 +842,15 @@ function propagate(op::LogSumExp{Vector{Any}}, datum::ConcreteScalar, adj::Concr
         end
     end
 end
+
+# ---- log1p ----
+
+import Base.log1p
+@generate_unary_node_type(Log1Plus)
+
+@generate_gen_unary_operator(log1p, Log1Plus, GenScalar)
+@generate_gen_unary_broadcast(log1p, Log1Plus, Union{GenVector, GenMatrix})
+
+function propagate(op::Log1Plus, datum::T, adj::U) where {T,U}
+    op.arg.adj += adj ./ (op.arg.datum + 1)
+end
