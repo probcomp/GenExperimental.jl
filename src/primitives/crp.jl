@@ -2,7 +2,6 @@
 # Chinese restaurant process (CRP) #
 ####################################
 
-import DataStructures.Queue
 import DataStructures.OrderedDict
 
 """
@@ -147,6 +146,15 @@ function Base.setindex!(t::CRPTrace{T}, value::Int, addr::Tuple{T}) where {T}
     t.assignments[addr[1]] = table
 end
 
+Base.haskey(t::CRPTrace{A}, addr_element::A) where {A} = haskey(t, (addr_element,))
+
+Base.delete!(t::CRPTrace{A}, addr_element::A) where {A} = delete!(t, (addr_element,))
+
+Base.getindex(t::CRPTrace{A}, addr_element::A) where {A} = t[(addr_element,)]
+
+Base.setindex!(t::CRPTrace{A}, value::Int, addr_element::A) where {A} = begin t[(addr_element,)] = value end
+
+
 new_table(t::CRPTrace) = new_table(t.state)
 
 struct CRPGenerator{T} <: Generator{CRPTrace{T}} end
@@ -159,9 +167,7 @@ function empty_trace(::CRPGenerator{T}) where {T}
     return CRPTrace(T)
 end
 
-function regenerate!(::CRPGenerator{T}, args::Tuple{Any,Any}, outputs, conditions, trace::CRPTrace{T}) where {T}
-    (addresses, alpha) = args
-
+function check_trace_addresses(trace::CRPTrace, outputs, conditions, addresses)
     # no assignments other than for outputs and conditions may be in the trace
     # every assignment in the trace must be registered in the argument 'addresses'
     for addr in keys(trace.assignments)
@@ -172,6 +178,11 @@ function regenerate!(::CRPGenerator{T}, args::Tuple{Any,Any}, outputs, condition
             error("address $addr was in trace but not in argument addresses")
         end
     end
+end
+
+function regenerate!(::CRPGenerator{T}, args::Tuple{Any,Any}, outputs, conditions, trace::CRPTrace{T}) where {T}
+    (addresses, alpha) = args
+    check_trace_addresses(trace, outputs, conditions, addresses)
 
     # check that output and condition addresses are in the argument 'addresses'
     for addr in (outputs..., conditions...)
@@ -199,17 +210,7 @@ end
 
 function simulate!(::CRPGenerator{T}, args::Tuple{Any,Any}, outputs, conditions, trace::CRPTrace{T}) where {T}
     (addresses, alpha) = args
-
-    # no assignments other than for conditions may be in the trace
-    # every assignment in the trace must be registered in the argument 'addresses'
-    for addr in keys(trace.assignments)
-        if !(addr in conditions)
-            error("address $addr was in trace but not in outputs or conditions")
-        end
-        if !(addr in addresses)
-            error("address $addr was in trace but not in argument addresses")
-        end
-    end
+    check_trace_addresses(trace, outputs, conditions, addresses)
 
     # check that output and condition addresses are in the argument 'addresses'
     for addr in (outputs..., conditions...)

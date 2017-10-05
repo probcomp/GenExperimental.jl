@@ -106,6 +106,14 @@ function Base.setindex!(t::DictTrace, value, addr::Tuple)
     end
 end
 
+Base.haskey(t::DictTrace, addr_element) = haskey(t, (addr_element,))
+
+Base.delete!(t::DictTrace, addr_element) = delete!(t, (addr_element,))
+
+Base.getindex(t::DictTrace, addr_element) = t[(addr_element,)]
+
+Base.setindex!(t::DictTrace, value, addr_element) = begin t[(addr_element,)] = value end
+
 
 """
 Check if a subtrace exists at a given address prefix.
