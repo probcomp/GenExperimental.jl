@@ -29,26 +29,6 @@ Set a value at in the trace at the given address.
 """
 abstract type Trace end
 
-"""
-Syntactic sugar for `Base.haskey` with a single-element address
-"""
-Base.haskey(t::Trace, addr_element) = haskey(t, (addr_element,))
-
-"""
-Syntactic sugar for `Base.delete!` with a single-element address
-"""
-Base.delete!(t::Trace, addr_element) = delete!(t, (addr_element,))
-
-"""
-Syntactic sugar for `Base.getindex` with a single-element address
-"""
-Base.getindex(t::Trace, addr_element) = t[(addr_element,)]
-
-"""
-Syntactic sugar for `Base.setindex!` with a single-element address
-"""
-Base.setindex!(t::Trace, value, addr_element) = begin t[(addr_element,)] = value end
-
 
 ###########################
 # Abstract generator type #
@@ -144,6 +124,14 @@ end
 function Base.setindex!(t::AtomicTrace{T}, value, addr::Tuple) where {T}
     error("Wrong type for value, got type $(typeof(value)), expected type $T")
 end
+
+Base.haskey(t::AtomicTrace, addr_element) = haskey(t, (addr_element,))
+
+Base.delete!(t::AtomicTrace, addr_element) = delete!(t, (addr_element,))
+
+Base.getindex(t::AtomicTrace, addr_element) = t[(addr_element,)]
+
+Base.setindex!(t::AtomicTrace{T}, value::T, addr_element) where {T} = begin t[(addr_element,)] = value end
 
 function Base.print(io::IO, trace::AtomicTrace)
     valstring = isnull(trace.value) ? "" : "$(get(trace.value))"
