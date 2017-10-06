@@ -54,13 +54,18 @@
 
         # simulate without any outputs or conditions 
         n = 10
-        (score, values) = simulate!(NIGNGenerator(Int), (1:n, params), AddressTrie(), AddressTrie(), trace)
+        (score, values) = simulate!(NIGNGenerator(Int), (1:n, params, true), AddressTrie(), AddressTrie(), trace)
         for i=1:n
             @test haskey(trace, i)
             @test trace[i] == values[i]
         end
         @test !haskey(trace, n+1)
         @test score == 0.
+
+        # test keys(trace)
+        for addr in keys(trace)
+            @test haskey(trace, addr)
+        end
 
         # regenerate with outputs and conditions
         # p(1.0, 3.4 | 2.2; params)
@@ -73,7 +78,7 @@
         trace[3] = t3
         outputs = AddressTrie(1, 3)
         conditions = AddressTrie(2)
-        (score, values) = regenerate!(NIGNGenerator(Int), ([1, 2, 3], params), outputs, conditions, trace)
+        (score, values) = regenerate!(NIGNGenerator(Int), ([1, 2, 3], params, true), outputs, conditions, trace)
         @test trace[1] == t1
         @test trace[2] == t2
         @test trace[3] == t3
@@ -91,7 +96,7 @@
         trace[2] = t2
         outputs = AddressTrie(1, 3)
         conditions = AddressTrie(2)
-        (score, values) = simulate!(NIGNGenerator(Int), ([1, 2, 3], params), outputs, conditions, trace)
+        (score, values) = simulate!(NIGNGenerator(Int), ([1, 2, 3], params, true), outputs, conditions, trace)
         @test trace[2] == t2
         @test values[1] == trace[1]
         @test values[2] == t2

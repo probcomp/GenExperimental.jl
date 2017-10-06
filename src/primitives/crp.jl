@@ -138,6 +138,10 @@ function Base.getindex(t::CRPTrace{T}, addr::Tuple{T}) where {T}
     t.assignments[addr[1]]
 end
 
+function Base.getindex(t::CRPTrace, addr::Tuple{})
+    return copy(t.assignments)
+end
+
 function Base.setindex!(t::CRPTrace{T}, value::Int, addr::Tuple{T}) where {T}
     if haskey(t.assignments, addr[1])
         delete!(t, addr)
@@ -156,6 +160,8 @@ Base.setindex!(t::CRPTrace{A}, value::Int, addr_element::A) where {A} = begin t[
 
 
 new_table(t::CRPTrace) = new_table(t.state)
+
+get_tables(t::CRPTrace) = get_tables(t.state)
 
 struct CRPGenerator{T} <: Generator{CRPTrace{T}} end
 
@@ -180,14 +186,23 @@ function check_trace_addresses(trace::CRPTrace, outputs, conditions, addresses)
     end
 end
 
-function regenerate!(::CRPGenerator{T}, args::Tuple{Any,Any}, outputs, conditions, trace::CRPTrace{T}) where {T}
-    (addresses, alpha) = args
-    check_trace_addresses(trace, outputs, conditions, addresses)
+function regenerate!(::CRPGenerator{T}, args::Tuple{Any,Any,Bool}, outputs, conditions, trace::CRPTrace{T}) where {T}
 
-    # check that output and condition addresses are in the argument 'addresses'
-    for addr in (outputs..., conditions...)
-        if !(length(addr) == 1 && addr[1] in addresses)
-            error("address $addr was in outputs or conditions but is not in argument addresses")
+    # addresses is the full address space. all outputs and conditions must be a
+    # subset of that address space.  the trace must also not contain any other
+    # addresses besides those in outputs and conditions.  these preconditions
+    # are only checked if safe=true
+    # the implementation is optimized for small outputs and large conditions.
+    (addresses, alpha, safe) = args
+
+    if safe
+        check_trace_addresses(trace, outputs, conditions, addresses)
+
+        # check that output and condition addresses are in the argument 'addresses'
+        for addr in (outputs..., conditions...)
+            if !(length(addr) == 1 && addr[1] in addresses)
+                error("address $addr was in outputs or conditions but is not in argument addresses")
+            end
         end
     end
     
@@ -208,14 +223,16 @@ function regenerate!(::CRPGenerator{T}, args::Tuple{Any,Any}, outputs, condition
     return (score_combined - score_condition_only, copy(trace.assignments))
 end
 
-function simulate!(::CRPGenerator{T}, args::Tuple{Any,Any}, outputs, conditions, trace::CRPTrace{T}) where {T}
-    (addresses, alpha) = args
-    check_trace_addresses(trace, outputs, conditions, addresses)
+function simulate!(::CRPGenerator{T}, args::Tuple{Any,Any,Bool}, outputs, conditions, trace::CRPTrace{T}) where {T}
+    (addresses, alpha, safe) = args
+    if safe
+        check_trace_addresses(trace, outputs, conditions, addresses)
 
-    # check that output and condition addresses are in the argument 'addresses'
-    for addr in (outputs..., conditions...)
-        if !(length(addr) == 1 && addr[1] in addresses)
-            error("address $addr was in outputs or conditions but is not in argument addresses")
+        # check that output and condition addresses are in the argument 'addresses'
+        for addr in (outputs..., conditions...)
+            if !(length(addr) == 1 && addr[1] in addresses)
+                error("address $addr was in outputs or conditions but is not in argument addresses")
+            end
         end
     end
 

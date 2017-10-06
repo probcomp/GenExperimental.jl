@@ -116,6 +116,9 @@ mutable struct NIGNTrace{A} <: Trace
     state::NIGNState
 end
 
+Base.keys(t::NIGNTrace) = keys(t.assignments)
+
+
 function NIGNTrace(::Type{A}) where {A}
     NIGNTrace(Dict{A,Float64}(), NIGNState())
 end
@@ -131,6 +134,10 @@ end
 
 function Base.getindex(t::NIGNTrace{A}, addr::Tuple{A}) where {A}
     t.assignments[addr[1]]
+end
+
+function Base.getindex(t::NIGNTrace, addr::Tuple{})
+    copy(t.assignments)
 end
 
 function Base.setindex!(t::NIGNTrace{A}, value::Float64, addr::Tuple{A}) where {A}
@@ -173,14 +180,22 @@ function check_trace_addresses(trace::NIGNTrace, outputs, conditions, addresses)
     end
 end
 
-function regenerate!(::NIGNGenerator{A}, args::Tuple{Any,NIGNParams}, outputs, conditions, trace::NIGNTrace{A}) where {A}
-    (addresses, params) = args
-    check_trace_addresses(trace, outputs, conditions, addresses)
+function regenerate!(::NIGNGenerator{A}, args::Tuple{Any,NIGNParams,Bool}, outputs, conditions, trace::NIGNTrace{A}) where {A}
+    # addresses is the full address space. all outputs and conditions must be a
+    # subset of that address space.  the trace must also not contain any other
+    # addresses besides those in outputs and conditions.  these preconditions
+    # are only checked if safe=true
+    # the implementation is optimized for small outputs and large conditions.
+    (addresses, params, safe) = args
 
-    # check that output and condition addresses are in the argument 'addresses'
-    for addr in (outputs..., conditions...)
-        if !(length(addr) == 1 && addr[1] in addresses)
-            error("address $addr was in outputs or conditions but is not in argument addresses")
+    if safe
+        check_trace_addresses(trace, outputs, conditions, addresses)
+
+        # check that output and condition addresses are in the argument 'addresses'
+        for addr in (outputs..., conditions...)
+            if !(length(addr) == 1 && addr[1] in addresses)
+                error("address $addr was in outputs or conditions but is not in argument addresses")
+            end
         end
     end
     
@@ -201,14 +216,16 @@ function regenerate!(::NIGNGenerator{A}, args::Tuple{Any,NIGNParams}, outputs, c
     return (score_combined - score_condition_only, copy(trace.assignments))
 end
 
-function simulate!(::NIGNGenerator{A}, args::Tuple{Any,NIGNParams}, outputs, conditions, trace::NIGNTrace{A}) where {A}
-    (addresses, params) = args
-    check_trace_addresses(trace, outputs, conditions, addresses)
+function simulate!(::NIGNGenerator{A}, args::Tuple{Any,NIGNParams,Bool}, outputs, conditions, trace::NIGNTrace{A}) where {A}
+    (addresses, params, safe) = args
+    if safe
+        check_trace_addresses(trace, outputs, conditions, addresses)
 
-    # check that output and condition addresses are in the argument 'addresses'
-    for addr in (outputs..., conditions...)
-        if !(length(addr) == 1 && addr[1] in addresses)
-            error("address $addr was in outputs or conditions but is not in argument addresses")
+        # check that output and condition addresses are in the argument 'addresses'
+        for addr in (outputs..., conditions...)
+            if !(length(addr) == 1 && addr[1] in addresses)
+                error("address $addr was in outputs or conditions but is not in argument addresses")
+            end
         end
     end
 

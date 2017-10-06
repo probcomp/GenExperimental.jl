@@ -81,7 +81,7 @@
 
         # simulate without any outputs or conditions 
         n = 10
-        (score, values) = simulate!(CRPGenerator(Int), (1:n, alpha), AddressTrie(), AddressTrie(), trace)
+        (score, values) = simulate!(CRPGenerator(Int), (1:n, alpha, true), AddressTrie(), AddressTrie(), trace)
         for i=1:n
             @test haskey(trace, i)
             @test trace[i] == values[i]
@@ -99,7 +99,7 @@
         trace[3] = t3
         outputs = AddressTrie(1, 3)
         conditions = AddressTrie(2)
-        (score, values) = regenerate!(CRPGenerator(Int), ([1, 2, 3], alpha), outputs, conditions, trace)
+        (score, values) = regenerate!(CRPGenerator(Int), ([1, 2, 3], alpha, true), outputs, conditions, trace)
         @test trace[1] == t1
         @test trace[2] == t2
         @test trace[3] == t3
@@ -114,30 +114,29 @@
         trace[2] = t2
         outputs = AddressTrie(1, 3)
         conditions = AddressTrie(2)
-        (score, values) = simulate!(CRPGenerator(Int), ([1, 2, 3], alpha), outputs, conditions, trace)
+        (score, values) = simulate!(CRPGenerator(Int), ([1, 2, 3], alpha, true), outputs, conditions, trace)
         @test trace[2] == t2
         @test values[1] == trace[1]
         @test values[2] == t2
         @test values[3] == trace[3]
         if (trace[1] == t2) && (trace[3] == t2)
             # 1 and 3 are in the same cluster as 2
-            expected = 1/(alpha + 1) * 2/(alpha + 2)
+            @test isapprox(score, log((1/(alpha + 1)) * (2/(alpha + 2))))
         elseif (trace[1] == t2) && (trace[3] != t2)
             # 1 is in the same cluster as 2, but 3 is in a different cluster
-            expected = 1/(alpha + 1) * alpha/(alpha + 2)
+            @test isapprox(score, log((1/(alpha + 1)) * (alpha/(alpha + 2))))
         elseif (trace[1] != t2) && (trace[3] == t2)
             # 1 is in a new cluster, and 3 is in the same cluster as 2
-            expected = alpha/(alpha + 1) * 1/(alpha + 1)
+            @test isapprox(score, log((alpha/(alpha + 1)) * (1/(alpha + 2))))
         elseif (trace[1] != t2) && (trace[3] != t2) && (trace[3] != trace[1])
             # 1 is in a new cluster, and 3 is in a different cluster
-            expected = alpha/(alpha + 1) * alpha/(alpha + 2)
+            @test isapprox(score, log((alpha/(alpha + 1)) * (alpha/(alpha + 2))))
         elseif (trace[1] != t2) && (trace[3] == trace[1])
             # 1 is in a new cluster, and 3 is in the same cluster as 1
-            expected = alpha/(alpha + 1) * 1/(alpha + 2)
+            @test isapprox(score, log((alpha/(alpha + 1)) * (1/(alpha + 2))))
         else
             error("unexpected state")
         end
-        @test isapprox(score, log(expected))
     end
 
 end
