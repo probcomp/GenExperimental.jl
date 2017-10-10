@@ -23,13 +23,7 @@ function simulate!(g::ReplicatedGenerator{T}, args::Tuple, outputs, conditions, 
     (scores[1], retval) = simulate!(g.inner_generator, args, outputs, conditions, trace)
     for i=2:g.num
         # NOTE: opportunity for performance optimization?
-        supplementary_trace = empty_trace(g.inner_generator)
-        for addr in conditions
-            supplementary_trace[addr] = trace[addr]
-        end
-        for addr in outputs
-            supplementary_trace[addr] = trace[addr]
-        end
+        supplementary_trace = deepcopy(trace)
         (scores[i], _) = regenerate!(g.inner_generator, args, outputs, conditions, supplementary_trace)
     end
     score = logsumexp(scores) - log(g.num)
