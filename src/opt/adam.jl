@@ -39,7 +39,7 @@ function optimize(opt::ADAMOptimizer, params::Vector{Float64},
     for t=1:num_steps
 
         # TODO parallelize across minibatch
-        results = map((i) -> fgrad_estimate(opt.objective, params), 1:opt.minibatch_size)
+        results = pmap((i) -> fgrad_estimate(opt.objective, params), 1:opt.minibatch_size)
         
         # unbiased estimate of gradient
         grads = map((r) -> r[2], results)
