@@ -408,3 +408,93 @@ end
     @test isapprox(partial(trace["mu"]), partial(mu))
     @test isapprox(partial(trace["logstd"]), partial(logstd))
 end
+
+@testset "aliases" begin
+
+    @program inner() begin
+        @g(flip(0.1), "b")
+    end
+
+    @program f() begin
+        @alias(("a", "b"), "exposed")
+        @g(inner(), "a")
+    end
+
+    # simulate without any outputs or conditions
+    trace = DictTrace()
+    simulate!(f, (), AddressTrie(), AddressTrie(), trace)
+    @test haskey(trace, "exposed")
+    @test haskey(trace, ("a", "b"))
+    @test trace["exposed"] == trace[("a", "b")]
+
+    # simulate with alias as an output
+    trace = DictTrace()
+    score, val = simulate!(f, (), AddressTrie("exposed"), AddressTrie(), trace)
+    @test haskey(trace, "exposed")
+    @test haskey(trace, ("a", "b"))
+    @test trace["exposed"] == trace[("a", "b")]
+    @test val == trace["exposed"]
+    @test isapprox(score, val ? log(0.1) : log(0.9))
+
+    # regenerate with alias as an output
+    trace = DictTrace()
+    trace["exposed"] = true
+    score, val = regenerate!(f, (), AddressTrie("exposed"), AddressTrie(), trace)
+    @test trace["exposed"] == trace[("a", "b")]
+    @test val == trace["exposed"]
+    @test val == true
+    @test isapprox(score, log(0.1))
+
+    # simulate with actual address as output
+    trace = DictTrace()
+    score, val = simulate!(f, (), AddressTrie(("a", "b")), AddressTrie(), trace)
+    @test trace["exposed"] == trace[("a", "b")]
+    @test val == trace["exposed"]
+    @test isapprox(score, val ? log(0.1) : log(0.9))
+
+    # regenerate with actual address as an output
+    trace = DictTrace()
+    set_subtrace!(trace, "a", DictTrace())
+    trace[("a", "b")] = true
+    score, val = regenerate!(f, (), AddressTrie(("a", "b")), AddressTrie(), trace)
+    @test trace["exposed"] == trace[("a", "b")]
+    @test val == trace["exposed"]
+    @test val == true
+    @test isapprox(score, log(0.1))
+
+    # simulate with alias as a condition
+    trace = DictTrace()
+    trace["exposed"] = true
+    _, val = simulate!(f, (), AddressTrie(), AddressTrie("exposed"), trace)
+    @test trace["exposed"] == trace[("a", "b")]
+    @test val == trace["exposed"]
+    @test val == true
+
+    # regenerate with alias as a condition
+    trace = DictTrace()
+    trace["exposed"] = true
+    _, val = regenerate!(f, (), AddressTrie(), AddressTrie("exposed"),  trace)
+    @test trace["exposed"] == trace[("a", "b")]
+    @test val == trace["exposed"]
+    @test val == true
+
+    # simulate with actual address as a condition
+    trace = DictTrace()
+    set_subtrace!(trace, "a", DictTrace())
+    trace[("a", "b")] = true
+    _, val = simulate!(f, (), AddressTrie(), AddressTrie(("a", "b")), trace)
+    @test trace["exposed"] == trace[("a", "b")]
+    @test val == trace["exposed"]
+    @test val == true
+
+    # regenerate with actual address as a condition
+    trace = DictTrace()
+    set_subtrace!(trace, "a", DictTrace())
+    trace[("a", "b")] = true
+    _, val = regenerate!(f, (), AddressTrie(), AddressTrie(("a", "b")), trace)
+    @test trace["exposed"] == trace[("a", "b")]
+    @test val == trace["exposed"]
+    @test val == true
+
+
+end
