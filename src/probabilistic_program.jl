@@ -52,11 +52,13 @@ end
 empty_trace(::ProbabilisticProgram) = DictTrace()
 
 # these symbols are passed as the first arguments to every probabilistic program
+# TODO put these into one data structure, called the RuntimeState?
 const trace_symbol = gensym()
 const output_symbol = gensym()
 const condition_symbol = gensym()
 const method_symbol = gensym()
 const score_symbol = gensym()
+const aliases_symbol = gensym()
 
 """
 Annotate an invocation of a `Generator` within a `@program` with an address.
@@ -95,6 +97,29 @@ The program can process `intervene!` requests for this address that are present 
 macro e(expr, addr_first)
     Expr(:call, tagged!, esc(trace_symbol), esc(expr), esc(addr_first), esc(condition_symbol))
 end
+
+"""
+BEGIN ALIASING
+# TODO
+"""
+
+function add_alias!(aliases::Dict, exposed_addr, inner_addr::Tuple)
+    if len(inner_addr) != 2
+        error("inner address of alias must be a two-element tuple")
+    end
+    if !haskey(aliases, inner_addr[1])
+        aliases[inner_addr[1]] = Dict()
+    end
+    aliases[inner_addr[1]][inner_addr[2]] = exposed_addr
+end
+
+macro alias(exposed_addr, inner_addr)
+    Expr(:call, add_alias!, esc(aliases_symbol), exposed_addr, inner_addr)
+end
+
+"""
+END ALIASING
+"""
 
 const METHOD_SIMULATE = 1
 const METHOD_REGENERATE = 2
@@ -171,7 +196,8 @@ macro program(args, body)
         :($output_symbol),
         :($condition_symbol),
         :($method_symbol::Int),
-        :($score_symbol)
+        :($score_symbol),
+        :($aliases_symbol::Dict) # map from subtrace address to map from address to top-level addr
     ]
 
     # remaining arguments are the original arguments
@@ -226,7 +252,8 @@ function _simulate_or_regenerate!(p::ProbabilisticProgram, args::Tuple, outputs,
         end
     else
         score = Score()
-        value = p.program(trace, outputs, conditions, method, score, args...)
+        aliases = Dict()
+        value = p.program(trace, outputs, conditions, method, score, aliases, args...)
         trace[()] = value
         return (get(score), value)
     end

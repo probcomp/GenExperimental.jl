@@ -408,3 +408,45 @@ end
     @test isapprox(partial(trace["mu"]), partial(mu))
     @test isapprox(partial(trace["logstd"]), partial(logstd))
 end
+
+@testset "aliases" begin
+
+    # TODO: this feature is undefined...
+    # is the data supposed to be written to the subtrace or not?
+    # does the DictTrace need to handle aliases?
+
+    @program inner() begin
+        @g(flip(0.1), "b")
+    end
+    
+    @program f() begin
+        alias("exposed", ("a", "b"))
+        @g(inner(), "a")
+    end
+
+    # simulate without any outputs
+    # the data should be recorded under "exposed" not the inner address ("a", "b")
+    trace = DictTrace()
+    simulate!(f, (), AddressTrie(), AddressTrie(), trace)
+    @test haskey(trace, "exposed")
+    @test !haskey(trace, ("a", "b"))
+
+    # simulate with "exposed" as an output
+    # the data should be recorded under "exposed" not the inner address ("a", "b")
+    trace = DictTrace()
+    val, score = simulate!(f, (), AddressTrie("exposed"), AddressTrie(), trace)
+    @test haskey(trace, "exposed")
+    @test !haskey(trace, ("a", "b"))
+    @test val == trace["exposed"]
+    @test isapprox(score, val ? log(0.1) : log(0.9))
+
+    # regenerate with "exposed" as an output
+    trace = DictTrace()
+    trace["exposed"] = true
+    val, score = regenerate!(f, (), AddressTrie("exposed"), AddressTrie(), trace)
+    @test haskey(trace, "exposed")
+    @test !haskey(trace, ("a", "b"))
+    @test val == trace["exposed"]
+    @test val == true
+    @test isapprox(score, log(0.1))
+end
