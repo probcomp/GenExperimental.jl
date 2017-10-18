@@ -32,6 +32,7 @@ module Gen
 
     # inference algorithms
     include("inference/state_space_smc.jl")
+    include("inference/sir.jl")
 
     # numerical optimization
     include("opt/adam.jl")
