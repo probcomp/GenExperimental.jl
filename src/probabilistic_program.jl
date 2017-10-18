@@ -51,12 +51,17 @@ end
 # TOOD pass args in
 empty_trace(::ProbabilisticProgram) = DictTrace()
 
+
+struct ProbabilisticProgramRuntimeState
+    trace::DictTrace
+    outputs
+    conditions
+    score::Score
+end
+
 # these symbols are passed as the first arguments to every probabilistic program
-const trace_symbol = gensym()
-const output_symbol = gensym()
-const condition_symbol = gensym()
+const runtime_state_symbol = gensym()
 const method_symbol = gensym()
-const score_symbol = gensym()
 
 """
 Annotate an invocation of a `Generator` within a `@program` with an address.
@@ -74,11 +79,8 @@ macro g(expr, addr_first)
         generator_args = expr.args[2:end]
         Expr(:call, 
             tagged!,
-            esc(trace_symbol),
-            esc(output_symbol),
-            esc(condition_symbol),
+            esc(runtime_state_symbol),
             esc(method_symbol),
-            esc(score_symbol),
             esc(generator),
             esc(Expr(:tuple, generator_args...)),
             esc(addr_first))
@@ -93,18 +95,18 @@ Annotate an arbitrary expression within a `@program` with an address.
 The program can process `intervene!` requests for this address that are present in the trace passed to `generate!`.
 """
 macro e(expr, addr_first)
-    Expr(:call, tagged!, esc(trace_symbol), esc(expr), esc(addr_first), esc(condition_symbol))
+    Expr(:call, tagged!, esc(runtime_state_symbol), esc(expr), esc(addr_first))
 end
 
 const METHOD_SIMULATE = 1
 const METHOD_REGENERATE = 2
 
 # process a tagged generator invocation
-function tagged!(t::DictTrace, outputs, conditions,
-                 method::Int, score, generator::Generator{T}, args::Tuple, addr_first) where {T}
+function tagged!(runtime_state::ProbabilisticProgramRuntimeState,
+                 method::Int, generator::Generator{T}, args::Tuple, addr_first) where {T}
     local subtrace::T
-    if haskey(t.subtraces, addr_first)
-        subtrace = t.subtraces[addr_first]
+    if has_subtrace(runtime_state.trace, addr_first)
+        subtrace = get_subtrace(runtime_state.trace, addr_first)
     else
         subtrace = empty_trace(generator) # TODO pass args in
     end
@@ -115,8 +117,8 @@ function tagged!(t::DictTrace, outputs, conditions,
     # different from forward simulation. For now, we do not verify this.
 
     # retrieve all outputs and conditions with the prefix addr_first
-    sub_outputs = outputs[addr_first]
-    sub_conditions = conditions[addr_first]
+    sub_outputs = runtime_state.outputs[addr_first]
+    sub_conditions = runtime_state.conditions[addr_first]
 
     # recursively query the tagged generator
     if method == METHOD_SIMULATE
@@ -127,8 +129,8 @@ function tagged!(t::DictTrace, outputs, conditions,
         # there are no other methods
         @assert false
     end
-    increment!(score, increment)
-    t.subtraces[addr_first] = subtrace
+    increment!(runtime_state.score, increment)
+    set_subtrace!(runtime_state.trace, addr_first, subtrace)
 
     # According to the generator specification, the return value is the value at address `()`.
     @assert subtrace[()] == value
@@ -137,23 +139,23 @@ function tagged!(t::DictTrace, outputs, conditions,
 end
 
 # process a tagged expression that is not a generator invocation
-function tagged!(trace::DictTrace, value, addr_first, conditions)
+function tagged!(runtime_state::ProbabilisticProgramRuntimeState, value, addr_first)
     local subtrace::AtomicTrace
-    if haskey(trace.subtraces, addr_first)
-        subtrace = trace.subtraces[addr_first]
+    if has_subtrace(runtime_state.trace, addr_first)
+        subtrace = get_subtrace(runtime_state.trace, addr_first)
 
         # if the addr_first is in conditions, use the given value
         # TODO: this is not really correct, since there may have been
         # no distribution on the expression for us to condition
         # this capability should be handled by a separate intervention feature, which should
         # be implemented as a mutation of the generator, not a condition
-        if !(addr_first in conditions)
+        if !(addr_first in runtime_state.conditions)
             subtrace.value = value
         end
     else
         subtrace = AtomicTrace(value)
     end
-    trace.subtraces[addr_first] = subtrace
+    set_subtrace!(runtime_state.trace, addr_first, subtrace)
     subtrace[()]
 end
 
@@ -167,11 +169,8 @@ macro program(args, body)
 
     # first argument is the trace
     new_args = Any[
-        :($trace_symbol::DictTrace),
-        :($output_symbol),
-        :($condition_symbol),
-        :($method_symbol::Int),
-        :($score_symbol)
+        :($runtime_state_symbol::ProbabilisticProgramRuntimeState),
+        :($method_symbol::Int)
     ]
 
     # remaining arguments are the original arguments
@@ -225,10 +224,10 @@ function _simulate_or_regenerate!(p::ProbabilisticProgram, args::Tuple, outputs,
             return (0., trace[()])
         end
     else
-        score = Score()
-        value = p.program(trace, outputs, conditions, method, score, args...)
+        runtime_state = ProbabilisticProgramRuntimeState(trace, outputs, conditions, Score())
+        value = p.program(runtime_state, method, args...)
         trace[()] = value
-        return (get(score), value)
+        return (get(runtime_state.score), value)
     end
 end
 
@@ -257,6 +256,7 @@ end
 (p::ProbabilisticProgram)(args...) = simulate!(p, args, AddressTrie(), AddressTrie(), DictTrace())[2]
 
 export ProbabilisticProgram
+export ProbabilisticProgramRuntimeState
 export @program
 export @g
 export @e
