@@ -57,10 +57,11 @@ struct ProbabilisticProgramRuntimeState
     conditions
     score::Score
     aliases_by_subtrace_address::Dict
+    all_aliases::Set
 end
 
 function ProbabilisticProgramRuntimeState(trace::DictTrace, outputs, conditions)
-    ProbabilisticProgramRuntimeState(trace, outputs, conditions, Score(), Dict())
+    ProbabilisticProgramRuntimeState(trace, outputs, conditions, Score(), Dict(), Set())
 end
 
 function add_alias!(state::ProbabilisticProgramRuntimeState, alias, addr::Tuple)
@@ -74,6 +75,7 @@ function add_alias!(state::ProbabilisticProgramRuntimeState, alias, addr::Tuple)
         error("Multiple aliases given for address $addr")
     end
     aliases_for_subtrace[addr_rest] = alias
+    push!(state.all_aliases, alias)
 end
 
 function get_aliases(state::ProbabilisticProgramRuntimeState, addr_first)
@@ -82,6 +84,10 @@ function get_aliases(state::ProbabilisticProgramRuntimeState, addr_first)
     else
         return ()
     end
+end
+
+function has_alias(state::ProbabilisticProgramRuntimeState, alias)
+    return alias in state.all_aliases
 end
 
 
@@ -141,6 +147,11 @@ const METHOD_REGENERATE = 2
 # process a tagged generator invocation
 function tagged!(runtime_state::ProbabilisticProgramRuntimeState,
                  method::Int, generator::Generator{T}, args::Tuple, addr_first) where {T}
+
+    if has_alias(runtime_state, addr_first)
+        error("Address $addr_first was already set as an alias of another address")
+    end
+
     local subtrace::T
     if has_subtrace(runtime_state.trace, addr_first)
         subtrace = get_subtrace(runtime_state.trace, addr_first)
