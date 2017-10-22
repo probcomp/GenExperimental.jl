@@ -2,7 +2,7 @@ struct SIRGenerator{T,U} <: Generator{DictTrace}
     proposal::Generator{T}
     model::Generator{U}
     model_data_addresses
-    model_latents_to_proposal_outputs::OrderedDict
+    model_latents_to_proposal_outputs::Dict
     model_args::Tuple
     num_particles::Int
     model_outputs::AddressTrie
@@ -28,10 +28,8 @@ function make_proposal_query(model_latents_to_proposal_outputs)
     return (proposal_outputs, proposal_conditions)
 end
 
-# NOTE: the ordered dict is because CRP needs the output to come in a certain order...
-# TODO: the CRP should be modified, to only sample in left-normalized form
 function SIRGenerator(proposal::Generator{T}, model::Generator{U}, model_data_addresses, 
-                      model_latents_to_proposal_outputs::OrderedDict, model_args::Tuple, num_particles::Int) where {T,U}
+                      model_latents_to_proposal_outputs::Dict, model_args::Tuple, num_particles::Int) where {T,U}
     (model_outputs, model_conditions) = make_model_query(model_data_addresses, model_latents_to_proposal_outputs)
     (proposal_outputs, proposal_conditions) = make_proposal_query(model_latents_to_proposal_outputs)
     SIRGenerator(proposal, model, model_data_addresses, model_latents_to_proposal_outputs,
