@@ -1,8 +1,8 @@
-struct SIRGenerator{T} <: Generator{DictTrace}
+struct SIRGenerator{T,U} <: Generator{DictTrace}
     proposal::Generator{T}
-    model::Generator
+    model::Generator{U}
     model_data_addresses
-    model_latents_to_proposal_outputs::OrderedDict  #TODO shouldn't need to be ordered
+    model_latents_to_proposal_outputs::OrderedDict
     model_args::Tuple
     num_particles::Int
     model_outputs::AddressTrie
@@ -30,8 +30,8 @@ end
 
 # NOTE: the ordered dict is because CRP needs the output to come in a certain order...
 # TODO: the CRP should be modified, to only sample in left-normalized form
-function SIRGenerator(proposal::Generator{T}, model::Generator, model_data_addresses, 
-                      model_latents_to_proposal_outputs::OrderedDict, model_args::Tuple, num_particles::Int) where {T}
+function SIRGenerator(proposal::Generator{T}, model::Generator{U}, model_data_addresses, 
+                      model_latents_to_proposal_outputs::OrderedDict, model_args::Tuple, num_particles::Int) where {T,U}
     (model_outputs, model_conditions) = make_model_query(model_data_addresses, model_latents_to_proposal_outputs)
     (proposal_outputs, proposal_conditions) = make_proposal_query(model_latents_to_proposal_outputs)
     SIRGenerator(proposal, model, model_data_addresses, model_latents_to_proposal_outputs,
@@ -42,23 +42,23 @@ end
 function check_query(g::SIRGenerator, outputs, conditions)
     # no conditions are allowed
     if !isempty(conditions)
-        error("Invalid query.")
+        error("Invalid query: Conditions is not empty.")
     end
 
     # the outputs of the query must be all the model latent addresses
     for model_addr in keys(g.model_latents_to_proposal_outputs)
         if !(model_addr in outputs)
-            error("Invalid query.")
+            error("Invalid query: $model_addr is a model latent but not an output of SIR.")
         end
     end
     for model_addr in outputs
         if !haskey(g.model_latents_to_proposal_outputs, model_addr)
-            error("Invalid query.")
+            error("Invalid query: $model_addr is an output of SIR but not a model latent.")
         end
     end
 end
 
-function make_model_trace(g::SIRGenerator, model_data::Dict)
+function make_model_trace(g::SIRGenerator{T,U}, model_data) where {T,U}
     model_trace = empty_trace(g.model)
     for (addr, value) in model_data
         model_trace[addr] = value
@@ -66,7 +66,7 @@ function make_model_trace(g::SIRGenerator, model_data::Dict)
     return model_trace
 end
 
-function make_output_value(g::SIRGenerator{T}, proposal_trace::T) where {T}
+function make_output_value(g::SIRGenerator{T,U}, proposal_trace::T) where {T,U}
     value = Dict()
     for (model_addr, proposal_addr) in g.model_latents_to_proposal_outputs
         value[model_addr] = proposal_trace[proposal_addr]
@@ -74,30 +74,30 @@ function make_output_value(g::SIRGenerator{T}, proposal_trace::T) where {T}
     return value
 end
 
-function populate_trace!(g::SIRGenerator{T}, proposal_trace::T, trace::DictTrace) where {T}
+function populate_trace!(g::SIRGenerator{T,U}, proposal_trace::T, trace::DictTrace) where {T,U}
     for (model_addr, proposal_addr) in g.model_latents_to_proposal_outputs
         trace[model_addr] = proposal_trace[proposal_addr]
     end
 end
 
 function compute_score(model_scores::Vector{Float64}, log_weights::Vector{Float64}, chosen::Int)
-    num_particles = length(model_score)
+    num_particles = length(model_scores)
     return model_scores[chosen] - (logsumexp(log_weights) - log(num_particles))
 end
 
-function copy_proposal_to_model!(g::SIRGenerator{T}, proposal_trace::T, model_trace) where {T}
+function copy_proposal_to_model!(g::SIRGenerator{T,U}, proposal_trace::T, model_trace::U) where {T,U}
     for (model_addr, proposal_addr) in g.model_latents_to_proposal_outputs
         model_trace[model_addr] = proposal_trace[proposal_addr]
     end
 end
 
-function copy_model_to_proposal!(g::SIRGenerator{T}, model_trace, proposal_trace::T) where {T}
+function copy_model_to_proposal!(g::SIRGenerator{T,U}, model_trace::U, proposal_trace::T) where {T,U}
     for (model_addr, proposal_addr) in g.model_latents_to_proposal_outputs
         proposal_trace[proposal_addr] = model_trace[model_addr]
     end
 end
 
-function check_model_data(g::SIRGenerator, model_data::Dict)
+function check_model_data(g::SIRGenerator, model_data)
     for addr in g.model_data_addresses
         if !haskey(model_data, addr)
             error("model data address mismatch")
@@ -111,7 +111,7 @@ function check_model_data(g::SIRGenerator, model_data::Dict)
 end
 
 
-function simulate!(g::SIRGenerator{T}, args::Tuple{Dict}, outputs, conditions, trace::DictTrace) where {T}
+function simulate!(g::SIRGenerator{T}, args::Tuple, outputs, conditions, trace::DictTrace) where {T}
     
     # we only accept one query
     check_query(g, outputs, conditions)
@@ -119,9 +119,6 @@ function simulate!(g::SIRGenerator{T}, args::Tuple{Dict}, outputs, conditions, t
     # map from model address to value, for each observed random choice
     model_data = args[1]
     check_model_data(g, model_data)
-
-    # we overwrite the same model trace for each particle
-    model_trace = make_model_trace(g, model_data)
 
     log_weights = Vector{Float64}(g.num_particles)
     model_scores = Vector{Float64}(g.num_particles)
@@ -133,6 +130,7 @@ function simulate!(g::SIRGenerator{T}, args::Tuple{Dict}, outputs, conditions, t
         proposal_score, _ = simulate!(g.proposal, (model_data,), g.proposal_outputs, g.proposal_conditions, proposal_traces[i])
 
         # copy latents from proposal trace to model trace
+        model_trace = make_model_trace(g, model_data)
         copy_proposal_to_model!(g, proposal_traces[i], model_trace)
 
         # estimate model joint probability of latents and data
@@ -165,7 +163,7 @@ function handle_distinguished_particle(g::SIRGenerator{T}, trace::DictTrace, mod
     return (proposal_trace, log_weight)
 end
 
-function regenerate!(g::SIRGenerator{T}, args::Tuple{Dict}, outputs, conditions, trace::DictTrace) where {T}
+function regenerate!(g::SIRGenerator{T}, args::Tuple, outputs, conditions, trace::DictTrace) where {T}
     
     # we only accept one query
     check_query(g, outputs, conditions)
@@ -174,15 +172,13 @@ function regenerate!(g::SIRGenerator{T}, args::Tuple{Dict}, outputs, conditions,
     model_data = args[1]
     check_model_data(g, model_data)
 
-    # we overwrite the same model trace for each particle
-    model_trace = make_model_trace(g, model_data)
-
     log_weights = Vector{Float64}(g.num_particles)
     model_scores = Vector{Float64}(g.num_particles)
     proposal_traces = Vector{T}(g.num_particles)
 
     # handle the distinguished particle
     const CHOSEN = 1
+    model_trace = make_model_trace(g, model_data)
     (proposal_traces[CHOSEN], log_weights[CHOSEN]) = handle_distinguished_particle(g, trace, model_trace, model_data)
 
     for i=2:g.num_particles
@@ -192,6 +188,7 @@ function regenerate!(g::SIRGenerator{T}, args::Tuple{Dict}, outputs, conditions,
         proposal_score, _ = simulate!(g.proposal, (model_data,), g.proposal_outputs, g.proposal_conditions, proposal_traces[i])
 
         # copy latents from proposal trace to model trace
+        model_trace = make_model_trace(g, model_data)
         copy_proposal_to_model!(g, proposal_traces[i], model_trace)
 
         # estimate model joint probability of latents and data
