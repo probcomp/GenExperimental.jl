@@ -12,7 +12,6 @@ struct ExpectedErrorAnalysis
     inference_addresses_to_score::AddressTrie
 end
 
-
 function ExpectedErrorAnalysis(model::Generator, inference::Generator,
                                   model_latents_to_inference_outputs::Dict,
                                   model_data_addresses,
@@ -67,7 +66,7 @@ function estimate_expected_error(experiment::ExpectedErrorAnalysis)
                                             experiment.inference_addresses_to_score, AddressTrie(),
                                             inference_simulate_trace)
     
-    # regenerate model, scoring outputs
+    # regenerate model, scoring outputs and latents
     model_regenerate_trace = empty_trace(experiment.model)
     for (model_addr, inference_addr) in experiment.model_latents_to_inference_outputs
         model_regenerate_trace[model_addr] = inference_simulate_trace[inference_addr]
@@ -85,3 +84,6 @@ function estimate_expected_error(experiment::ExpectedErrorAnalysis)
     # for z, x ~ p(.,.); z'|x ~ q(.; x)
     return model_simulate_score - inference_regenerate_score + inference_simulate_score - model_regenerate_score
 end
+
+export ExpectedErrorAnalysis
+export estimate_expected_error
