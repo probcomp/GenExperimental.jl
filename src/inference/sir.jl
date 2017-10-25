@@ -118,8 +118,8 @@ function simulate!(g::SIRGenerator{T}, args::Tuple, outputs, conditions, trace::
     model_data = args[1]
     check_model_data(g, model_data)
 
-    log_weights = Vector{Float64}(g.num_particles)
-    model_scores = Vector{Float64}(g.num_particles)
+    log_weights = fill(NaN, g.num_particles)
+    model_scores = fill(NaN, g.num_particles)
     proposal_traces = Vector{T}(g.num_particles)
     for i=1:g.num_particles
 
@@ -137,6 +137,9 @@ function simulate!(g::SIRGenerator{T}, args::Tuple, outputs, conditions, trace::
         # log importance weight
         log_weights[i] = model_scores[i] - proposal_score
     end
+    @assert !any(isnan.(log_weights))
+    @assert !any(isnan.(model_scores))
+
     chosen = categorical_log(log_weights)
     chosen_trace = proposal_traces[chosen]
 
@@ -158,7 +161,7 @@ function handle_distinguished_particle(g::SIRGenerator{T}, trace::DictTrace, mod
     copy_proposal_to_model!(g, proposal_trace, model_trace)
     model_score, _ = regenerate!(g.model, g.model_args, g.model_outputs, g.model_conditions, model_trace)
     log_weight = model_score - proposal_score
-    return (proposal_trace, log_weight)
+    return (proposal_trace, model_score, log_weight)
 end
 
 function regenerate!(g::SIRGenerator{T}, args::Tuple, outputs, conditions, trace::DictTrace) where {T}
@@ -170,14 +173,14 @@ function regenerate!(g::SIRGenerator{T}, args::Tuple, outputs, conditions, trace
     model_data = args[1]
     check_model_data(g, model_data)
 
-    log_weights = Vector{Float64}(g.num_particles)
-    model_scores = Vector{Float64}(g.num_particles)
+    log_weights = fill(NaN, g.num_particles)
+    model_scores = fill(NaN, g.num_particles)
     proposal_traces = Vector{T}(g.num_particles)
 
     # handle the distinguished particle
     const CHOSEN = 1
     model_trace = make_model_trace(g, model_data)
-    (proposal_traces[CHOSEN], log_weights[CHOSEN]) = handle_distinguished_particle(g, trace, model_trace, model_data)
+    (proposal_traces[CHOSEN], model_scores[CHOSEN], log_weights[CHOSEN]) = handle_distinguished_particle(g, trace, model_trace, model_data)
 
     for i=2:g.num_particles
 
@@ -195,6 +198,9 @@ function regenerate!(g::SIRGenerator{T}, args::Tuple, outputs, conditions, trace
         # log importance weight
         log_weights[i] = model_scores[i] - proposal_score
     end
+    @assert !any(isnan.(log_weights))
+    @assert !any(isnan.(model_scores))
+
     chosen_trace = proposal_traces[CHOSEN]
 
     score = compute_score(model_scores, log_weights, CHOSEN)
