@@ -106,4 +106,14 @@
         @test score != 0.
 
     end
+
+    @testset "literal value constructor" begin
+        params = NIGNParams(1., 1., 1., 1.)
+        a = NIGNState(1., 4., 6.)
+        b = NIGNState()
+        incorporate!(b, 1.)
+        incorporate!(b, 4.)
+        incorporate!(b, 6.)
+        @test isapprox(log_joint_density(a, params), log_joint_density(b, params))
+    end
 end

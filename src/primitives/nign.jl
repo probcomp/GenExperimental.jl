@@ -21,9 +21,19 @@ mutable struct NIGNState
     N::Int
     sum_x::Float64
     sum_x_sq::Float64
+    function NIGNState()
+        new(0, 0., 0.)
+    end
 end
 
-NIGNState() = NIGNState(0, 0., 0.)
+    
+function NIGNState(values...)
+    state = NIGNState()
+    for value in values
+        incorporate!(state, value)
+    end
+    return state
+end
 
 function incorporate!(state::NIGNState, x::Float64)
     state.N += 1
