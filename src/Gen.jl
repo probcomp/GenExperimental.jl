@@ -30,8 +30,11 @@ module Gen
     # AIDE algorithm for measuring divergences
     include("aide.jl")
 
-    # inference algorithms
+    # inference algorithms and inference evaluation algorithms
     include("inference/state_space_smc.jl")
+    include("inference/sir.jl")
+    include("inference/elbo.jl")
+    include("inference/expected_error.jl")
 
     # numerical optimization
     include("opt/adam.jl")

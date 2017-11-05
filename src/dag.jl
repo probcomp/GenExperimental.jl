@@ -29,7 +29,7 @@ function add_node!(dag::DAG{T}, addr::T, parents::Vector{T}) where {T}
 end
 
 function execution_order(dag::DAG{T}, outputs, conditions) where {T}
-    pq = PriorityQueue(T, Int, Base.Order.Reverse)
+    pq = PriorityQueue{T,Int}(Base.Order.Reverse)
     for addr in outputs 
         if !haskey(dag.priorities, addr)
             error("Node $addr does not exist")
