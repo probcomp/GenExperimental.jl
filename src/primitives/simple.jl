@@ -242,7 +242,6 @@ Sample from a degenerate distribution which places all mass on the singleton val
 
 Score is not differentiable.
 """
-
 struct Nil <: AssessableAtomicGenerator{Float64} end
 
 Gen.logpdf{T}(::Nil, x::T) = x == Nil() ? 0.0 : -Inf
@@ -250,3 +249,23 @@ Gen.logpdf{T}(::Nil, x::T) = x == Nil() ? 0.0 : -Inf
 Base.rand(::Nil) = Nil()
 
 register_primitive(:nil, Nil)
+
+
+"""
+Degenerate distribution on floating point.
+
+    generate!(delta, (), trace::AtomicTrace{Float64})
+
+    delta()
+
+Sample from a degenerate distribution which places all mass on the given floating point value.
+
+Score is not differentiable.
+"""
+struct Delta <: AssessableAtomicGenerator{Float64} end
+
+Gen.logpdf(::Delta, y::Float64, x::Float64) = (x == y ? 0.0 : -Inf)
+
+Base.rand(::Delta, y::Float64) = y
+
+register_primitive(:delta, Delta)

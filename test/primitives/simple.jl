@@ -96,4 +96,9 @@ end
     @test logpdf(Nil(), 5) == -Inf
 end
 
+@testset "delta" begin
+    @test logpdf(Delta(), 4.123, 4.124) == -Inf
+    @test logpdf(Delta(), 4.123, 4.123) == 0.
+    @test rand(Delta(), 4.123) == 4.123
+end
 
