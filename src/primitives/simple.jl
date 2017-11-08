@@ -262,10 +262,12 @@ Sample from a degenerate distribution which places all mass on the given floatin
 
 Score is not differentiable.
 """
-struct Delta <: AssessableAtomicGenerator{Float64} end
+struct Delta{T} <: AssessableAtomicGenerator{T} end
 
-Gen.logpdf(::Delta, y::Float64, x::Float64) = (x == y ? 0.0 : -Inf)
+Gen.logpdf(::Delta{T}, y::T, x::T) where {T} = (x == y ? 0.0 : -Inf)
 
-Base.rand(::Delta, y::Float64) = y
+Base.rand(::Delta{T}, y::T) where {T} = y
 
-register_primitive(:delta, Delta)
+register_primitive(:delta_float64, Delta{Float64})
+register_primitive(:delta_int, Delta{Int})
+register_primitive(:delta_bool, Delta{Bool})

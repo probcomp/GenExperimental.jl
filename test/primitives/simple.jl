@@ -97,8 +97,22 @@ end
 end
 
 @testset "delta" begin
-    @test logpdf(Delta(), 4.123, 4.124) == -Inf
-    @test logpdf(Delta(), 4.123, 4.123) == 0.
-    @test rand(Delta(), 4.123) == 4.123
+    # floating point
+    @test logpdf(delta_float64, 4.123, 4.124) == -Inf
+    @test logpdf(delta_float64, 4.123, 4.123) == 0.
+    @test rand(delta_float64, 4.123) == 4.123
+
+    # boolean
+    @test logpdf(delta_bool, true, true) == 0.
+    @test logpdf(delta_bool, true, false) == -Inf
+    @test logpdf(delta_bool, false, true) == -Inf
+    @test logpdf(delta_bool, false, false) == 0.
+    @test rand(delta_bool, true) == true
+    @test rand(delta_bool, false) == false
+
+    # int
+    @test logpdf(delta_int, 5, 5) == 0.
+    @test logpdf(delta_int, 5, 6) == -Inf
+    @test rand(delta_int, 5) == 5
 end
 
