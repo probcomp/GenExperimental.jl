@@ -7,7 +7,7 @@ import Distributions
 """
 Parameters for a collapsed normal inverse Wishart normal (NIWN) model, which is:
 
-    $\Lambda \sim \mathcal{W}(\Lambda_0, n_0)$
+    $\Lambda \sim \mathcal{W}(\Lambda_0, n_0)$ precision matrix has Wishart dist.
 
     $\mu | \Lambda \sim \mathcal{N}(\mu_0, (k_0 \Lambda)^{-1})$
 
@@ -21,14 +21,14 @@ struct NIWNParams
     mu::Vector{Float64}
     k::Float64
 	n::Float64
-    S::Matrix{Float64} # inverse of \Lambda_0
+    T::Matrix{Float64} # inverse of \Lambda_0
 end
 
 """
 Stores sufficient statistics for collapsed normal inverse Wishart normal (NIWN) model
 """
 mutable struct NIWNState
-    N::Int
+    n::Int
     x_total::Vector{Float64}
     S_total::Matrix{Float64}
     function NIGNState(dimension::Int)
@@ -36,27 +36,61 @@ mutable struct NIWNState
     end
 end
 function incorporate!(state::NIWNState, x::Vector{Float64})
-    state.N += 1
+    state.n += 1
     state.x_total += x
     state.S_total += (x * x')
 end
 
 function unincorporate!(state::NIGNState, x::Vector{Float64})
-    @assert state.N > 0
-    state.N -= 1
+    @assert state.n > 0
+    state.n -= 1
     state.x_total -= x
     state.S_total -= (x * x')
 end
 
 function posterior(prior:NIWNParams, state::NIWNState)
-    n = prior.n + state.N
-    k = prior.k + state.N
-    mu = prior.mu + (prior.k * prior.mu + state.x_total)/k
-    # S_m is the inverse of Lambda_m; we never actually store Lambda_m
-    Sm = prior.S + state.S - (state.x_total * state.x_total')/(state.N)
-    xdiff = (state.x_total/state.N) - prior.mu
-    Sm += ((prior.k * state.N) / (prior.k + state.N)) * (xdiff * xdiff')
-    return NIWNParams(mu, k, n, S)
+    n = prior.n + state.n
+    k = prior.k + state.n
+    mu = (prior.k * prior.mu + state.x_total)/k
+    T = prior.T
+    T += state.S_total - (state.x_total * state.x_total')/state.n
+    xdiff = (state.x_total/state.n) - prior.mu
+    T += ((prior.k * state.n) / k) * diff * diff'
+    return NIWNParams(mu, k, n, T)
 end
 
+struct MultivariateStudentTParams
+    v::Float64
+    mu::Vector{Float64}
+    Sigma_inverse::Matrix{Float64}
+end
 
+function multivariate_student_t_logpdf(x::Vector{Float64}, params::MultivariateStudentTParams)
+    d = length(x)
+    lpdf = lgamma(0.5*(params.v+d))
+    lpdf -= lgamma(0.5*params.v)
+    lpdf -= (0.5*d) * log(params.v * pi)
+    lpdf += 0.5*logdet(params.Sigma_inverse) # determinant of inverse is 1/determinant
+    diff = x - params.mu
+    lpdf -= 0.5*(params.v+d)*log1p((diff'*params.Sigma_inverse * diff)/params.v)
+    return lpdf
+end
+
+function predictive_logp(x::Vector{Float64}, state::NIWNState, prior::NIWNParams)
+    posterior_params = posterior(prior, state)
+    dim = length(x)
+    n_minus_dim_plus_1 = posterior_params.n - length(dim) + 1
+    v = n_minus_dim_plus_1
+    Sigma_inverse = (posterior_params.k*n_minus_dim_plus_1 / (posterior_params.k + 1))* posterior_params.T
+    student_t_params = MultivariateStudentTParams(v, posterior_params.mu, Sigma_inverse)
+    return multivariate_student_t_logpdf(x, student_t_params)
+end
+
+function predictive_sample(state::NIWNState, prior::NIWNParams)
+    # sample the covariance from inverse wishart 
+    # TODO
+    # sample the mean from multivariate normal given scaled covariance with mean prior.mu
+    # TODO
+    # sample the prediction from multivariate normal with given mean and covariance
+    # TODO
+end
