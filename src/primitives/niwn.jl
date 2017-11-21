@@ -88,6 +88,9 @@ end
 
 function predictive_sample(state::NIWNState, prior::NIWNParams)
     # sample the covariance from inverse wishart 
+    # NOTE: see page 11 of https://pdfs.semanticscholar.org/ac51/ee74af59c432d493da98bd950cc6f856a0ca.pdf
+    # there are two conventions for the the parameterization of the degrees of freedom of IW.
+    # Wikipedia and Distributions.jl seem to use a different convention from Murphy's notes
     # TODO
     # sample the mean from multivariate normal given scaled covariance with mean prior.mu
     # TODO
