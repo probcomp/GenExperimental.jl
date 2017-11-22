@@ -35,6 +35,8 @@ end
 function NIGNState()
     NIGNState(0, 0., 0.)
 end
+
+Base.isempty(state::NIGNState) = (state.N == 0)
     
 function NIGNState(values::Vector{W}) where {W <: Real}
     state = NIGNState()
@@ -71,7 +73,6 @@ end
 
 function predictive_logp(x::Float64, state::NIGNState, params::NIGNParams)
     before = log_joint_density(state, params)
-	posterior_without_x = posterior_params(state, params)
     incorporate!(state, x)
     after = log_joint_density(state, params)
     unincorporate!(state, x)
@@ -140,7 +141,6 @@ end
 
 Base.keys(t::NIGNTrace) = keys(t.assignments)
 
-
 function NIGNTrace(::Type{A}) where {A}
     NIGNTrace(Dict{A,Float64}(), NIGNState())
 end
@@ -178,6 +178,7 @@ Base.getindex(t::NIGNTrace{A}, addr_element::A) where {A} = t[(addr_element,)]
 
 Base.setindex!(t::NIGNTrace{A}, value::Float64, addr_element::A) where {A} = begin t[(addr_element,)] = value end
 
+get_state(trace::NIGNTrace) = trace.state
 
 struct NIGNGenerator{A} <: Generator{NIGNTrace{A}} end
 
@@ -278,4 +279,5 @@ function simulate!(::NIGNGenerator{A}, args::Tuple{Any,NIGNParams,Bool}, outputs
 end
 
 export NIGNTrace
+export get_state
 export NIGNGenerator
