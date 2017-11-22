@@ -8,9 +8,18 @@ import Distributions
 Parameters for a collapsed normal inverse gamma normal (NIGN) model
 """
 struct NIGNParams{T,U,V,W}
+
+    # mean of normal distribution on mean
 	m::T
+
+    # Relative precision of mu vs data. The precision of mu is r times the
+    # precision of the data.
 	r::U
+
+    # degrees of freedom for inverse gamma distribution on variance
     nu::V
+
+    # scale parameter for inverse gamma distribution on variance
     s::W
 end
 
@@ -21,13 +30,13 @@ mutable struct NIGNState
     N::Int
     sum_x::Float64
     sum_x_sq::Float64
-    function NIGNState()
-        new(0, 0., 0.)
-    end
 end
 
+function NIGNState()
+    NIGNState(0, 0., 0.)
+end
     
-function NIGNState(values...)
+function NIGNState(values::Vector{W}) where {W <: Real}
     state = NIGNState()
     for value in values
         incorporate!(state, value)
@@ -35,15 +44,17 @@ function NIGNState(values...)
     return state
 end
 
-function incorporate!(state::NIGNState, x::Float64)
+function incorporate!(state::NIGNState, x::Real)
     state.N += 1
     state.sum_x += x
     state.sum_x_sq += x*x
     x
 end
 
-function unincorporate!(state::NIGNState, x::Float64)
-    @assert state.N > 0
+function unincorporate!(state::NIGNState, x::Real)
+    if state.N == 0
+        error("Cannot unincorporate, there are no data.")
+    end
     state.N -= 1
     state.sum_x -= x
     state.sum_x_sq -= x*x
@@ -59,22 +70,23 @@ function log_z(r::T, s::U, nu::V) where {T,U,V}
 end
 
 function predictive_logp(x::Float64, state::NIGNState, params::NIGNParams)
+    before = log_joint_density(state, params)
 	posterior_without_x = posterior_params(state, params)
-	state_with_x = NIGNState(state.N+1, state.sum_x+x, state.sum_x_sq+(x*x))
-	posterior_with_x = posterior_params(state_with_x, params)
-	ZN = log_z(posterior_without_x.r, posterior_without_x.s, posterior_without_x.nu)
-	ZM = log_z(posterior_with_x.r, posterior_with_x.s, posterior_with_x.nu)
-	-.5 * log(2*pi) + ZM - ZN
+    incorporate!(state, x)
+    after = log_joint_density(state, params)
+    unincorporate!(state, x)
+    return after - before
 end
 
 function posterior_params(state::NIGNState, params::NIGNParams)
 	rn = params.r + Float64(state.N)
 	nun = params.nu + Float64(state.N)
 	mn = (params.r*params.m + state.sum_x)/rn
-	sn = params.s + state.sum_x_sq + params.r*params.m*params.m - rn*mn*mn
-	if concrete(sn) == Float64(0)
-		sn = params.s
-	end
+    if state.N == 0
+        sn = params.s
+    else
+	    sn = params.s + state.sum_x_sq + params.r*params.m*params.m - rn*mn*mn
+    end
     @assert rn >= 0.
     @assert nun >= 0.
     @assert sn >= 0.

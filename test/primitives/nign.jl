@@ -109,7 +109,7 @@
 
     @testset "literal value constructor" begin
         params = NIGNParams(1., 1., 1., 1.)
-        a = NIGNState(1., 4., 6.)
+        a = NIGNState([1., 4., 6.])
         b = NIGNState()
         incorporate!(b, 1.)
         incorporate!(b, 4.)
