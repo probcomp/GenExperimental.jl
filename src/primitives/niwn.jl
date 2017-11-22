@@ -33,6 +33,11 @@ end
 
 function NIWParams(mu::Vector{Float64}, k::Real, m::Real, Psi::Matrix{Float64})
     d = length(mu)
+    if !isapprox(Psi, Psi')
+        error("Scale matrix Psi is not symmetric")
+    end
+    Psi = (Psi + Psi')/2.
+    @assert ishermitian(Psi)
     NIWParams(mu, k, m, Psi, d)
 end
 
@@ -118,6 +123,9 @@ function predictive_logp(x::Vector{Float64}, state::NIWNState, prior::NIWParams)
 end
 
 function predictive_sample(state::NIWNState, prior_params::NIWParams)
+    # TODO: consider a more efficient implementation based on multivariate student T:
+    # e.g. https://journal.r-project.org/archive/2013-2/hofert.pdf
+
     posterior_params = posterior(prior_params, state)
 
     # sample the data covariance from inverse wishart 
@@ -141,3 +149,161 @@ export log_marginal_likelihood_faster
 export multivariate_lgamma # TODO move to a math page
 export predictive_logp
 export predictive_sample
+
+########################
+# NIWN Joint generator #
+########################
+
+"""
+Custom trace type for normal inverse Wishart normal generator.
+
+Parametrized by the type of the addresses.
+"""
+mutable struct NIWNTrace{A} <: Trace
+    data::Dict{A,Vector{Float64}}
+    state::NIWNState
+end
+
+Base.keys(t::NIWNTrace) = keys(t.data)
+
+
+function NIWNTrace(::Type{A}, dim::Int) where {A}
+    NIWNTrace(Dict{A,Vector{Float64}}(), NIWNState(dim))
+end
+
+function Base.haskey(t::NIWNTrace{A}, addr::Tuple{A}) where {A}
+    haskey(t.data, addr[1])
+end
+
+function Base.delete!(t::NIWNTrace{A}, addr::Tuple{A}) where {A}
+    unincorporate!(t.state, t.data[addr[1]])
+    delete!(t.data, addr[1])
+end
+
+function Base.getindex(t::NIWNTrace{A}, addr::Tuple{A}) where {A}
+    t.data[addr[1]]
+end
+
+function Base.getindex(t::NIWNTrace, addr::Tuple{})
+    copy(t.data)
+end
+
+function Base.setindex!(t::NIWNTrace{A}, value::Vector{Float64}, addr::Tuple{A}) where {A}
+    if haskey(t.data, addr[1])
+        delete!(t, addr)
+    end
+    incorporate!(t.state, value)
+    t.data[addr[1]] = value
+end
+
+Base.haskey(t::NIWNTrace{A}, addr_element::A) where {A} = haskey(t, (addr_element,))
+
+Base.delete!(t::NIWNTrace{A}, addr_element::A) where {A} = delete!(t, (addr_element,))
+
+Base.getindex(t::NIWNTrace{A}, addr_element::A) where {A} = t[(addr_element,)]
+
+Base.setindex!(t::NIWNTrace{A}, value::Vector{Float64}, addr_element::A) where {A} = begin t[(addr_element,)] = value end
+
+
+struct NIWNGenerator{A} <: Generator{NIWNTrace{A}}
+    dim::Int
+end
+
+function NIWNGenerator(::Type{A}, dim::Int) where {A}
+    NIWNGenerator{A}(dim)
+end
+
+function empty_trace(generator::NIWNGenerator{A}) where {A}
+    return NIWNTrace(A, generator.dim)
+end
+
+function check_trace_addresses(trace::NIWNTrace, outputs, conditions, addresses)
+    # no data other than for outputs and conditions may be in the trace
+    # every datum in the trace must be registered in the argument 'addresses'
+    for addr in keys(trace.data)
+        if !(addr in outputs || addr in conditions)
+            error("address $addr was in trace but not in outputs or conditions")
+        end
+        if !(addr in addresses)
+            error("address $addr was in trace but not in argument addresses")
+        end
+    end
+end
+
+function regenerate!(::NIWNGenerator{A}, args::Tuple{Any,NIWParams,Bool}, outputs, conditions, trace::NIWNTrace{A}) where {A}
+    # addresses is the full address space. all outputs and conditions must be a
+    # subset of that address space.  the trace must also not contain any other
+    # addresses besides those in outputs and conditions.  these preconditions
+    # are only checked if safe=true
+    # the implementation is optimized for small outputs and large conditions.
+    (addresses, params, safe) = args
+
+    if safe
+        check_trace_addresses(trace, outputs, conditions, addresses)
+
+        # check that output and condition addresses are in the argument 'addresses'
+        for addr in (outputs..., conditions...)
+            if !(length(addr) == 1 && addr[1] in addresses)
+                error("address $addr was in outputs or conditions but is not in argument addresses")
+            end
+        end
+    end
+
+    # joint probability of the conditions and outputs
+    score_combined = log_marginal_likelihood(trace.state, params)
+    for addr in outputs
+        unincorporate!(trace.state, trace.data[addr[1]])
+    end
+
+    # joint probability of just the conditions
+    score_condition_only = log_marginal_likelihood(trace.state, params)
+
+    # restore the trace to its original state
+    for addr in outputs
+        incorporate!(trace.state, trace.data[addr[1]])
+    end
+
+    return (score_combined - score_condition_only, copy(trace.data))
+end
+
+function simulate!(::NIWNGenerator{A}, args::Tuple{Any,NIWParams,Bool}, outputs, conditions, trace::NIWNTrace{A}) where {A}
+    (addresses, params, safe) = args
+    if safe
+        check_trace_addresses(trace, outputs, conditions, addresses)
+
+        # check that output and condition addresses are in the argument 'addresses'
+        for addr in (outputs..., conditions...)
+            if !(length(addr) == 1 && addr[1] in addresses)
+                error("address $addr was in outputs or conditions but is not in argument addresses")
+            end
+        end
+    end
+
+    # if outputs and conditions are both empty, then simulate all addresses in argument 'addresses'
+    if isempty(outputs) && isempty(conditions)
+        for addr in addresses
+            value = predictive_sample(trace.state, params)
+            trace.data[addr] = value
+            incorporate!(trace.state, value)
+        end
+        return (0., copy(trace.data))
+    else
+
+        # joint probability of just the conditions
+        score_condition_only = log_marginal_likelihood(trace.state, params)
+
+        for addr in outputs
+            value = predictive_sample(trace.state, params)
+            trace.data[addr[1]] = value
+            incorporate!(trace.state, value)
+        end
+
+        # joint probability of conditions and outputs
+        score_combined = log_marginal_likelihood(trace.state, params)
+
+        return (score_combined - score_condition_only, copy(trace.data))
+    end
+end
+
+export NIWNTrace
+export NIWNGenerator

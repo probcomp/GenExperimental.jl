@@ -80,3 +80,105 @@ test_incorporate_unincorporate()
 
 
 end
+
+
+@testset "normal inverse Wishart generator" begin
+
+function test_regenerate_no_outputs_no_conditions()
+    # regenerate with no outputs and no conditions does not populate the trace,
+    # and returns a score of 0.
+    params = NIWParams([0.1, 0.2], 0.1, 4, eye(2))
+    trace = NIWNTrace(Int, 2)
+    n = 10
+    args = (1:n, params, true)
+    outputs = AddressTrie()
+    conditions = AddressTrie()
+    (score, values) = regenerate!(NIWNGenerator(Int, 2), args, outputs, conditions, trace)
+    for i=1:n
+        @test !haskey(trace, i)
+        @test !haskey(values, i)
+    end
+    @test !haskey(trace, n+1)
+    @test score == 0.
+end
+test_regenerate_no_outputs_no_conditions()
+
+function test_simulate_no_outputs_no_conditions()
+    # simulate with no outputs and no conditions populates the trace with all
+    # data and returns a score of 0.
+    params = NIWParams([0.1, 0.2], 0.1, 4, eye(2))
+    trace = NIWNTrace(Int, 2)
+    n = 10
+    args = (1:n, params, true)
+    outputs = AddressTrie()
+    conditions = AddressTrie()
+    (score, values) = simulate!(NIWNGenerator(Int, 2), args, outputs, conditions, trace)
+    for i=1:n
+        @test haskey(trace, i)
+        @test trace[i] == values[i]
+    end
+    @test !haskey(trace, n+1)
+    @test score == 0.
+end
+test_simulate_no_outputs_no_conditions()
+
+function test_regenerate_outputs_conditions()
+    # regenerate returns the conditional probability of the outputs given the
+    # conditions, and does not add any data to the trace.
+    params = NIWParams([0.1, 0.2], 0.1, 4, eye(2))
+    trace = NIWNTrace(Int, 2)
+    t1 = [1.0, 1.1]
+    trace[1] = t1
+    t2 = [2.2, 1.1]
+    trace[2] = t2
+    t3 = [1.1, 3.4]
+    trace[3] = t3
+    outputs = AddressTrie(1, 3)
+    conditions = AddressTrie(2)
+    (score, values) = regenerate!(NIWNGenerator(Int, 2), ([1, 2, 3], params, true), outputs, conditions, trace)
+    @test trace[1] == t1
+    @test trace[2] == t2
+    @test trace[3] == t3
+    @test values[1] == t1
+    @test values[2] == t2
+    @test values[3] == t3
+
+    # check score is P(t1 | t2) * P(t3 | t1, t2)
+    state = NIWNState(2)
+    incorporate!(state, trace[2])
+    expected_score = 0.
+    for t in [trace[1], trace[3]]
+        expected_score += predictive_logp(t, state, params)
+        incorporate!(state, t)
+    end
+    @test isapprox(score, expected_score)
+end
+test_regenerate_outputs_conditions()
+
+function test_simulate_outputs_conditions()
+    # simulate with outputs and conditions
+    params = NIWParams([0.1, 0.2], 0.1, 4, eye(2))
+    trace = NIWNTrace(Int, 2)
+    t2 = [1.1, 2.2]
+    trace[2] = t2
+    outputs = AddressTrie(1, 3)
+    conditions = AddressTrie(2)
+    (score, values) = simulate!(NIWNGenerator(Int, 2), ([1, 2, 3], params, true), outputs, conditions, trace)
+    @test trace[2] == t2
+    @test values[1] == trace[1]
+    @test values[2] == t2
+    @test values[3] == trace[3]
+
+    # check score is P(t1 | t2) * P(t3 | t1, t2)
+    state = NIWNState(2)
+    incorporate!(state, trace[2])
+    expected_score = 0.
+    for t in [trace[1], trace[3]]
+        expected_score += predictive_logp(t, state, params)
+        incorporate!(state, t)
+    end
+    @test isapprox(score, expected_score)
+end
+test_simulate_outputs_conditions()
+
+end
