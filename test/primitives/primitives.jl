@@ -3,3 +3,4 @@
 include("simple.jl")
 include("crp.jl")
 include("nign.jl")
+include("niwn.jl")
