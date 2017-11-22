@@ -5,23 +5,27 @@
 import Distributions
 
 """
-Parameters for a collapsed normal inverse Wishart normal (NIWN) model, which is:
-
-    $\Lambda \sim \mathcal{W}(\Lambda_0, n_0)$ precision matrix has Wishart dist.
-
-    $\mu | \Lambda \sim \mathcal{N}(\mu_0, (k_0 \Lambda)^{-1})$
-
-    $x_i \sim \mathcal{N}(\mu, \Lambda^{-1})$ for $i=1\dots N$
-
-Named according to:
-
-    http://thaines.com/content/misc/gaussian_conjugate_prior_cheat_sheet.pdf
+Parameters for a collapsed normal inverse Wishart normal (NIWN) model.
 """
-struct NIWNParams
+struct NIWParams
+
+    # mean of normal distribution on mean
     mu::Vector{Float64}
+
+    # strength of prior on mean
     k::Float64
-	n::Float64
-    T::Matrix{Float64} # inverse of \Lambda_0
+
+    # degrees of freedom for the inverse Wishart distribution on covariance
+	m::Float64
+
+    # scale parameter for the inverse Wishart distribution on covariance
+    Psi::Matrix{Float64}
+    d::Int
+end
+
+function NIWParams(mu::Vector{Float64}, k::Float64, m::Float64, Psi::Matrix{Float64})
+    d = length(mu)
+    NIWParams(mu, k, m, Psi, d)
 end
 
 """
@@ -48,52 +52,74 @@ function unincorporate!(state::NIGNState, x::Vector{Float64})
     state.S_total -= (x * x')
 end
 
-function posterior(prior:NIWNParams, state::NIWNState)
-    n = prior.n + state.n
+function posterior(prior:NIWParams, state::NIWNState)
+    m = prior.m + state.n
     k = prior.k + state.n
     mu = (prior.k * prior.mu + state.x_total)/k
-    T = prior.T
-    T += state.S_total - (state.x_total * state.x_total')/state.n
+    Psi = prior.Psi
+    Psi += state.S_total - (state.x_total * state.x_total')/state.n
     xdiff = (state.x_total/state.n) - prior.mu
-    T += ((prior.k * state.n) / k) * diff * diff'
-    return NIWNParams(mu, k, n, T)
+    Psi += ((prior.k * state.n) / k) * diff * diff'
+    return NIWParams(mu, k, m, Psi)
 end
 
-struct MultivariateStudentTParams
-    v::Float64
-    mu::Vector{Float64}
-    Sigma_inverse::Matrix{Float64}
+function multivariate_lgamma(dimension::Int, x::Float64)
+    # TODO test me!
+    result = dimension * (dimension - 1) * log(pi) / 4
+    for i=1:dimension
+        result += lgamma(x + (1 - i)/2.)
+    end
+    return result
 end
 
-function multivariate_student_t_logpdf(x::Vector{Float64}, params::MultivariateStudentTParams)
-    d = length(x)
-    lpdf = lgamma(0.5*(params.v+d))
-    lpdf -= lgamma(0.5*params.v)
-    lpdf -= (0.5*d) * log(params.v * pi)
-    lpdf += 0.5*logdet(params.Sigma_inverse) # determinant of inverse is 1/determinant
-    diff = x - params.mu
-    lpdf -= 0.5*(params.v+d)*log1p((diff'*params.Sigma_inverse * diff)/params.v)
-    return lpdf
+function log_z(params::NIWParams)
+    lz = -0.5 * params.m * logdet(params.Psi)
+    lz += 0.5 * params.m * params.d * log(2.)
+    lz += multivariate_lgamma(params.d, params.m/2)
+    lz += 0.5 * params.d * (log(2*pi) - log(params.k))
+    return lz
 end
 
-function predictive_logp(x::Vector{Float64}, state::NIWNState, prior::NIWNParams)
-    posterior_params = posterior(prior, state)
-    dim = length(x)
-    n_minus_dim_plus_1 = posterior_params.n - length(dim) + 1
-    v = n_minus_dim_plus_1
-    Sigma_inverse = (posterior_params.k*n_minus_dim_plus_1 / (posterior_params.k + 1))* posterior_params.T
-    student_t_params = MultivariateStudentTParams(v, posterior_params.mu, Sigma_inverse)
-    return multivariate_student_t_logpdf(x, student_t_params)
+function log_marginal_likelihood(state::NIWNState, prior_params::NIWParams)
+    posterior_params = posterior(prior_params, state)
+    result = -0.5 * prior_params.d * state.N * log(2*pi)
+    result += log_z(posterior_params)
+    result -= log_z(prior_params)
+    return result
 end
 
-function predictive_sample(state::NIWNState, prior::NIWNParams)
-    # sample the covariance from inverse wishart 
-    # NOTE: see page 11 of https://pdfs.semanticscholar.org/ac51/ee74af59c432d493da98bd950cc6f856a0ca.pdf
-    # there are two conventions for the the parameterization of the degrees of freedom of IW.
-    # Wikipedia and Distributions.jl seem to use a different convention from Murphy's notes
-    # TODO
-    # sample the mean from multivariate normal given scaled covariance with mean prior.mu
-    # TODO
-    # sample the prediction from multivariate normal with given mean and covariance
-    # TODO
+# TODO check that I'm the same as log_marginal_likelihood()
+function log_marginal_likelihood_faster(state::NIWNState, prior_params::NIWParams)
+    posterior_params = posterior(prior_params, state)
+    result = -0.5 * prior_params.d * state.N * log(pi)
+    result += 0.5 * prior_params.m * logdet(prior_params.Psi)
+    result -= 0.5 * posterior_params.m * logdet(posterior_params.Psi)
+    result += multivariate_lgamma(prior_params.d, posterior_params.m/2)
+    result -= multivariate_lgamma(prior_params.d, prior_params.m/2)
+    result += 0.5 * prior_params.d * (log(prior_params.k) - log(posterior_params.k))
+    return result
 end
+
+function predictive_logp(x::Vector{Float64}, state::NIWNState, prior::NIWParams)
+    log_marginal_likelihood_before = log_marginal_likelihood_faster(state, prior)
+    incorporate!(state, x)
+    log_marginal_likelihood_after = log_marginal_likelihood_faster(state, prior)
+    unincorporate!(state, x)
+    return log_marginal_likelihood_after - log_marginal_likelihood_before
+end
+
+function predictive_sample(state::NIWNState, prior_params::NIWParams)
+    posterior_params = posterior(prior_params, state)
+
+    # sample the data covariance from inverse wishart 
+    data_covariance = rand(Distributions.InverseWishart(posterior_params.m, posterior_params.Psi))
+
+    # sample the mean from the multivariate normal
+    mu_covariance = data_covariance / posterior_params.k
+    mu = rand(Distributions.MvNormal(posterior_params.mu, mu_covariance))
+
+    # sample the data
+    x = rand(Distributions.MvNormal(mu, data_covariance))
+end
+
+# TODO test against the single-dimension code.
