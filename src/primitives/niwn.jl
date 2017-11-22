@@ -5,7 +5,7 @@
 import Distributions
 
 """
-Parameters for a collapsed normal inverse Wishart normal (NIWN) model.
+Parameters for a normal inverse Wishart normal (NIW) distribution.
 """
 struct NIWParams
 
