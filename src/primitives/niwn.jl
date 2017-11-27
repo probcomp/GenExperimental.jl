@@ -28,7 +28,7 @@ struct NIWParams
     Psi::Matrix{Float64}
 
     # number of dimensions
-    d::Int
+    dim::Int
 end
 
 function NIWParams(mu::Vector{Float64}, k::Real, m::Real, Psi::Matrix{Float64})
@@ -37,7 +37,7 @@ function NIWParams(mu::Vector{Float64}, k::Real, m::Real, Psi::Matrix{Float64})
         error("Scale matrix Psi is not symmetric")
     end
     Psi = (Psi + Psi')/2.
-    @assert ishermitian(Psi)
+    @assert isposdef(Psi)
     NIWParams(mu, k, m, Psi, d)
 end
 
@@ -88,15 +88,15 @@ end
 
 function log_z(params::NIWParams)
     lz = -0.5 * params.m * logdet(params.Psi)
-    lz += 0.5 * params.m * params.d * log(2.)
-    lz += multivariate_lgamma(params.d, params.m/2)
-    lz += 0.5 * params.d * (log(2*pi) - log(params.k))
+    lz += 0.5 * params.m * params.dim * log(2.)
+    lz += multivariate_lgamma(params.dim, params.m/2)
+    lz += 0.5 * params.dim * (log(2*pi) - log(params.k))
     return lz
 end
 
 function log_marginal_likelihood(state::NIWNState, prior_params::NIWParams)
     posterior_params = posterior(prior_params, state)
-    result = -0.5 * prior_params.d * state.n * log(2*pi)
+    result = -0.5 * prior_params.dim * state.n * log(2*pi)
     result += log_z(posterior_params)
     result -= log_z(prior_params)
     return result
@@ -105,12 +105,12 @@ end
 # TODO check that I'm the same as log_marginal_likelihood()
 function log_marginal_likelihood_faster(state::NIWNState, prior_params::NIWParams)
     posterior_params = posterior(prior_params, state)
-    result = -0.5 * prior_params.d * state.n * log(pi)
+    result = -0.5 * prior_params.dim * state.n * log(pi)
     result += 0.5 * prior_params.m * logdet(prior_params.Psi)
     result -= 0.5 * posterior_params.m * logdet(posterior_params.Psi)
-    result += multivariate_lgamma(prior_params.d, posterior_params.m/2)
-    result -= multivariate_lgamma(prior_params.d, prior_params.m/2)
-    result += 0.5 * prior_params.d * (log(prior_params.k) - log(posterior_params.k))
+    result += multivariate_lgamma(prior_params.dim, posterior_params.m/2)
+    result -= multivariate_lgamma(prior_params.dim, prior_params.m/2)
+    result += 0.5 * prior_params.dim * (log(prior_params.k) - log(posterior_params.k))
     return result
 end
 
