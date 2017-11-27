@@ -36,58 +36,44 @@ end
 """
 A generative process represented by a Julia function and constructed with `@program`.
 
-    ProbabilisticProgram <: Generator{DictTrace}
-
-The output address `()` can never be included in the outputs in a query.
-
-The output address `()` may be included in the conditions, provided that the outputs is empty, and that there are no other conditions.
-In this case, the auxiliary structure is empty, the score is zero, and the returned value is the value given in the trace.
+    ProbabilisticProgram <: Generator{FlatDictTrace}
 """
-struct ProbabilisticProgram <: Generator{DictTrace}
+struct ProbabilisticProgram <: Generator{FlatDictTrace}
     program::Function
 end
 
-# TOOD pass args in
-empty_trace(::ProbabilisticProgram) = DictTrace()
-
+# TOOD pass args in??
+empty_trace(::ProbabilisticProgram) = FlatDictTrace()
 
 struct ProbabilisticProgramRuntimeState
-    trace::DictTrace
+    trace::FlatDictTrace
     outputs
-    conditions
     score::Score
-    aliases_by_subtrace_address::Dict
-    all_aliases::Set
+    aliases::Dict{FlatAddress,Dict{FlatAddress, FlatAddress}}
 end
 
 function ProbabilisticProgramRuntimeState(trace::DictTrace, outputs, conditions)
-    ProbabilisticProgramRuntimeState(trace, outputs, conditions, Score(), Dict(), Set())
+    aliases = Dict{FlatAddress,Dict{FlatAddress, FlatAddress}}()
+    ProbabilisticProgramRuntimeState(trace, outputs, conditions, Score(), aliases)
 end
 
-function add_alias!(state::ProbabilisticProgramRuntimeState, alias, addr::Tuple)
-    addr_first = addr[1]
-    addr_rest = addr[2:end]
-    if !haskey(state.aliases_by_subtrace_address, addr_first)
-        state.aliases_by_subtrace_address[addr_first] = Dict()
+function add_alias!(state::ProbabilisticProgramRuntimeState, alias::FlatAddress, generator_addr::FlatAddress, sub_addr::FlatAddress)
+    if !haskey(state.aliases, generator_addr)
+        state.aliases[generator_addr] = Dict{FlatAddress, FlatAddress}()
     end
-    aliases_for_subtrace = state.aliases_by_subtrace_address[addr_first]
-    if haskey(aliases_for_subtrace, addr_rest)
-        error("Multiple aliases given for address $addr")
+    aliases_for_subtrace = state.aliases[generator_addr]
+    if haskey(aliases_for_subtrace, sub_addr)
+        error("Multiple aliases given for address $((generator_addr, sub_addr))")
     end
-    aliases_for_subtrace[addr_rest] = alias
-    push!(state.all_aliases, alias)
+    aliases_for_subtrace[sub_addr] = alias
 end
 
-function get_aliases(state::ProbabilisticProgramRuntimeState, addr_first)
-    if haskey(state.aliases_by_subtrace_address, addr_first)
-        return state.aliases_by_subtrace_address[addr_first]
-    else
-        return ()
-    end
+function has_aliases(state::ProbabilisticProgramRuntimeState, generator_addr::FlatAddress)
+    return haskey(state.aliases, generator_addr)
 end
 
-function has_alias(state::ProbabilisticProgramRuntimeState, alias)
-    return alias in state.all_aliases
+function get_aliases(state::ProbabilisticProgramRuntimeState, generator_addr:FlatAddress)
+    return state.aliases[generator_addr]
 end
 
 
@@ -141,22 +127,63 @@ macro e(expr, addr_first)
     Expr(:call, tagged!, esc(runtime_state_symbol), esc(expr), esc(addr_first))
 end
 
+# TODO use different methods..
 const METHOD_SIMULATE = 1
 const METHOD_REGENERATE = 2
+
+function tagged_propose!(runtime_state::ProbabilisticProgramRuntimeState, generator::AtomicGenerator{T},
+                          args::Tuple, addr::FlatAddress) where {T}
+    if has_aliases(runtime_state, addr)
+        error("Atomic sub-generator cannot have its addresses aliased")
+    end
+    (increment, subtrace) = propose!(generator, args, (ADDR_OUTPUT,))
+    if addr in runtime_state.outputs
+        increment!(runtime_state.score, increment)
+    end
+    runtime_state.trace[addr] = get(subtrace)
+end
+
+function tagged_regenerate!(runtime_state::ProbabilisticProgramRuntimeState, generator::AtomicGenerator{T},
+                          args::Tuple, addr::FlatAddress) where {T}
+    if has_aliases(runtime_state, addr)
+        error("Atomic sub-generator cannot have its addresses aliased")
+    end
+    if addr in runtime_state.outputs
+        increment = regenerate!(generator, args, (ADDR_OUTPUT,), AtomicTrace(runtime_state.trace[addr]))
+        increment!(runtime_state.score, increment)
+    else
+        (_, subtrace) = propose!(generator, args, (ADDR_OUTPUT,))
+        runtime_state.trace[addr] = get(subtrace)
+    end
+end
+
+function tagged_propose!(runtime_state::ProbabilisticProgramRuntimeState, generator::Generator{T},
+                          args::Tuple, addr::FlatAddress) where {T}
+    sub_outputs = Array{FlatAddress}()
+    # TODO what is the notion of return value? for a generator... is there one?
+    for (sub_addr, alias) in get_aliases(runtime_state, addr)
+        if alias in runtime_state.outputs
+            push!(sub_outputs, sub_addr)
+        end
+    end
+    (score, subtrace) = propose!(generator, args, sub_outputs)
+    for (sub_addr, alias) in get_aliases(runtime_state, addr)
+        if alias in runtime_state.outputs
+            runtime_state.trace[alias] = subtrace[sub_addr]
+        end
+    end
+    # TODO what to return????? need a notion of return value....
+end
 
 # process a tagged generator invocation
 function tagged!(runtime_state::ProbabilisticProgramRuntimeState,
                  method::Int, generator::Generator{T}, args::Tuple, addr_first) where {T}
 
-    if has_alias(runtime_state, addr_first)
-        error("Address $addr_first was already set as an alias of another address")
-    end
-
     local subtrace::T
     if has_subtrace(runtime_state.trace, addr_first)
         subtrace = get_subtrace(runtime_state.trace, addr_first)
     else
-        subtrace = empty_trace(generator) # TODO pass args in
+        subtrace = empty_trace(generator) # TODO pass args in??
     end
 
     # TODO: if the address is in the 'condition' set, then we need to verify
@@ -166,7 +193,6 @@ function tagged!(runtime_state::ProbabilisticProgramRuntimeState,
 
     # retrieve all outputs and conditions with the prefix addr_first
     sub_outputs = runtime_state.outputs[addr_first]
-    sub_conditions = runtime_state.conditions[addr_first]
 
     # handle any aliases for addresses under addr_first
     for (addr_rest, alias) in get_aliases(runtime_state, addr_first)
