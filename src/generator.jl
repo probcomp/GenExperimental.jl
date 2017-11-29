@@ -41,24 +41,25 @@ abstract type Trace end
 Generative process that can record values into a `Trace`
 
 Each `Generator` type can record values into a paticular `Trace` type `T`.
+A generator also has a return type V, which represents the outputs of the computation.
 """
-abstract type Generator{T <: Trace} end
+abstract type Generator{T<:Trace,V} end
 
 """
 TODO: Explain
 
 outputs is a data structure that has method `in(outputs, addr::FlatAddress)` and length(outputs)
 
-    (score, trace::T) = propose(generator::Generator{T}, outputs, args::Tuple)
+    (score, value::V, trace::T) = propose(generator::Generator{T}, outputs, args::Tuple)
 """
-function propose! end
+function simulate end
 
 """
 TODO: Explain
 
 constraints is a data structure that has method `in(outputs, addr::FlatAddress)` and length(outputs)
 
-    score = assess!(generator::Generator{T}, constraints, args::Tuple, trace::T)
+    (score, value::V) = assess!(generator::Generator{T}, constraints, args::Tuple, trace::T)
 
 The return value is the value at the empty address `()` in the trace.
 """
@@ -68,7 +69,7 @@ function assess! end
 """
 Return an empty trace that is compatible with the given generator.
 
-    trace::T = empty_trace(generator::Generator{T})
+    trace::T = empty_trace(generator::Generator{T,V})
 """
 function empty_trace end
 
@@ -100,7 +101,7 @@ Base.get(trace::AtomicTrace) = get(trace.value)
 
 atomic_addr_err(addr::FlatAddress) = error("Address not found: $addr; the only valid address is $ADDR_OUTPUT")
 
-Base.haskey(t::AtomicTrace, addr::FlatAddress) = (ADDR_OUTPUT == addr)
+Base.haskey(t::AtomicTrace, addr::FlatAddress) = (ADDR_OUTPUT == addr && !isnull(t.value))
 
 function Base.delete!(t::AtomicTrace{T}, addr::FlatAddress) where {T}
     if ADDR_OUTPUT == addr
@@ -134,7 +135,7 @@ end
 """
 A generator that generates values for a single address.
 """
-AtomicGenerator{T} = Generator{AtomicTrace{T}}
+AtomicGenerator{T} = Generator{AtomicTrace{T},T}
 
 empty_trace(::AtomicGenerator{T}) where {T} = AtomicTrace(T)
 
@@ -145,7 +146,7 @@ A generator defined in terms of its sampler function (`simulate`) and its exact 
     rand(g::AssessableAtomicGenerator{T}, args...)
     logpdf(g::AssessableAtomicGenerator{T}, value::T, args...)
 
-The `propose!` method accepts the following queries:
+The `simulate` method accepts the following queries:
 
     outputs: []
 
@@ -169,42 +170,41 @@ abstract type AssessableAtomicGenerator{T} <: AtomicGenerator{T} end
 
 function logpdf end
 
-function propose!(g::AssessableAtomicGenerator{T}, args::Tuple, outputs) where {T}
+function simulate(g::AssessableAtomicGenerator{T}, args::Tuple, outputs) where {T}
     local value::T
     has_output = (ADDR_OUTPUT in outputs)
     num_outputs = length(outputs)
+    value = rand(g, args...)
     if has_output && num_outputs == 1
-        value = rand(g, args...)
         score = logpdf(g, value, args...)
-        trace = AtomicTrace(value)
     elseif !has_output && num_outputs == 0
-        value = rand(g, args...)
         score = 0.
-        trace = AtomicTrace(T)
     else
         error("Invalid query; outputs may only contain $ADDR_OUTPUT")
     end
-    (score, trace)
+    trace = AtomicTrace(value)
+    (score, value, trace)
 end
 
 function assess!(g::AssessableAtomicGenerator{T}, args::Tuple, constraints, trace::AtomicTrace{T}) where {T}
     local value::T
     has_output = (ADDR_OUTPUT in constraints)
-    num_constraints= length(constraints)
+    num_constraints = length(constraints)
     if has_output && num_constraints == 1
         value = get(trace)
         score = logpdf(g, value, args...)
     elseif !has_output && num_constraints == 0
+        value = rand(g, args...)
         score = 0.
     else
         error("Invalid query; constraints may only contain $ADDR_OUTPUT")
     end
-    score
+    (score, value)
 end
 
 export Trace
 export Generator
-export propose!
+export simulate
 export assess!
 export empty_trace
 export AtomicTrace
@@ -212,3 +212,4 @@ export AtomicGenerator
 export value_type
 export AssessableAtomicGenerator
 export logpdf
+export ADDR_OUTPUT

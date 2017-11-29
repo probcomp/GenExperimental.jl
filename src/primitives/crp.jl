@@ -163,7 +163,7 @@ new_table(t::CRPTrace) = new_table(t.state)
 
 get_tables(t::CRPTrace) = get_tables(t.state)
 
-struct CRPGenerator{T} <: Generator{CRPTrace{T}} end
+struct CRPGenerator{T} <: Generator{CRPTrace{T},Dict{T,Int}} end
 
 function CRPGenerator(::Type{T}) where {T}
     CRPGenerator{T}()
@@ -173,11 +173,11 @@ function empty_trace(::CRPGenerator{T}) where {T}
     return CRPTrace(T)
 end
 
-function check_trace_addresses(trace::CRPTrace, outputs, conditions, addresses)
-    # no assignments other than for outputs and conditions may be in the trace
+function check_trace_addresses(trace::CRPTrace, outputs, addresses)
+    # no assignments other than for outputs may be in the trace
     # every assignment in the trace must be registered in the argument 'addresses'
     for addr in keys(trace.assignments)
-        if !(addr in outputs || addr in conditions)
+        if !(addr in outputs)
             error("address $addr was in trace but not in outputs or conditions")
         end
         if !(addr in addresses)
@@ -186,44 +186,27 @@ function check_trace_addresses(trace::CRPTrace, outputs, conditions, addresses)
     end
 end
 
-function regenerate!(::CRPGenerator{T}, args::Tuple{Any,Any,Bool}, outputs, conditions, trace::CRPTrace{T}) where {T}
+function assess!(::CRPGenerator{T}, args::Tuple{Any,Any,Bool}, outputs, trace::CRPTrace{T}) where {T}
 
-    # addresses is the full address space. all outputs and conditions must be a
-    # subset of that address space.  the trace must also not contain any other
-    # addresses besides those in outputs and conditions.  these preconditions
-    # are only checked if safe=true
-    # the implementation is optimized for small outputs and large conditions.
     (addresses, alpha, safe) = args
 
     if safe
         check_trace_addresses(trace, outputs, conditions, addresses)
 
-        # check that output and condition addresses are in the argument 'addresses'
-        for addr in (outputs..., conditions...)
+        # check that output addresses are in the argument 'addresses'
+        for addr in outputs
             if !(length(addr) == 1 && addr[1] in addresses)
                 error("address $addr was in outputs or conditions but is not in argument addresses")
             end
         end
     end
     
-    # joint probability of the conditions and outputs
-    score_combined = log_joint_probability(trace.state, alpha)
-    for addr in outputs
-        unincorporate!(trace.state, trace.assignments[addr[1]])
-    end
+    score = log_joint_probability(trace.state, alpha)
 
-    # joint probability of just the conditions
-    score_condition_only = log_joint_probability(trace.state, alpha)
-
-    # restore the trace to its original state
-    for addr in outputs
-        incorporate!(trace.state, trace.assignments[addr[1]])
-    end
-
-    return (score_combined - score_condition_only, copy(trace.assignments))
+    return (score, copy(trace.assignments))
 end
 
-function simulate!(::CRPGenerator{T}, args::Tuple{Any,Any,Bool}, outputs, conditions, trace::CRPTrace{T}) where {T}
+function simulate(::CRPGenerator{T}, args::Tuple{Any,Any,Bool}, outputs, trace::CRPTrace{T}) where {T}
     (addresses, alpha, safe) = args
     if safe
         check_trace_addresses(trace, outputs, conditions, addresses)

@@ -36,25 +36,38 @@ end
 """
 A generative process represented by a Julia function and constructed with `@program`.
 
-    ProbabilisticProgram <: Generator{FlatDictTrace}
+    ProbabilisticProgram <: Generator{FlatDictTrace,Any}
 """
-struct ProbabilisticProgram <: Generator{FlatDictTrace}
+struct ProbabilisticProgram <: Generator{FlatDictTrace,Any} # TODO give them a return type?
     program::Function
 end
 
-# TOOD pass args in??
 empty_trace(::ProbabilisticProgram) = FlatDictTrace()
 
-struct ProbabilisticProgramRuntimeState
+abstract type ProbabilisticProgramRuntimeState end
+
+struct SimulateProgramRuntimeState <: ProbabilisticProgramRuntimeState
     trace::FlatDictTrace
     outputs
     score::Score
     aliases::Dict{FlatAddress,Dict{FlatAddress, FlatAddress}}
 end
 
-function ProbabilisticProgramRuntimeState(trace::DictTrace, outputs, conditions)
+struct AssessProgramRuntimeState <: ProbabilisticProgramRuntimeState
+    trace::FlatDictTrace
+    outputs
+    score::Score
+    aliases::Dict{FlatAddress,Dict{FlatAddress, FlatAddress}}
+end
+
+function SimulateProgramRuntimeState(trace::FlatDictTrace, outputs) 
     aliases = Dict{FlatAddress,Dict{FlatAddress, FlatAddress}}()
-    ProbabilisticProgramRuntimeState(trace, outputs, conditions, Score(), aliases)
+    SimulateProgramRuntimeState(trace, outputs, Score(), aliases)
+end
+
+function AssessProgramRuntimeState(trace::FlatDictTrace, outputs)
+    aliases = Dict{FlatAddress,Dict{FlatAddress, FlatAddress}}()
+    AssessProgramRuntimeState(trace, outputs, Score(), aliases)
 end
 
 function add_alias!(state::ProbabilisticProgramRuntimeState, alias::FlatAddress, generator_addr::FlatAddress, sub_addr::FlatAddress)
@@ -72,14 +85,11 @@ function has_aliases(state::ProbabilisticProgramRuntimeState, generator_addr::Fl
     return haskey(state.aliases, generator_addr)
 end
 
-function get_aliases(state::ProbabilisticProgramRuntimeState, generator_addr:FlatAddress)
+function get_aliases(state::ProbabilisticProgramRuntimeState, generator_addr::FlatAddress)
     return state.aliases[generator_addr]
 end
 
-
-# these symbols are passed as the first arguments to every probabilistic program
 const runtime_state_symbol = gensym()
-const method_symbol = gensym()
 
 """
 Dynamically add an address alias.
@@ -88,8 +98,8 @@ The first argument is an address tuple.
 The second argument is a single-element address.
 """
 
-macro alias(addr, alias)
-    Expr(:call, add_alias!, esc(runtime_state_symbol), esc(alias), esc(addr))
+macro alias(addr, sub_addr, alias)
+    Expr(:call, add_alias!, esc(runtime_state_symbol), esc(alias), esc(addr), esc(sub_addr))
 end
 
 """
@@ -97,165 +107,103 @@ Annotate an invocation of a `Generator` within a `@program` with an address.
 
 Example:
 
-    result = @g(generator(generator_args...), addr_first)
+    result = @g(generator(generator_args...), addr)
 
-The address element `addr_first` should uniquely identify this point in the dynamic execution of the program.
+The address `addr` should uniquely identify this point in the dynamic execution of the program.
 """
-macro g(expr, addr_first)
-    # NOTE: This macro is separate from @e because it uses the special function call syntax for generators:
+macro g(expr, addr)
     if expr.head == :call
         generator = expr.args[1]
         generator_args = expr.args[2:end]
         Expr(:call, 
-            tagged!,
+            process_tagged,
             esc(runtime_state_symbol),
-            esc(method_symbol),
             esc(generator),
             esc(Expr(:tuple, generator_args...)),
-            esc(addr_first))
+            esc(addr))
     else
-        error("Invalid application of @g, it is only used to address generator invocations")
+        error("Invalid use of @g, it is only used to tag a generator invocation")
     end
 end
 
-"""
-Annotate an arbitrary expression within a `@program` with an address.
-
-The program can process `intervene!` requests for this address that are present in the trace passed to `generate!`.
-"""
-macro e(expr, addr_first)
-    Expr(:call, tagged!, esc(runtime_state_symbol), esc(expr), esc(addr_first))
-end
-
-# TODO use different methods..
-const METHOD_SIMULATE = 1
-const METHOD_REGENERATE = 2
-
-function tagged_propose!(runtime_state::ProbabilisticProgramRuntimeState, generator::AtomicGenerator{T},
-                          args::Tuple, addr::FlatAddress) where {T}
+function process_tagged(runtime_state::SimulateProgramRuntimeState, generator::AtomicGenerator{T}, args::Tuple, addr::FlatAddress) where {T}
     if has_aliases(runtime_state, addr)
         error("Atomic sub-generator cannot have its addresses aliased")
     end
-    (increment, subtrace) = propose!(generator, args, (ADDR_OUTPUT,))
+    (increment, value, _) = simulate(generator, args, (ADDR_OUTPUT,))
     if addr in runtime_state.outputs
         increment!(runtime_state.score, increment)
     end
-    runtime_state.trace[addr] = get(subtrace)
+    runtime_state.trace[addr] = value
+    return value
 end
 
-function tagged_regenerate!(runtime_state::ProbabilisticProgramRuntimeState, generator::AtomicGenerator{T},
-                          args::Tuple, addr::FlatAddress) where {T}
+function process_tagged(runtime_state::AssessProgramRuntimeState, generator::AtomicGenerator{T}, args::Tuple, addr::FlatAddress) where {T}
     if has_aliases(runtime_state, addr)
         error("Atomic sub-generator cannot have its addresses aliased")
     end
+    local value::T
     if addr in runtime_state.outputs
-        increment = regenerate!(generator, args, (ADDR_OUTPUT,), AtomicTrace(runtime_state.trace[addr]))
+        value = runtime_state.trace[addr]
+        (increment, _) = assess!(generator, args, (ADDR_OUTPUT,), AtomicTrace(value))
         increment!(runtime_state.score, increment)
     else
-        (_, subtrace) = propose!(generator, args, (ADDR_OUTPUT,))
-        runtime_state.trace[addr] = get(subtrace)
+        (increment, value) = assess!(generator, args, (), AtomicTrace(T))
+        @assert increment == 0.
+        runtime_state.trace[addr] = value
     end
+    return value
 end
 
-function tagged_propose!(runtime_state::ProbabilisticProgramRuntimeState, generator::Generator{T},
-                          args::Tuple, addr::FlatAddress) where {T}
-    sub_outputs = Array{FlatAddress}()
-    # TODO what is the notion of return value? for a generator... is there one?
-    for (sub_addr, alias) in get_aliases(runtime_state, addr)
-        if alias in runtime_state.outputs
-            push!(sub_outputs, sub_addr)
+function get_outputs(runtime_state::ProbabilisticProgramRuntimeState, addr::FlatAddress)
+    sub_outputs = Vector{FlatAddress}()
+    if has_aliases(runtime_state, addr)
+        for (sub_addr, alias) in get_aliases(runtime_state, addr)
+            if alias in runtime_state.outputs
+                push!(sub_outputs, sub_addr)
+            end
         end
     end
-    (score, subtrace) = propose!(generator, args, sub_outputs)
-    for (sub_addr, alias) in get_aliases(runtime_state, addr)
-        if alias in runtime_state.outputs
+    return sub_outputs
+end
+
+function copy_subtrace_to_trace!(runtime_state::ProbabilisticProgramRuntimeState, addr::FlatAddress, subtrace)
+    if has_aliases(runtime_state, addr)
+        for (sub_addr, alias) in get_aliases(runtime_state, addr)
             runtime_state.trace[alias] = subtrace[sub_addr]
         end
     end
-    # TODO what to return????? need a notion of return value....
 end
 
-# process a tagged generator invocation
-function tagged!(runtime_state::ProbabilisticProgramRuntimeState,
-                 method::Int, generator::Generator{T}, args::Tuple, addr_first) where {T}
-
-    local subtrace::T
-    if has_subtrace(runtime_state.trace, addr_first)
-        subtrace = get_subtrace(runtime_state.trace, addr_first)
-    else
-        subtrace = empty_trace(generator) # TODO pass args in??
-    end
-
-    # TODO: if the address is in the 'condition' set, then we need to verify
-    # that it actually can be conditioned upon without modifying the
-    # conditional distribution of the auxiliary structure and outputs to be
-    # different from forward simulation. For now, we do not verify this.
-
-    # retrieve all outputs and conditions with the prefix addr_first
-    sub_outputs = runtime_state.outputs[addr_first]
-
-    # handle any aliases for addresses under addr_first
-    for (addr_rest, alias) in get_aliases(runtime_state, addr_first)
-        if alias in runtime_state.outputs
-            if addr_rest in sub_conditions
-                error("An address and its alias $alias disagree on its role in the query")
-            end
-            # NOTE: this mutates the input query
-            push!(sub_outputs, addr_rest)
-        elseif alias in runtime_state.conditions
-            if addr_rest in sub_outputs
-                error("An address and its alias $alias disagree on its role in the query")
-            end
-            # NOTE: this mutates the input query
-            push!(sub_conditions, addr_rest)
-        end
-        if haskey(runtime_state.trace, alias)
-            subtrace[addr_rest] = runtime_state.trace[alias]
-        end
-    end
-
-    # recursively query the tagged generator
-    if method == METHOD_SIMULATE
-        (increment, value) = simulate!(generator, args, sub_outputs, sub_conditions, subtrace)
-    elseif method == METHOD_REGENERATE
-        (increment, value) = regenerate!(generator, args, sub_outputs, sub_conditions, subtrace)
-    else
-        # there are no other methods
-        @assert false
-    end
+function process_tagged(runtime_state::SimulateProgramRuntimeState, generator::Generator{T,V}, args::Tuple, addr::FlatAddress) where {T,V}
+    local value::V
+    sub_outputs = get_outputs(runtime_state, addr)
+    (increment, value, subtrace) = simulate(generator, args, sub_outputs)
+    copy_subtrace_to_trace!(runtime_state, addr, subtrace)
     increment!(runtime_state.score, increment)
-    set_subtrace!(runtime_state.trace, addr_first, subtrace)
-
-    # copy values from subtrace to aliases
-    for (addr_rest, alias) in get_aliases(runtime_state, addr_first)
-        runtime_state.trace[alias] = subtrace[addr_rest]
-    end
-
-    # According to the generator specification, the return value is the value at address `()`.
-    @assert subtrace[()] == value
-
-    value
+    return value
 end
 
-# process a tagged expression that is not a generator invocation
-function tagged!(runtime_state::ProbabilisticProgramRuntimeState, value, addr_first)
-    local subtrace::AtomicTrace
-    if has_subtrace(runtime_state.trace, addr_first)
-        subtrace = get_subtrace(runtime_state.trace, addr_first)
-
-        # if the addr_first is in conditions, use the given value
-        # TODO: this is not really correct, since there may have been
-        # no distribution on the expression for us to condition
-        # this capability should be handled by a separate intervention feature, which should
-        # be implemented as a mutation of the generator, not a condition
-        if !(addr_first in runtime_state.conditions)
-            subtrace.value = value
+function initialize_subtrace(runtime_state::AssessProgramRuntimeState, addr::FlatAddress, generator::Generator)
+    subtrace = empty_trace(generator)
+    if has_aliases(runtime_state, addr)
+        for (sub_addr, alias) in get_aliases(runtime_state, addr)
+            if haskey(runtime_state.trace, alias)
+                subtrace[sub_addr] = runtime_state.trace[alias]
+            end
         end
-    else
-        subtrace = AtomicTrace(value)
     end
-    set_subtrace!(runtime_state.trace, addr_first, subtrace)
-    subtrace[()]
+    return subtrace
+end
+
+function process_tagged(runtime_state::AssessProgramRuntimeState, generator::Generator{T,V}, args::Tuple, addr::FlatAddress) where {T,V}
+    local value::V
+    sub_outputs = get_outputs(runtime_state, addr)
+    subtrace = initialize_subtrace(runtime_state, addr, generator)
+    (increment, value) = assess!(generator, args, sub_outputs, subtrace)
+    copy_subtrace_to_trace!(runtime_state, addr, subtrace)
+    increment!(runtime_state.score, increment)
+    return value
 end
 
 
@@ -264,12 +212,17 @@ Define a probabilisic program.
 
 The body of the program is just the body of a regular Julia function, except that the annotation macros [`@g`](@ref) and [`@e`](@ref) can be used.
 """
-macro program(args, body)
-
+macro probabilistic(expr)
+    head = expr.head
+    if head != :function
+        error("Invalid @probabilistic function definition syntax")
+    end
+    args = expr.args[1]
+    body = expr.args[2]
+    
     # first argument is the trace
     new_args = Any[
         :($runtime_state_symbol::ProbabilisticProgramRuntimeState),
-        :($method_symbol::Int)
     ]
 
     # remaining arguments are the original arguments
@@ -280,7 +233,7 @@ macro program(args, body)
         push!(new_args, args)
     elseif args.head == :call
     
-        # @program name(args...)
+        # @probabilistic <name>(args...)
         name = Nullable{Symbol}(args.args[1])
         for arg in args.args[2:end]
             push!(new_args, arg)
@@ -296,7 +249,7 @@ macro program(args, body)
             push!(new_args, arg)
         end
     else
-        error("invalid @program")
+        error("Invalid @probabilistic function definition syntax")
     end
     arg_tuple = Expr(:tuple, new_args...)
 
@@ -310,27 +263,7 @@ macro program(args, body)
     end
 end
 
-function _simulate_or_regenerate!(p::ProbabilisticProgram, args::Tuple, outputs, conditions,
-                                  trace::DictTrace, method::Int)
-    if () in outputs
-        error("Invalid query. () cannot be an output")
-    end
-    if () in conditions
-        if !isempty(outputs)
-            # TODO also check that there are no other conditions
-            error("Invalid query. Can only condition on () if there are no outputs.")
-        else
-            return (0., trace[()])
-        end
-    else
-        runtime_state = ProbabilisticProgramRuntimeState(trace, outputs, conditions)
-        value = p.program(runtime_state, method, args...)
-        trace[()] = value
-        return (get(runtime_state.score), value)
-    end
-end
-
-function check_addresses_present(addresses, trace::DictTrace)
+function check_addresses_present(addresses, trace::FlatDictTrace)
     for addr in addresses
         if !haskey(trace, addr)
             error("Trace does not contain value for address $addr")
@@ -338,25 +271,29 @@ function check_addresses_present(addresses, trace::DictTrace)
     end
 end
 
-function simulate!(p::ProbabilisticProgram, args::Tuple, outputs, conditions, trace::DictTrace)
-    check_addresses_present(conditions, trace)
-    _simulate_or_regenerate!(p, args, outputs, conditions, trace, METHOD_SIMULATE)
+function simulate(p::ProbabilisticProgram, args::Tuple, outputs)
+    trace = FlatDictTrace()
+    runtime_state = SimulateProgramRuntimeState(trace, outputs)
+    value = p.program(runtime_state, args...)
+    score = get(runtime_state.score)
+    return (score, value, trace)
 end
 
-function regenerate!(p::ProbabilisticProgram, args::Tuple, outputs, conditions, trace::DictTrace)
+function assess!(p::ProbabilisticProgram, args::Tuple, outputs, trace::FlatDictTrace)
     check_addresses_present(outputs, trace)
-    check_addresses_present(conditions, trace)
-    _simulate_or_regenerate!(p, args, outputs, conditions, trace, METHOD_REGENERATE)
+    runtime_state = AssessProgramRuntimeState(trace, outputs)
+    value = p.program(runtime_state, args...)
+    score = get(runtime_state.score)
+    return (score, value)
 end
 
 
 # NOTE: this is not generic for all Generators, because Generator is an abstract type
 # and abstract types and https://github.com/JuliaLang/julia/issues/14919
-(p::ProbabilisticProgram)(args...) = simulate!(p, args, AddressTrie(), AddressTrie(), DictTrace())[2]
+(p::ProbabilisticProgram)(args...) = simulate(p, args, ())[2]
 
 export ProbabilisticProgram
 export ProbabilisticProgramRuntimeState
-export @program
+export @probabilistic
 export @g
-export @e
 export @alias

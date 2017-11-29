@@ -2,26 +2,26 @@
 # Nested inference generator combinator #
 #########################################
 
-struct NestedInferenceGenerator{T} <: Generator{T}
-    p::Generator{T}
+struct NestedInferenceGenerator{T,V} <: Generator{T,V}
+    p::Generator{T,V}
     q::Generator
     
     # mapping from p_address to q_address
-    mapping::Dict
+    mapping::Dict{FlatAddress,FlatAddress}
 end
+
+# TODO refactor.
 
 empty_trace(g::NestedInferenceGenerator) = empty_trace(g.p)
 
-function nested(p::Generator{T}, q::Generator, mapping::Dict) where {T}
+function nested(p::Generator{T,V}, q::Generator, mapping::Dict{FlatAddress,FlatAddress}) where {T,V}
     NestedInferenceGenerator(p, q, mapping)
 end
 
-function regenerate!(g::NestedInferenceGenerator{T}, args::Tuple, outputs,
-                     conditions, trace::T) where {T}
+function assess!(g::NestedInferenceGenerator{T,V}, args::Tuple, outputs, trace::T) where {T,V}
     (p_args, q_args) = args
     q_trace = empty_trace(g.q)
-    q_outputs = AddressTrie()
-    q_conditions = AddressTrie()
+    q_outputs = Vector{FlatAddress}()
 
     for (p_addr, q_addr) in g.mapping
         if (p_addr in outputs || p_addr in conditions)
