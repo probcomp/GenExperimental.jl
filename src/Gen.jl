@@ -17,9 +17,8 @@ module Gen
     # (incomplete feature)
     #include("dag.jl")
 
-    # probabilistic program trace and generator types
-    include("flat_dict_trace.jl")
-    include("probabilistic_program.jl")
+    # probabilistic function
+    include("probabilistic_function.jl")
 
     # custom features for jupyter notebooks
     #include("notebook.jl")

@@ -49,21 +49,34 @@ abstract type Generator{T<:Trace,V} end
 TODO: Explain
 
 outputs is a data structure that has method `in(outputs, addr::FlatAddress)` and length(outputs)
+    (score, value::V, trace::T) = simulate(generator::Generator{T}, args::Tuple)
 
-    (score, value::V, trace::T) = propose(generator::Generator{T}, outputs, args::Tuple)
+    (score, value::V, trace::T) = simulate(generator::Generator{T}, outputs, args::Tuple)
+
+    (score, value::V, trace::T) = simulate(generator::Generator{T}, outputs, interventions, args::Tuple)
 """
 function simulate end
+
+simulate(g::Generator{T,V}, args::Tuple) = simulate(g, (), (), args)
+simulate(g::Generator{T,V}, outputs, args::Tuple) = simulate(g, outputs, (), args)
 
 """
 TODO: Explain
 
-constraints is a data structure that has method `in(outputs, addr::FlatAddress)` and length(outputs)
+constraints and interventions are data structures that has method `in(outputs, addr::FlatAddress)` and length(outputs)
+
+    (score, value::V) = assess!(generator::Generator{T}, args::Tuple, trace::T)
 
     (score, value::V) = assess!(generator::Generator{T}, constraints, args::Tuple, trace::T)
+
+    (score, value::V) = assess!(generator::Generator{T}, constraints, interventions, args::Tuple, trace::T)
 
 The return value is the value at the empty address `()` in the trace.
 """
 function assess! end
+
+assess!(g::Generator{T,V}, args::Tuple) = assess!(g, (), (), args)
+assess!(g::Generator{T,V}, outputs, args::Tuple) = assess!(g, outputs, (), args)
 
 
 """
