@@ -206,7 +206,7 @@ function tagged!(runtime_state::ProbabilisticProgramRuntimeState,
     end
 
     # According to the generator specification, the return value is the value at address `()`.
-    @assert subtrace[()] == value
+    @assert isequal(subtrace[()], value)
 
     value
 end
