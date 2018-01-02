@@ -54,7 +54,6 @@ function process_function_sig(ast::Expr, query_function_name::Symbol, score_symb
     body = ast.args[2]
     new_args = Any[]
     for value_symbol in values(score_set)
-        # TODO order needs to be fixed somehow? (to have fixed argument signature)
         push!(new_args, value_symbol)
     end
     for arg in args.args
@@ -137,13 +136,8 @@ macro query(generator_name, params, args...)
     Expr(:call, query_function_name, new_args...)
 end
 
-
-# a query pattern is a set of random choices to score
-#query_patterns = [
-    #(:obs,),
-    ##j(:foo, :obs)
-#]
-
+# define the generator by giving a probablistic program for it
+# TODO suport for code-generaton of dynamic addresses? or addresses in for loops at least?
 @make_generator(
     MyGenerator,
     function (mu::Float64)
@@ -153,11 +147,16 @@ end
         else
             y = 1
         end
-        # TODO suport for code-generaton of more general (dynamic?) addresses is future feature
         z = @name(normal(x + y, 1), obs)
         z
     end)
 
+# Perform queries of the form e.g. Prob(obs=0.5). Each query triggers a
+# 'lightweight' evaluation of the generator's probabilistic program, scoring
+# those variables given in the arguments to the query (e.g. obs). We avoid name
+# lookups at runtime by generating functions optimized for answering each query
+# pattern (i.e. set of scored random choices). Even if the same query pattern
+# is used many times, the query function is only generated once.
 (score, value) = @query(MyGenerator, (0.3,), obs=0.5)
 println("score: $score, value: $value")
 (score, value) = @query(MyGenerator, (0.3,), obs=0.5, foo=0.1)
