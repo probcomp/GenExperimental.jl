@@ -774,6 +774,16 @@ function propagate(op::Sum, datum::T, adj::U) where {T,U}
     op.arg.adj += adj 
 end
 
+# ---- prod ----
+import Base.prod
+@generate_unary_node_type(Prod)
+@generate_gen_unary_operator(prod, Prod, GenValue)
+
+function propagate(op::Prod, datum::T, adj::U) where {T,U}
+    op.arg.adj += (datum ./ op.arg.datum) * adj 
+end
+
+
 
 # ---- transpose ----
 

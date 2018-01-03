@@ -355,6 +355,13 @@ end
         adtest(sum, a_matrix)
     end
 
+    @testset "prod" begin
+        adtest(prod, a_scalar)
+        adtest(prod, a_vector)
+        adtest(prod, a_row_vector)
+        adtest(prod, a_matrix)
+    end
+
     @testset "logsumexp" begin
 
         # test when argument is a GenColumnVector
@@ -375,5 +382,18 @@ end
         @test isapprox(partial(a[1]), expected[1])
         @test isapprox(partial(a[3]), expected[3])
     end
+
+    @testset "range index into column vector" begin
+        col_vector = [1., 2., 3.]
+        range_index_sum(v) = (prod(v[2:3]) / sum(v[2:3]))
+        adtest(range_index_sum, col_vector)
+    end
+
+    @testset "range index into row vector" begin
+        row_vector = [1., 2., 3.]'
+        range_index_sum(v) = (prod(v[2:3]) / sum(v[2:3]))
+        adtest(range_index_sum, row_vector)
+    end
+
 
 end

@@ -16,7 +16,7 @@ nums(t::Tape) = t.nums
 abstract type AbstractOperator end
 
 struct Input <: AbstractOperator end
-propagate{T}(op::Input, datum::T, adj::T) = nothing # no-op
+propagate(op::Input, datum::T, adj::U) where {T,U} = nothing # no-op
 
 
 # scalar numeric type
@@ -172,6 +172,25 @@ Base.getindex(arg::GenVector, i::Int) = GenScalar(arg.datum[i], arg.tape, GetVec
 function propagate(op::GetVectorIndex, datum::Real, adj::Float64)
     op.arg.adj[op.i] += adj
 end
+
+# range-indexing into a (column,row) vector gives a (column,row) vector
+# T is either GenColumnVector or GenRowVector
+# U is either Vector{Float64} (for GenColumnVector) or RowVector{Float64} (for GenRowVector)
+
+struct GetVectorUnitRange{T} <: AbstractOperator
+    arg::T
+    range::UnitRange{Int}
+end
+
+Base.getindex(arg::GenColumnVector, range::UnitRange{Int}) = GenColumnVector(arg.datum[range], arg.tape, GetVectorUnitRange(arg, range))
+
+
+Base.getindex(arg::GenRowVector, range::UnitRange{Int}) = GenRowVector(arg.datum[range], arg.tape, GetVectorUnitRange(arg, range))
+
+function propagate(op::GetVectorUnitRange, datum::U, adj::U) where {U}
+    op.arg.adj[op.range] += adj
+end
+
 
 # indexing into a matrix gives a scalar
 
