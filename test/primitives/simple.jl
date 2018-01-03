@@ -83,6 +83,15 @@ end
     @test isapprox(logpdf(UniformDiscrete(), x, lower, upper), log(1./upper))
 end
 
+@testset "poisson" begin
+
+    # test against Distributions.Poisson since we re-implement the density
+    # function ourselves for purposes of AD
+    x = 4
+    lambda = 0.6
+    @test isapprox(logpdf(Poisson(), x, lambda), Distributions.logpdf(Distributions.Poisson(lambda), x))
+end
+
 @testset "categorical log space" begin
     x = 3
     probs = [0.2, 0.3, 0.5]
