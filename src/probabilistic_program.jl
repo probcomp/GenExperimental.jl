@@ -197,8 +197,15 @@ function tagged!(runtime_state::ProbabilisticProgramRuntimeState,
         # there are no other methods
         @assert false
     end
+
     increment!(runtime_state.score, increment)
     set_subtrace!(runtime_state.trace, addr_first, subtrace)
+
+    # score every atomic assessable generator
+    # NOTE: HACK because it only applies to assessable atomic generators
+    if isa(generator, AssessableAtomicGenerator)
+        set_score!(runtime_state.trace, addr_first, logpdf(generator, subtrace[()], args...))
+    end
 
     # copy values from subtrace to aliases
     for (addr_rest, alias) in get_aliases(runtime_state, addr_first)

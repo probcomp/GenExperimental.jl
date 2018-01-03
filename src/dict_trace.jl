@@ -20,6 +20,7 @@ mutable struct DictTrace <: Trace
 
     # key is a single element of an address (called `addr_first` in the code)
     subtraces::Dict{Any, Trace}
+    scores::Dict{Any,Any}
 
     # the value for address ()
     has_empty_address_value::Bool
@@ -28,8 +29,9 @@ end
 
 function DictTrace()
     subtraces = Dict{Any, Trace}()
+    scores = Dict{Any, Any}()
     empty_address_value = nothing
-    DictTrace(subtraces, false, empty_address_value)
+    DictTrace(subtraces, scores, false, empty_address_value)
 end
 
 
@@ -150,8 +152,18 @@ function Base.print(io::IO, trace::DictTrace)
     println(io, ")")
 end
 
+function set_score!(trace::DictTrace, addr_first, value)
+    trace.scores[addr_first] = value
+end
+
+function get_score(trace::DictTrace, addr_first)
+    return trace.scores[addr_first]
+end
+
 export DictTrace
 export has_subtrace
 export get_subtrace
 export set_subtrace!
 export delete_subtrace!
+export set_score!
+export get_score

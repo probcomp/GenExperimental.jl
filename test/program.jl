@@ -498,3 +498,36 @@ end
 
 
 end
+
+@testset "per-generator scores" begin
+
+    model = @program () begin
+        cloudy = @g(flip(0.3), "cloudy")
+        sprinkler = @g(flip(cloudy ? 0.1 : 0.4), "sprinkler")
+    end
+
+    t = DictTrace()
+    t["cloudy"] = true
+    t["sprinkler"] = true
+    regenerate!(model, (), AddressTrie("cloudy", "sprinkler"), none, t)
+    @test isapprox(get_score(t, "cloudy"), log(0.3))
+    @test isapprox(get_score(t, "sprinkler"), log(0.1))
+
+    t = DictTrace()
+    regenerate!(model, (), none, none, t)
+    @test isapprox(get_score(t, "cloudy"), t["cloudy"] ? log(0.3) : log(1-0.3))
+    if t["cloudy"]
+        @test isapprox(get_score(t, "sprinkler"), t["sprinkler"] ? log(0.1) : log(1-0.1))
+    else
+        @test isapprox(get_score(t, "sprinkler"), t["sprinkler"] ? log(0.4) : log(1-0.4))
+    end
+
+    t = DictTrace()
+    simulate!(model, (), none, none, t)
+    @test isapprox(get_score(t, "cloudy"), t["cloudy"] ? log(0.3) : log(1-0.3))
+    if t["cloudy"]
+        @test isapprox(get_score(t, "sprinkler"), t["sprinkler"] ? log(0.1) : log(1-0.1))
+    else
+        @test isapprox(get_score(t, "sprinkler"), t["sprinkler"] ? log(0.4) : log(1-0.4))
+    end
+end
