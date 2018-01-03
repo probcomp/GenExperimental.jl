@@ -9,6 +9,12 @@ mutable struct Tape
 end
 nums(t::Tape) = t.nums
 
+function zero_grad!(tape::Tape)
+    for num in tape.nums
+        zero_grad!(num)
+    end
+end
+
 
 # each numeric struct records the operation by which it was produced, and its
 # operands
@@ -19,7 +25,9 @@ struct Input <: AbstractOperator end
 propagate(op::Input, datum::T, adj::U) where {T,U} = nothing # no-op
 
 
-# scalar numeric type
+#######################
+# Scalar numeric type #
+#######################
 
 mutable struct GenScalar{S<:Real, T<:AbstractOperator}
     datum::S
@@ -37,10 +45,15 @@ function GenScalar{S<:Real, T<:AbstractOperator}(datum::S, tape::Tape, op::T)
 end
 
 GenScalar{S}(datum::S, tape::Tape) = GenScalar(datum, tape, Input())
+
 Base.getindex(v::GenScalar, i::Int) =  i == 1 ? v : error("Invalid index $i into scalar")
 
+zero_grad!(v::GenScalar) = (v.adj = 0.)
 
-# column vector numeric type
+
+##############################
+# Column vector numeric type #
+##############################
 
 mutable struct GenColumnVector{S<:Real, T<:AbstractOperator}# <: AbstractArray{GenScalar{S}, 1}
     # NOTE: the datum is immutable (there is no setindex! operator)
@@ -59,10 +72,15 @@ function GenColumnVector{S<:Real, T<:AbstractOperator}(datum::Vector{S}, tape::T
 end
 
 GenColumnVector{S<:Real}(datum::Vector{S}, tape::Tape) = GenColumnVector(datum, tape, Input())
+
 Base.IndexStyle(v::GenColumnVector) = IndexLinear()
 
+zero_grad!(v::GenColumnVector) = (v.adj = zeros(Float64, size(v.datum)))
 
-# row vector numeric type
+
+###########################
+# Row vector numeric type #
+###########################
 
 mutable struct GenRowVector{S<:Real, T<:AbstractOperator} <: AbstractArray{GenScalar{S}, 1}
     # NOTE: the datum is immutable (there is no setindex! operator)
@@ -80,11 +98,16 @@ function GenRowVector{S<:Real, T<:AbstractOperator}(datum::RowVector{S,Vector{S}
     num
 end
 
-GenRowVector{S<:Real}(datum::Vector{S}, tape::Tape) = GenRowVector(datum, tape, Input())
+GenRowVector{S<:Real}(datum::RowVector{S}, tape::Tape) = GenRowVector(datum, tape, Input())
+
 Base.IndexStyle(v::GenRowVector) = IndexLinear()
 
+zero_grad!(v::GenRowVector) = (v.adj = transpose(zeros(Float64, length(v.datum))))
 
-# matrix numeric type
+
+#######################
+# Matrix numeric type #
+#######################
 
 mutable struct GenMatrix{S<:Real, T<:AbstractOperator} <: AbstractArray{GenScalar{S}, 2}
     # NOTE: the datum is immutable (there is not setindex! operator)
@@ -103,17 +126,27 @@ function GenMatrix{S<:Real, T<:AbstractOperator}(datum::Matrix{S}, tape::Tape, o
 end
 
 GenMatrix{S<:Real}(datum::Matrix{S}, tape::Tape) = GenMatrix(datum, tape, Input())
+
 Base.IndexStyle(v::GenMatrix) = IndexLinear()
 
+zero_grad!(v::GenMatrix) = (v.adj = zeros(v.datum))
 
 
-# common
+#######################################
+# Methods common to all numeric types #
+#######################################
+
 GenValue = Union{GenScalar, GenColumnVector, GenRowVector, GenMatrix}
+
 Base.size(v::GenValue) = size(v.datum)
+
 Base.length(v::GenValue) = length(v.datum)
 
 
-# other types
+###############
+# Other types #
+###############
+
 GenVector = Union{GenColumnVector, GenRowVector}
 
 ConcreteScalar = Real
@@ -238,6 +271,7 @@ export GenScalar
 export GenColumnVector
 export GenRowVector
 export GenMatrix
+export zero_grad!
 export GenValue
 export makeGenValue
 export ConcreteScalar

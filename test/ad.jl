@@ -395,5 +395,23 @@ end
         adtest(range_index_sum, row_vector)
     end
 
+    @testset "zero grad" begin
+        tape = Tape()
+        a = GenScalar(1., tape)
+        b = GenColumnVector(ones(2), tape)
+        c = GenRowVector(transpose(ones(2)), tape)
+        d = GenMatrix(ones(2, 2), tape)
+        backprop(sum((b * (c * a)) * d))
+        partial_a = partial(a)
+        @test partial_a != 0.
+        zero_grad!(tape)
+        @test partial(a) == 0.
+        @test partial(b) == zeros(2)
+        @test partial(c) == transpose(zeros(2))
+        @test partial(d) == zeros(2, 2)
+        backprop(sum((b * (c * a)) * d))
+        @test partial(a) == partial_a
+    end
+
 
 end
