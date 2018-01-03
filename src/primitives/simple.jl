@@ -61,7 +61,7 @@ function Gen.logpdf{M,N,O}(::Gamma, x::M, k::N, s::O)
 end
 
 function Base.rand{M,N}(gamma::Gamma, k::M, s::N)
-    rand(Distributions.Gamma(k, s))
+    rand(Distributions.Gamma(concrete(k), concrete(s)))
 end
 
 register_primitive(:gamma, Gamma)
@@ -207,6 +207,31 @@ register_primitive(:uniform_discrete, UniformDiscrete)
 
 
 """
+Poisson generator, with singleton `poisson`.
+
+    generate!(poisson, (lambda::Float64), trace::AtomicTrace{Int})
+
+    poisson(lambda)
+
+Return value is Poisson distributed integer in the set `[0, 1, 2, ...)`
+
+Score is differentiable with respect to lambda.
+"""
+struct Poisson <: AssessableAtomicGenerator{Int64} end
+
+function Gen.logpdf(::Poisson, x::Int64, lambda::M) where {M}
+    x * log(lambda) - lambda - lgamma(x+1)
+end
+
+function Base.rand(::Poisson, lambda::M) where {M}
+    rand(Distributions.Poisson(concrete(lambda)))
+end
+
+register_primitive(:poisson, Poisson)
+
+
+
+"""
 Categorical generator with log-space probability vector argument, with singleton `categoriceal_log`.
 
     generate!(categorical_log, (scores::Vector{Float64}), trace::AtomicTrace{Int})
@@ -219,12 +244,12 @@ Score is not (yet) differentiable [#65](https://github.com/probcomp/Gen.jl/issue
 """
 struct CategoricalLog <: AssessableAtomicGenerator{Int64} end
 
-function Gen.logpdf(::CategoricalLog, x::Int64, scores::Vector{Float64})
+function Gen.logpdf(::CategoricalLog, x::Int64, scores::M) where {M}
     (scores - logsumexp(scores))[x]
 end
 
-function Base.rand(::CategoricalLog, scores::Vector{Float64})
-    probs = exp.(scores - logsumexp(scores))
+function Base.rand(::CategoricalLog, scores::M) where {M}
+    probs = exp.(concrete(scores) - logsumexp(concrete(scores)))
     rand(Distributions.Categorical(probs))
 end
 
