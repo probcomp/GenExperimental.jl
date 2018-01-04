@@ -47,35 +47,35 @@ end
 
     # anonymous, no arguments
     foo1 = @program () begin nothing end
-    @test simulate!(foo1, (), none, none, DictTrace()) == (0., nothing)
+    @test simulate!(foo1, (), none, none, DictTrace())[1:2] == (0., nothing)
 
     # anonymous, single typed argument
     foo2 = @program (x::Int) begin x end
-    @test simulate!(foo2, (1,), none, none, DictTrace()) == (0., 1)
+    @test simulate!(foo2, (1,), none, none, DictTrace())[1:2] == (0., 1)
 
     # anonymous, single untyped argument
     foo3 = @program (x) begin x end
-    @test simulate!(foo3, (1,), none, none, DictTrace()) == (0., 1)
+    @test simulate!(foo3, (1,), none, none, DictTrace())[1:2] == (0., 1)
 
     # anonymous, multiple argument with one untyped
     foo4 = @program (x::Int, y) begin x, y end
-    @test simulate!(foo4, (1, 2), none, none, DictTrace()) == (0., (1, 2))
+    @test simulate!(foo4, (1, 2), none, none, DictTrace())[1:2] == (0., (1, 2))
 
     # anonymous, no arguments
     @program bar1() begin nothing end
-    @test simulate!(bar1, (), none, none, DictTrace()) == (0., nothing)
+    @test simulate!(bar1, (), none, none, DictTrace())[1:2] == (0., nothing)
 
     # anonymous, single typed argument
     @program bar2(x::Int) begin x end
-    @test simulate!(bar2, (1,), none, none, DictTrace()) == (0., 1)
+    @test simulate!(bar2, (1,), none, none, DictTrace())[1:2] == (0., 1)
 
     # anonymous, single untyped argument
     @program bar3(x) begin x end
-    @test simulate!(bar3, (1,), none, none, DictTrace()) == (0., 1)
+    @test simulate!(bar3, (1,), none, none, DictTrace())[1:2] == (0., 1)
 
     # anonymous, multiple argument with one untyped
     @program bar4(x::Int, y) begin x, y end
-    @test simulate!(bar4, (1, 2), none, none, DictTrace()) == (0., (1, 2))
+    @test simulate!(bar4, (1, 2), none, none, DictTrace())[1:2] == (0., (1, 2))
 end
 
 @testset "lexical scope" begin
@@ -499,7 +499,7 @@ end
 
 end
 
-@testset "per-generator scores" begin
+@testset "internal random choice scores" begin
 
     model = @program () begin
         cloudy = @g(flip(0.3), "cloudy")
@@ -509,25 +509,26 @@ end
     t = DictTrace()
     t["cloudy"] = true
     t["sprinkler"] = true
-    regenerate!(model, (), AddressTrie("cloudy", "sprinkler"), none, t)
-    @test isapprox(get_score(t, "cloudy"), log(0.3))
-    @test isapprox(get_score(t, "sprinkler"), log(0.1))
+    (_, _, internal_score) = regenerate!(model, (), AddressTrie("sprinkler"), none, t)
+    @test isapprox(internal_score, t["cloudy"] ? log(0.3) : log(1-0.3))
 
     t = DictTrace()
-    regenerate!(model, (), none, none, t)
-    @test isapprox(get_score(t, "cloudy"), t["cloudy"] ? log(0.3) : log(1-0.3))
+    (_, _, internal_score) = regenerate!(model, (), none, none, t)
+    expected = t["cloudy"] ? log(0.3) : log(1-0.3)
     if t["cloudy"]
-        @test isapprox(get_score(t, "sprinkler"), t["sprinkler"] ? log(0.1) : log(1-0.1))
+        expected += (t["sprinkler"] ? log(0.1) : log(1-0.1))
     else
-        @test isapprox(get_score(t, "sprinkler"), t["sprinkler"] ? log(0.4) : log(1-0.4))
+        expected += (t["sprinkler"] ? log(0.4) : log(1-0.4))
     end
+    @test isapprox(internal_score, expected)
 
     t = DictTrace()
-    simulate!(model, (), none, none, t)
-    @test isapprox(get_score(t, "cloudy"), t["cloudy"] ? log(0.3) : log(1-0.3))
+    (_, _, internal_score) = simulate!(model, (), none, none, t)
+    expected = t["cloudy"] ? log(0.3) : log(1-0.3)
     if t["cloudy"]
-        @test isapprox(get_score(t, "sprinkler"), t["sprinkler"] ? log(0.1) : log(1-0.1))
+        expected += (t["sprinkler"] ? log(0.1) : log(1-0.1))
     else
-        @test isapprox(get_score(t, "sprinkler"), t["sprinkler"] ? log(0.4) : log(1-0.4))
+        expected += (t["sprinkler"] ? log(0.4) : log(1-0.4))
     end
+    @test isapprox(internal_score, expected)
 end
