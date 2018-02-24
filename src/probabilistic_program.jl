@@ -55,13 +55,14 @@ struct ProbabilisticProgramRuntimeState
     trace::DictTrace
     outputs
     conditions
-    score::Score
+    score::Score # output score
+    internal_score::Score
     aliases_by_subtrace_address::Dict
     all_aliases::Set
 end
 
 function ProbabilisticProgramRuntimeState(trace::DictTrace, outputs, conditions)
-    ProbabilisticProgramRuntimeState(trace, outputs, conditions, Score(), Dict(), Set())
+    ProbabilisticProgramRuntimeState(trace, outputs, conditions, Score(), Score(), Dict(), Set())
 end
 
 function add_alias!(state::ProbabilisticProgramRuntimeState, alias, addr::Tuple)
@@ -197,8 +198,15 @@ function tagged!(runtime_state::ProbabilisticProgramRuntimeState,
         # there are no other methods
         @assert false
     end
+
     increment!(runtime_state.score, increment)
     set_subtrace!(runtime_state.trace, addr_first, subtrace)
+
+    # score every atomic assessable generator that is not an output (i.e. every internal choice)
+    # NOTE: HACK because it only applies to assessable atomic generators
+    if isa(generator, AssessableAtomicGenerator) && !(() in sub_outputs)
+        increment!(runtime_state.internal_score, logpdf(generator, subtrace[()], args...))
+    end
 
     # copy values from subtrace to aliases
     for (addr_rest, alias) in get_aliases(runtime_state, addr_first)
@@ -300,7 +308,10 @@ function _simulate_or_regenerate!(p::ProbabilisticProgram, args::Tuple, outputs,
         runtime_state = ProbabilisticProgramRuntimeState(trace, outputs, conditions)
         value = p.program(runtime_state, method, args...)
         trace[()] = value
-        return (get(runtime_state.score), value)
+        # TODO breaking interface change: put value first, we want scores at
+        # the end to maintain backward compatability if we want to add more
+        # return values, like we added 'internal score'
+        return (get(runtime_state.score), value, get(runtime_state.internal_score))
     end
 end
 

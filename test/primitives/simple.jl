@@ -5,6 +5,11 @@ import Distributions
     @test isapprox(logpdf(Flip(), false, 0.1), log(0.9))
 end
 
+@testset "logflip" begin
+    @test isapprox(logpdf(LogFlip(), true, log(0.1)), log(0.1))
+    @test isapprox(logpdf(LogFlip(), false, log(0.1)), log(0.9))
+end
+
 @testset "beta" begin
 
     # test against Distributions.Beta since we re-implement the density
