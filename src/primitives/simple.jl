@@ -18,6 +18,26 @@ register_primitive(:flip, Flip)
 
 
 """
+Bernoulli generator with log probability argument, with singleton `logflip`
+# TODO this has numerical issues in one of the two directions: it should be
+# removed in favor of a logit version.
+
+    generate!(logflip, (log_prob,), trace::AtomicTrace{Bool})
+
+    logflip(prob)
+
+Score is not differentiable with respect to `logprob`
+"""
+struct LogFlip <: AssessableAtomicGenerator{Bool} end
+
+Base.rand(::LogFlip, logprob::Float64) = log(rand()) < logprob
+Gen.logpdf(::LogFlip, value::Bool, logprob::Float64) = value ? logprob : log1p(-exp(logprob))
+
+register_primitive(:logflip, LogFlip)
+
+
+
+"""
 Beta generator, with singleton `beta`.
 
     generate!(beta, (a, b), trace::AtomicTrace{Float64})
