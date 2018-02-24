@@ -20,7 +20,6 @@ struct NIWParams
     k::Float64
 
     # degrees of freedom for the inverse Wishart distribution on covariance
-    # corresponds to 'mu' in NIGNParams
 	m::Float64
 
     # scale parameter for the inverse Wishart distribution on covariance
@@ -52,6 +51,9 @@ mutable struct NIWNState
         new(0, zeros(dimension), zeros(dimension, dimension))
     end
 end
+
+Base.isempty(state::NIWNState) = (state.n == 0)
+
 function incorporate!(state::NIWNState, x::Vector{Float64})
     state.n += 1
     state.x_total += x
@@ -204,6 +206,7 @@ Base.getindex(t::NIWNTrace{A}, addr_element::A) where {A} = t[(addr_element,)]
 
 Base.setindex!(t::NIWNTrace{A}, value::Vector{Float64}, addr_element::A) where {A} = begin t[(addr_element,)] = value end
 
+get_state(trace::NIWNTrace) = trace.state
 
 struct NIWNGenerator{A} <: Generator{NIWNTrace{A}}
     dim::Int
@@ -306,4 +309,5 @@ function simulate!(::NIWNGenerator{A}, args::Tuple{Any,NIWParams,Bool}, outputs,
 end
 
 export NIWNTrace
+export get_state
 export NIWNGenerator
