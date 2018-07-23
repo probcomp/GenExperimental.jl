@@ -1,6 +1,4 @@
-```diff
-- NOTE: This repository is not maintained. We are currently reworking the system from the ground up.
-```
+***NOTE: This repository is not maintained. We are currently reworking the system from the ground up, and we will post a link here to the new repository once it is ready.***
 
 # Gen
 
