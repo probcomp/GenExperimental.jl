@@ -1,3 +1,7 @@
+```diff
+- NOTE: This repository is not maintained. We are currently reworking the system from the ground up.
+```
+
 # Gen
 
 Gen is a featherweight embedded probabilistic programming language and compositional inference programming library.
