@@ -1,4 +1,4 @@
-***NOTE: This repository is not maintained. We are currently reworking the system from the ground up, and we will post a link here to the new repository once it is ready.***
+***NOTE: This repository is not maintained. We reworked the system from the ground up. The new reposity can be found there: https://github.com/probcomp/Gen***
 
 # Gen
 
